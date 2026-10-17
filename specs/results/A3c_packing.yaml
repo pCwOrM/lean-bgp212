@@ -88,8 +88,9 @@ verification:
     - change: "lemma_7_10 claimed for m′ ≤ 14 in the Challenge"
       result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_7_10'"
   sandbox: >
-    Comparator ran in the build container with the landrun pass-through shim (Go proxy
-    blocked there); the VPS run with the real landrun sandbox is recorded below.
+    Comparator ran on the VPS with the real landrun sandbox via ./verify.sh.
+    All eight Challenge/Solution suites passed Lean kernel verification.
+    Lemma 7.10 covers all 455 packing roots.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -101,7 +102,7 @@ result:
     - "Your solution is okay!"
   verify_time: "about 10.5 minutes for the A3c comparator suite in the build container"
   run_date: 2026-10-17
-  commit_hash: PENDING_VPS
+  commit_hash: 2ba0bbcaa5a5aac558a3a7b80dcc2cf4b9f428f5
 
 next_development:
   lemma_7_10_to_theorem_7_11: >
