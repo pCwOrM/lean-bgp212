@@ -75,8 +75,9 @@ verification:
     - change: "open root (D, 1, 3) moved from openRootsB into settledRootsB"
       result: "Solution fails to build: root_ledger_b and certTableB_keys disproved by decide, lemma_7_10_a3b kernel error"
   sandbox: >
-    Comparator ran with the pass-through landrun stand-in in the authoring environment.
-    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All seven Challenge/Solution suites passed Lean kernel verification.
+    Certificate checks matched three Lean files: 116 settled rows, 43 open roots.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -88,6 +89,6 @@ result:
     - "Your solution is okay!"
   verify_time: "about 7.5 minutes for all seven suites"
   run_date: 2026-10-16
-  commit_hash: null   # set to the verified commit after the VPS run
+  commit_hash: e103998d33e0ae7757bdfdea8d20301898e212d4
 
 footer: Admissible generalizations trail leading specifications.
