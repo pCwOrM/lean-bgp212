@@ -1,0 +1,102 @@
+# B0 — Multi-shift General Divisor Theorem: specification
+# Track B, Phase 0. Extends GDT v1.0.0 from a single shift to a finite tuple H.
+
+identity:
+  id: B0
+  title: Multi-shift General Divisor Theorem
+  track: B (multi-shift GDT)
+  role: leading specification for the Track B Lean challenge
+
+state:
+  mathematical: specified          # statements fixed; proofs pending (B1–B3)
+  computational: brute-force-checked
+  provenance: pinned
+  publication: draft
+
+provenance:
+  extends:
+    - repo: github.com/thinkthoughts/general-divisor-theorem
+      release: v1.0.0
+      reused_definitions: [rad, d, R, Tmin]   # GeneralDivisorTheorem/Basic.lean
+      specialization_target: "H = {0} recovers gdt_empty, gdt_periodic, gdt_count_per_period"
+  applied_to:
+    file: Source/bgp212.pdf
+    sha256: 2b307ae26046dffd2153fe7466e5a9a302976dc3ba5142151a8a8104a37b3d80
+    passages: ["Definition 4.5 (W, b with (b + h_i, W) = 1)", "Lemma 4.9 (W-trick)", "§12 H₄₅"]
+  relation_to_literature: >
+    The local factors 1 − ν_p(H)/p are the classical local densities behind the
+    Hardy–Littlewood singular series. The contribution here is the GDT-unified exact
+    statement (dichotomy, period, count, density), machine-checked, and its
+    instantiation on Axiom's W-trick.
+
+specification:
+  domain: "N, m positive naturals; a ∈ ℤ; H a nonempty finite set of integer shifts"
+  definitions:
+    nu: "ν_p(H) = |{ −h mod p : h ∈ H }|  (number of classes mod p that H forbids for n)"
+    d: "rad(gcd(m, N))  (as in GDT v1.0.0)"
+    R: "rad(N) / d  (product of the primes dividing N and not dividing m)"
+    Tmin: "m · R"
+    acceptedH: "n ≡ a (mod m)  and  gcd(n + h, N) = 1 for every h ∈ H"
+    AdmissibleH: "for every prime p ∣ d and every h ∈ H, p ∤ (a + h)"
+  leading_claim: >
+    The integers n ≥ 1 with acceptedH have absolute natural density
+    (1/m) · ∏_{p ∣ R} (1 − ν_p(H)/p) when AdmissibleH holds, and form the empty set
+    otherwise.
+  statements:              # Challenge theorem names, mirroring GDT v1.0.0's seven
+    - name: gdtH_empty
+      claim: "¬ AdmissibleH → the accepted set is empty"
+    - name: gdtH_periodic
+      claim: "AdmissibleH → Tmin is a period of acceptedH"
+    - name: gdtH_count_per_period
+      claim: "AdmissibleH → every window [b, b + Tmin) holds exactly ∏_{p ∣ R} (p − ν_p(H)) accepted values"
+      note: "the exact integer form; the formal core is a finite CRT count"
+    - name: gdtH_density
+      claim: "AdmissibleH → count up to L equals q·∏(p − ν_p(H)) + count up to s, for L = q·Tmin + s"
+      reading: "absolute density (1/m)·∏_{p ∣ R}(1 − ν_p(H)/p) — the 1/m factor is preserved, matching GDT v1.0.0's φ(R)/(mR)"
+    - name: gdtH_relative_density
+      claim: "corollary: within the class a mod m the density is ∏_{p ∣ R}(1 − ν_p(H)/p)"
+      role: separate corollary
+    - name: gdtH_single_shift
+      claim: "H = {0}: AdmissibleH ↔ GDT Admissible, and ∏_{p ∣ R}(p − 1) = φ(R)"
+      role: specialization to GDT v1.0.0
+    - name: gdtH_local_positivity
+      claim: "the accepted set is nonempty ↔ AdmissibleH ∧ ∀ p ∣ R, ν_p(H) < p"
+  leading_constraints:
+    - Density is absolute (over all positive integers), with 1/m explicit; relative density is a corollary.
+    - Counts are stated as exact naturals over one period, and density follows from periodicity.
+    - Local admissibility factors are 1 − ν_p(H)/p, unnormalized.
+  excluded_generalizations:
+    - "Normalized Hardy–Littlewood factors (1 − ν_p(H)/p)(1 − 1/p)^(−|H|) belong to a separate statement; this specification uses the local factors alone."
+    - "Minimal period: GDT v1.0.0 proves Tmin is minimal for one shift; for general H, minimality is a candidate statement (expected when the set is nonempty) and stays outside this specification until proved."
+    - Primality of the n + h themselves (the sieve) lies outside this theorem; it concerns coprimality to N only.
+  instantiation:
+    tuple: H45 (Source §12)
+    free_classes:            # p − ν_p(H₄₅)
+      "p ≤ 23": 1
+      "29": 2
+      "31": 2
+      "37": 3
+      "41": 7
+      "43": 7
+      "47": 10
+    w_trick_reading: >
+      For W = 2·3·5·7·11·13·17·19·23 = 223092870, the residue b with (b + h, W) = 1 for
+      all h ∈ H₄₅ is unique: b ≡ 74549147 (mod W). Reduced mod 30, b ≡ 17.
+    bridge_to_A: "H₄₅ admissible ↔ every local factor positive; gives Lemma 12.1 a second proof (the Join)."
+
+verification:
+  method: brute-force enumeration over one period, exact integers
+  script: specs/checks/multishift_bruteforce.py
+  checks:
+    - "3,000 random cases (m ≤ 30, N ≤ 60, a ∈ [−40, 40], H ⊆ [0, 20) with |H| ≤ 4, window start b ∈ [0, 50]): count over [b, b + Tmin) equals ∏(p − ν_p(H)) under AdmissibleH and 0 otherwise, and the gdtH_local_positivity criterion matches nonemptiness — 0 mismatches"
+    - "H₄₅ free-class counts at p ≤ 47 (values above)"
+    - "unique W-trick residue b ≡ 74549147 (mod 223092870), b ≡ 17 (mod 30)"
+  independent_checks:
+    - "ChatGPT recomputed the H₄₅ free-class counts and b ≡ 17 (mod 30); results agree."
+
+result:
+  outcome: statements specified; brute-force evidence consistent; Lean proofs pending (B1–B3)
+  run_date: 2026-10-16
+  commit_hash: null   # repository has no commits yet; filled at first commit
+
+footer: Admissible generalizations trail leading specifications.

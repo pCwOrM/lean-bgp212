@@ -1,0 +1,47 @@
+# Result record: first Challenge/Solution pair (Lemma 12.1)
+
+identity:
+  id: A1-L12.1
+  statement: "Lemma 12.1 — H₄₅ is an admissible 45-tuple of diameter 212"
+  source: "Source/bgp212.pdf, §12, p. 43"
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  challenge: Challenge/Lemma12_1.lean
+  solution: Solution/Lemma12_1.lean
+  comparator_config: Comparator/lemma_12_1.json
+  theorems: [h45_card, h45_diameter, h45_omitted_table, h45_admissible, lemma_12_1]
+  definitions_compared: [IsPrime, Admissible, H45, omittedTable]
+  proof_method: >
+    `decide +kernel` for every finite claim, so the Lean kernel evaluates each one.
+    Admissibility splits at 213: a finite kernel check for 2 ≤ p < 213, and for p ≥ 213
+    the class 1 is omitted because every element is below p and 1 ∉ H₄₅.
+  axioms_used: [propext, Quot.sound]       # permitted set also includes Classical.choice
+  trusted_base: Lean 4 kernel + core library (Mathlib absent from this challenge)
+  sandbox: >
+    Comparator ran with a pass-through stand-in for landrun, because landrun's Go
+    dependencies were unreachable in the build environment. Statement matching,
+    definition matching, the axiom check, and the kernel replay all ran in full.
+    Rerun ./verify.sh with a real landrun for the sandboxed build.
+  negative_control: >
+    Changing `h ≤ 212` to `h ≤ 213` in the Challenge made comparator reject with
+    "Challenge and solution theorem statement do not match: 'BGP212.Challenge.h45_diameter'".
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  comparator: leanprover/comparator @ c78dd72 (toolchain v4.34.0-rc2)
+  lean4export: leanprover/lean4export @ 483e011 (toolchain v4.34.0-rc2)
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  solution_build_time: "about 3 s"
+  run_date: 2026-10-16
+  commit_hash: null   # filled at first commit
+
+footer: Admissible generalizations trail leading specifications.

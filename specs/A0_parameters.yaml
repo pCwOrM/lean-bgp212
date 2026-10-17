@@ -1,0 +1,107 @@
+# A0 — Authoritative parameter specification for the H₁ ≤ 212 argument
+# Track A, Phase 0. Every later Track A statement is formalized against this file.
+
+identity:
+  id: A0
+  title: Authoritative parameter datum for "A New Bound for Small Gaps Between Primes"
+  track: A (specification audit)
+  role: specification of record for all parameter values
+
+state:
+  mathematical: specified          # values transcribed; no claim proved here
+  computational: cross-checked     # derived quantities recomputed in exact rationals (see verification)
+  provenance: pinned               # source file hash recorded below
+  publication: draft
+
+provenance:
+  source:
+    title: A New Bound for Small Gaps Between Primes
+    authors: [Charton, Hong, Lau, Ono, Remy, Siu, Swaminathan, Thorner, Xie]
+    organization: Axiom Math
+    version: "Preliminary Draft: September 3, 2026"
+    file: Source/bgp212.pdf
+    sha256: 2b307ae26046dffd2153fe7466e5a9a302976dc3ba5142151a8a8104a37b3d80
+  authority_rule: >
+    Table 3 (§9.1, p. 39) is the specification of record. The source itself names it
+    "the single parameter point used in both halves of the proof". Every other
+    occurrence of a parameter value is a reading of Table 3 and is checked against it.
+
+specification:
+  domain: Exact rational parameters of the Stadlmann support T_k(δ, A, B, ε) and the Harman decomposition
+  leading_claim: >
+    The proof of Theorem 1.1 uses exactly one parameter point P, given by Table 3.
+  parameters:            # physical normalization, Table 3, p. 39
+    k: 45
+    omega: "7/1000"
+    A0: "-1/125"
+    A1: "257/1000"
+    epsilon_s: "1/125"
+    delta: "41/2500"
+    B1:                  # B_{1,m} for m = 1..10; B_{1,m} = 1081/5000 for m ≥ 11; B_{1,0} = 0
+      unit: "1/5000"
+      values: [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
+      tail_m_ge_11: "1081/5000"
+    xi: { xi1: "19/50", xi2: "2/5", xi3: "2/5" }
+    epsilon_a: "1e-10"
+  rescaled_by_4:         # Table 3 last column and §9.3 dictionary, p. 40
+    g: "41/625"
+    C_m: "4 * B_{1,m}"
+    L: "53/50"
+    tau: "249/250"
+  derived_readings:      # each a consequence of the parameters above
+    - { quantity: "A1 + εs", value: "53/200", source: "§9.1 support display, p. 39" }
+    - { quantity: "A1 − εs", value: "249/1000", source: "§9.1 marginal cutoff, p. 39" }
+    - { quantity: "3A1 + δ", value: "3937/5000", source: "§9.2 display, p. 40" }
+    - { quantity: "max_m (B_{1,m+1} − B_{1,m})", value: "81/5000", source: "Appendix B row 'Bm+1 ≤ Bm + δ'" }
+    - { quantity: "floor(B_{1,10} / δ)", value: 13, source: "Lemma 7.10 range 1 ≤ m ≤ m′ ≤ 13" }
+  leading_constraints:
+    - Every parameter is an exact rational; decimals in the source are display aids only.
+    - Table 3 values take precedence wherever another passage states a different value.
+    - Recorded source inconsistencies stay verbatim and unresolved until the authors resolve them.
+  excluded_generalizations:
+    - This file specifies values; inequalities among them belong to A1 (finite layer).
+    - Correction of the source falls to its authors; this file records, and leaves the text as printed.
+
+  unresolved_source_inconsistencies:
+    - id: SI-1
+      location: "§9.2 'Why these parameters', p. 40, first display after 'The chosen rational point satisfies'"
+      source_text: "3A1 + δ = 3 · 513/2000 + 179/10000 = 3937/5000 = 63/80 − 1/10000"
+      table_3_values: { A1: "257/1000", delta: "41/2500" }
+      printed_values: { A1: "513/2000", delta: "179/10000" }
+      agreement: >
+        Both pairs give 3A1 + δ = 3937/5000 exactly, so the stated wall margin of
+        10⁻⁴ holds under Table 3.
+      status: unresolved
+    - id: SI-2
+      location: "Lemma 9.1 (Rescaled support), proof, p. 41"
+      source_text: "multiplication by 4 also sends the two physical rough caps to C(1) = C(2) = 31/50 and C(s) = 17/25 for s ≥ 3"
+      table_3_reading: "C(m) = 4·B_{1,m} = 777/1250, 397/625, 7/10, 917/1250, … (ten distinct rungs, then 1081/1250)"
+      printed_reading: "a two-level cap: 31/50 for s ≤ 2, 17/25 for s ≥ 3"
+      agreement: >
+        The printed caps differ from 4·B_{1,m} at every rung. §9.3 (L, τ, g) agrees with
+        Table 3, so the divergence is confined to this proof sentence.
+      status: unresolved
+
+  editorial_notes:
+    - id: ED-1
+      location: "pp. 43 and 46"
+      note: >
+        Two appendices carry the heading "Appendix A": "Source correspondences" (p. 43)
+        and "Formal certificate by AxiomProver" (p. 46). Cited here by page plus title.
+
+verification:
+  method: exact rational recomputation (Python fractions); Lean A1 restates every derived reading
+  checks:
+    - "4(A1 + εs) = 53/50 = L"
+    - "4(A1 − εs) = 249/250 = τ"
+    - "4δ = 41/625 = g"
+    - "3A1 + δ = 3937/5000 = 63/80 − 1/10000 (Table 3 values and §9.2 printed values alike)"
+    - "max consecutive B step = 81/5000 ≤ δ = 82/5000"
+    - "floor(1081/5000 ÷ 41/2500) = 13"
+
+result:
+  outcome: all derived readings match Table 3; SI-1 and SI-2 recorded
+  run_date: 2026-10-16
+  commit_hash: null   # repository has no commits yet; filled at first commit
+
+footer: Admissible generalizations trail leading specifications.

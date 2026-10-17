@@ -1,0 +1,22 @@
+name = "bgp212"
+version = "0.1.0"
+keywords = ["math"]
+defaultTargets = ["BGP212"]
+
+[leanOptions]
+relaxedAutoImplicit = false
+
+# Core Lean only: the first challenge needs no Mathlib, which keeps the trusted
+# base to the Lean kernel plus core. Mathlib enters with Track B (multi-shift GDT).
+
+[[lean_lib]]
+name = "BGP212"
+
+# The comparator pair. Deliberately NOT in defaultTargets: `Challenge` carries a
+# permanent `sorry` (its statements are the artifact). The comparator builds both.
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "Solution"

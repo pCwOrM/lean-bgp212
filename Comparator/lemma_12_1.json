@@ -1,0 +1,22 @@
+{
+    "challenge_module": "Challenge.Lemma12_1",
+    "solution_module": "Solution.Lemma12_1",
+    "theorem_names": [
+        "BGP212.Challenge.h45_card",
+        "BGP212.Challenge.h45_diameter",
+        "BGP212.Challenge.h45_omitted_table",
+        "BGP212.Challenge.h45_admissible",
+        "BGP212.Challenge.lemma_12_1"
+    ],
+    "definition_names": [
+        "BGP212.IsPrime",
+        "BGP212.Admissible",
+        "BGP212.H45",
+        "BGP212.omittedTable"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}
