@@ -1,0 +1,7300 @@
+From 9461b437bf53d654550ac816e9f9767d4da0ff45 Mon Sep 17 00:00:00 2001
+From: Dan Hawkley <dan@triplettrustprotocol.net>
+Date: Fri, 16 Oct 2026 21:59:16 -0600
+Subject: [PATCH] A3a: Lemma 7.10 packing, 296 of 455 roots kernel-checked
+
+Adds the Challenge/Solution pair Packing (core Lean): a generic greedy
+packing lemma, the largest-coordinate bound, the check that omega(1,1)
+of Proposition 7.8 equals Table 3's omega, the root ledger (296 settled
++ 159 open = 455), and Lemma 7.10 for every settled root, over every
+rough profile in Definition 7.4's domain. The settled condition-(D) root
+is proved uniformly over its full (gamma, omega0) box.
+
+Certificates (bin selections) are stored in
+specs/certificates/packing_a3a.json with their generator and a script
+that checks the Lean tables match; the kernel re-checks every inequality.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                                |    1 +
+ BGP212/Packing.lean                        |  161 +
+ Challenge.lean                             |    1 +
+ Challenge/Packing.lean                     |   53 +
+ Comparator/packing_a3a.json                |   36 +
+ README.md                                  |   20 +-
+ Solution.lean                              |    1 +
+ Solution/Packing.lean                      |  607 ++
+ specs/certificates/packing_a3a.json        | 6098 ++++++++++++++++++++
+ specs/checks/packing_certificates_match.py |   26 +
+ specs/checks/packing_ledger.py             |   54 +
+ specs/results/A3a_packing.yaml             |   83 +
+ verify.sh                                  |    2 +-
+ 13 files changed, 7139 insertions(+), 4 deletions(-)
+ create mode 100644 BGP212/Packing.lean
+ create mode 100644 Challenge/Packing.lean
+ create mode 100644 Comparator/packing_a3a.json
+ create mode 100644 Solution/Packing.lean
+ create mode 100644 specs/certificates/packing_a3a.json
+ create mode 100644 specs/checks/packing_certificates_match.py
+ create mode 100644 specs/checks/packing_ledger.py
+ create mode 100644 specs/results/A3a_packing.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 9544c19..35b1a6d 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -5,3 +5,4 @@ import BGP212.MultiShift
+ import BGP212.GDTv1Basic
+ import BGP212.GDTv1
+ import BGP212.WTrick
++import BGP212.Packing
+diff --git a/BGP212/Packing.lean b/BGP212/Packing.lean
+new file mode 100644
+index 0000000..7302aa6
+--- /dev/null
++++ b/BGP212/Packing.lean
+@@ -0,0 +1,161 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 7.4 (p. 28), Proposition 7.8 (A)–(E) (pp. 31–32),
++Lemma 7.10 (p. 36). Parameters: Table 3 via BGP212.Params (specs/A0_parameters.yaml).
++-/
++import BGP212.Params
++import BGP212.Ledger
++
++/-! # A3: the factor-packing conditions of Lemma 7.10
++
++Lemma 7.10 asserts conditions (A)–(E) of Proposition 7.8 for every rough profile in
++`Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)`, `1 ≤ m ≤ m′ ≤ 13`: 91 pairs × 5 conditions = 455 roots.
++
++* `InXi` is Definition 7.4: `m` and `m′` coordinates in `[δ, 1]`, side sums at most the caps.
++* `Packs caps items` is a partition `I₁ ∪ … ∪ Iₖ` of the coordinates with `Σ_{Iᵢ} ≤ capᵢ`,
++  encoded as an assignment of each coordinate to a bin index; empty parts are allowed.
++* The capacities transcribe Proposition 7.8 with `ω(1,1) = (A₁ + A₁)/2 − 1/4` (the single
++  band, `n = 1`) and `ϵ = εₐ = 10⁻¹⁰`.
++* `Root c m m′` is Lemma 7.10's claim for one root; for (D) it is uniform over the full box
++  `0 ≤ ω₀ ≤ ω(1,1)`, `2/5 − εₐ ≤ γ ≤ 1/3 + 8ω(1,1) + 7δ/3 + 3εₐ`.
++* `settledRoots` and `openRoots` are the A3a ledger: 296 roots proved here, 159 left open. -/
++
++namespace BGP212.Packing
++
++open BGP212.Params BGP212.Ledger
++
++/-- **Definition 7.4.** `ys`, `ys'` are the two sides of a rough profile in
++`Ξ(B1, B2, m, m′, δ)`. -/
++def InXi (B1 B2 : Rat) (m m' : Nat) (ys ys' : List Rat) : Prop :=
++  ys.length = m ∧ ys'.length = m' ∧ (∀ y ∈ ys ++ ys', δ ≤ y ∧ y ≤ 1) ∧
++    ys.sum ≤ B1 ∧ ys'.sum ≤ B2
++
++/-- The load of bin `k` under the assignment `assign` of items to bins. -/
++def binSum (items : List Rat) (assign : List Nat) (k : Nat) : Rat :=
++  (((items.zip assign).filter (fun p => p.2 == k)).map (·.1)).sum
++
++/-- A partition of `items` into the bins of `caps`, each part within its capacity. -/
++def Packs (caps items : List Rat) : Prop :=
++  ∃ assign : List Nat, assign.length = items.length ∧ (∀ a ∈ assign, a < caps.length) ∧
++    ∀ k, k < caps.length → binSum items assign k ≤ caps[k]!
++
++/-- `ω(j, j′) = (A_j + A_j′)/2 − 1/4` for the single band `j = j′ = 1` (Proposition 7.8). -/
++def ω11 : Rat := (A1 + A1) / 2 - 1 / 4
++
++/-- Proposition 7.8 (A), first partition (the range γ ≤ 1/2). -/
++def capsA1 : List Rat := [ξ1 - 2 * εa, 1 / 6 - 4 * ω11 - 2 * εa]
++/-- Proposition 7.8 (A), second partition (the range γ > 1/2). -/
++def capsA2 : List Rat := [1 / 2 - 2 * ω11 - 2 * εa, 1 / 14 - 68 / 14 * ω11 - 2 * εa]
++/-- Proposition 7.8 (B), Type IIa. -/
++def capsB : List Rat :=
++  [2 / 5 + 24 * ω11 / 5 + 7 * δ / 5 - 2 * εa, 1 / 14 - 24 * ω11 / 7 - 2 * εa]
++/-- Proposition 7.8 (C), Type IIb. -/
++def capsC : List Rat :=
++  [1 / 3 + 24 * ω11 / 3 + 7 * δ / 3 - 4 * εa, 1 / 10 - 34 * ω11 / 5 - 7 * δ / 5 - 4 * εa,
++   2 * ω11 + δ - 4 * εa]
++/-- Proposition 7.8 (D), Type IIc, at the point `(γ, ω₀)`. -/
++def capsD (γ ω0 : Rat) : List Rat :=
++  [γ - 2 * δ - 8 * ω0 - εa, 1 / 2 - γ - 2 * ω0 - εa, 4 * ω0 + δ - εa, 8 * ω0]
++/-- Proposition 7.8 (E), Type III. -/
++def capsE : List Rat := [1 - 6 * ω11 - 3 * ξ3 / 2 - 2 * εa, 5 * ω11 / 2 + 3 * ξ3 / 8 - 2 * εa]
++
++/-- The five conditions of Proposition 7.8. -/
++inductive Cond | A | B | C | D | E
++  deriving DecidableEq, Repr
++
++/-- **Lemma 7.10, one root.** Every profile in `Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)` satisfies condition
++`c`; condition (D) uniformly over its full `(γ, ω₀)` box. -/
++def Root : Cond → Nat → Nat → Prop
++  | .A, m, m' => ∀ ys ys', InXi (B m) (B m') m m' ys ys' →
++      Packs capsA1 (ys ++ ys') ∧ Packs capsA2 (ys ++ ys')
++  | .B, m, m' => ∀ ys ys', InXi (B m) (B m') m m' ys ys' → Packs capsB (ys ++ ys')
++  | .C, m, m' => ∀ ys ys', InXi (B m) (B m') m m' ys ys' → Packs capsC (ys ++ ys')
++  | .D, m, m' => ∀ ys ys', InXi (B m) (B m') m m' ys ys' →
++      ∀ γ ω0 : Rat, 0 ≤ ω0 → ω0 ≤ ω11 →
++        2 / 5 - εa ≤ γ → γ ≤ 1 / 3 + 8 * ω11 + 7 * δ / 3 + 3 * εa →
++        Packs (capsD γ ω0) (ys ++ ys')
++  | .E, m, m' => ∀ ys ys', InXi (B m) (B m') m m' ys ys' → Packs capsE (ys ++ ys')
++
++/-- All 455 roots of Lemma 7.10: five conditions over A1's 91 pairs `1 ≤ m ≤ m′ ≤ 13`. -/
++def allRoots : List (Cond × Nat × Nat) :=
++  [Cond.A, Cond.B, Cond.C, Cond.D, Cond.E].flatMap fun c =>
++    packingPairs.map fun p => (c, p.1, p.2)
++
++/-- The 296 roots settled in A3a (generated by specs/checks/packing_ledger.py). -/
++def settledRoots : List (Cond × Nat × Nat) := [
++    (.A, 1, 1), (.A, 1, 2), (.A, 1, 3), (.A, 1, 4), (.A, 1, 5), (.A, 1, 6), (.A, 1, 7),
++    (.A, 1, 8), (.A, 1, 9), (.A, 1, 10), (.A, 1, 11), (.A, 1, 12), (.A, 1, 13), (.A, 2, 2),
++    (.A, 2, 3), (.A, 2, 4), (.A, 2, 5), (.A, 2, 6), (.A, 2, 7), (.A, 2, 8), (.A, 2, 9),
++    (.A, 2, 10), (.A, 2, 11), (.A, 2, 12), (.A, 2, 13), (.A, 3, 3), (.A, 3, 4), (.A, 3, 5),
++    (.A, 3, 6), (.A, 3, 7), (.A, 4, 4), (.A, 4, 5), (.A, 4, 6), (.A, 5, 5), (.A, 5, 6),
++    (.A, 6, 6), (.A, 6, 7), (.A, 7, 7), (.A, 7, 8), (.A, 8, 8), (.A, 8, 9), (.A, 8, 10),
++    (.A, 8, 11), (.A, 8, 12), (.A, 8, 13), (.A, 9, 9), (.A, 9, 10), (.A, 9, 11),
++    (.A, 9, 12), (.A, 9, 13), (.A, 10, 10), (.A, 10, 11), (.A, 10, 12), (.A, 10, 13),
++    (.A, 11, 11), (.A, 11, 12), (.A, 11, 13), (.A, 12, 12), (.A, 12, 13), (.A, 13, 13),
++    (.B, 1, 1), (.B, 1, 2), (.B, 1, 3), (.B, 1, 4), (.B, 1, 5), (.B, 1, 6), (.B, 1, 7),
++    (.B, 1, 8), (.B, 1, 9), (.B, 1, 10), (.B, 1, 11), (.B, 1, 12), (.B, 1, 13), (.B, 2, 2),
++    (.B, 2, 3), (.B, 2, 4), (.B, 2, 5), (.B, 2, 6), (.B, 2, 7), (.B, 2, 8), (.B, 2, 9),
++    (.B, 2, 10), (.B, 2, 11), (.B, 2, 12), (.B, 2, 13), (.B, 3, 3), (.B, 3, 4), (.B, 3, 5),
++    (.B, 3, 6), (.B, 3, 7), (.B, 3, 8), (.B, 3, 9), (.B, 3, 10), (.B, 3, 11), (.B, 3, 12),
++    (.B, 3, 13), (.B, 4, 4), (.B, 4, 5), (.B, 4, 6), (.B, 4, 7), (.B, 4, 8), (.B, 4, 9),
++    (.B, 4, 10), (.B, 4, 11), (.B, 4, 12), (.B, 4, 13), (.B, 5, 5), (.B, 5, 6), (.B, 5, 7),
++    (.B, 5, 8), (.B, 5, 9), (.B, 5, 10), (.B, 5, 11), (.B, 5, 12), (.B, 5, 13), (.B, 6, 6),
++    (.B, 6, 7), (.B, 6, 8), (.B, 6, 9), (.B, 6, 10), (.B, 6, 11), (.B, 6, 12), (.B, 6, 13),
++    (.B, 7, 7), (.B, 7, 8), (.B, 7, 9), (.B, 7, 10), (.B, 7, 11), (.B, 7, 12), (.B, 7, 13),
++    (.B, 8, 8), (.B, 8, 9), (.B, 8, 10), (.B, 8, 11), (.B, 8, 12), (.B, 8, 13), (.B, 9, 9),
++    (.B, 9, 10), (.B, 9, 11), (.B, 9, 12), (.B, 9, 13), (.B, 10, 10), (.B, 10, 11),
++    (.B, 10, 12), (.B, 10, 13), (.B, 11, 11), (.B, 11, 12), (.B, 11, 13), (.B, 12, 12),
++    (.B, 12, 13), (.B, 13, 13), (.C, 1, 1), (.C, 1, 2), (.C, 1, 3), (.C, 1, 4), (.C, 1, 5),
++    (.C, 1, 6), (.C, 1, 7), (.C, 1, 8), (.C, 1, 9), (.C, 1, 10), (.C, 1, 11), (.C, 1, 12),
++    (.C, 1, 13), (.C, 2, 2), (.C, 2, 3), (.C, 2, 4), (.C, 2, 5), (.C, 2, 6), (.C, 2, 7),
++    (.C, 2, 8), (.C, 2, 9), (.C, 2, 10), (.C, 2, 11), (.C, 2, 12), (.C, 2, 13), (.C, 3, 3),
++    (.C, 3, 4), (.C, 3, 5), (.C, 3, 6), (.C, 3, 7), (.C, 3, 8), (.C, 3, 9), (.C, 3, 10),
++    (.C, 3, 11), (.C, 3, 12), (.C, 3, 13), (.C, 4, 4), (.C, 4, 5), (.C, 4, 6), (.C, 4, 7),
++    (.C, 4, 8), (.C, 4, 9), (.C, 4, 10), (.C, 4, 11), (.C, 4, 12), (.C, 4, 13), (.C, 5, 5),
++    (.C, 5, 6), (.C, 5, 7), (.C, 5, 8), (.C, 5, 9), (.C, 5, 10), (.C, 5, 11), (.C, 5, 12),
++    (.C, 5, 13), (.C, 6, 6), (.C, 6, 7), (.C, 6, 8), (.C, 6, 9), (.C, 6, 10), (.C, 6, 11),
++    (.C, 6, 12), (.C, 6, 13), (.C, 7, 7), (.C, 7, 8), (.C, 7, 9), (.C, 7, 10), (.C, 7, 11),
++    (.C, 7, 12), (.C, 7, 13), (.C, 8, 8), (.C, 8, 9), (.C, 8, 10), (.C, 8, 11),
++    (.C, 8, 12), (.C, 8, 13), (.C, 9, 9), (.C, 13, 13), (.D, 1, 1), (.E, 1, 1), (.E, 1, 2),
++    (.E, 1, 3), (.E, 1, 4), (.E, 1, 5), (.E, 1, 6), (.E, 1, 7), (.E, 1, 8), (.E, 1, 9),
++    (.E, 2, 2), (.E, 2, 3), (.E, 2, 4), (.E, 2, 5), (.E, 2, 6), (.E, 2, 7), (.E, 2, 8),
++    (.E, 2, 9), (.E, 2, 10), (.E, 2, 11), (.E, 2, 12), (.E, 2, 13), (.E, 3, 3), (.E, 3, 4),
++    (.E, 3, 5), (.E, 3, 6), (.E, 3, 7), (.E, 4, 4), (.E, 4, 5), (.E, 4, 6), (.E, 4, 7),
++    (.E, 5, 5), (.E, 5, 6), (.E, 5, 7), (.E, 5, 8), (.E, 6, 6), (.E, 6, 7), (.E, 6, 8),
++    (.E, 6, 9), (.E, 7, 7), (.E, 7, 8), (.E, 7, 9), (.E, 7, 10), (.E, 7, 11), (.E, 7, 12),
++    (.E, 7, 13), (.E, 8, 8), (.E, 8, 9), (.E, 8, 10), (.E, 8, 11), (.E, 8, 12),
++    (.E, 8, 13), (.E, 9, 9), (.E, 9, 10), (.E, 9, 11), (.E, 9, 12), (.E, 9, 13),
++    (.E, 10, 10), (.E, 10, 11), (.E, 10, 12), (.E, 10, 13), (.E, 11, 11), (.E, 11, 12),
++    (.E, 11, 13), (.E, 12, 12), (.E, 12, 13), (.E, 13, 13) ]
++
++/-- The 159 roots left open in A3a, for certificate subdivision in A3b. -/
++def openRoots : List (Cond × Nat × Nat) := [
++    (.A, 3, 8), (.A, 3, 9), (.A, 3, 10), (.A, 3, 11), (.A, 3, 12), (.A, 3, 13), (.A, 4, 7),
++    (.A, 4, 8), (.A, 4, 9), (.A, 4, 10), (.A, 4, 11), (.A, 4, 12), (.A, 4, 13), (.A, 5, 7),
++    (.A, 5, 8), (.A, 5, 9), (.A, 5, 10), (.A, 5, 11), (.A, 5, 12), (.A, 5, 13), (.A, 6, 8),
++    (.A, 6, 9), (.A, 6, 10), (.A, 6, 11), (.A, 6, 12), (.A, 6, 13), (.A, 7, 9),
++    (.A, 7, 10), (.A, 7, 11), (.A, 7, 12), (.A, 7, 13), (.C, 9, 10), (.C, 9, 11),
++    (.C, 9, 12), (.C, 9, 13), (.C, 10, 10), (.C, 10, 11), (.C, 10, 12), (.C, 10, 13),
++    (.C, 11, 11), (.C, 11, 12), (.C, 11, 13), (.C, 12, 12), (.C, 12, 13), (.D, 1, 2),
++    (.D, 1, 3), (.D, 1, 4), (.D, 1, 5), (.D, 1, 6), (.D, 1, 7), (.D, 1, 8), (.D, 1, 9),
++    (.D, 1, 10), (.D, 1, 11), (.D, 1, 12), (.D, 1, 13), (.D, 2, 2), (.D, 2, 3), (.D, 2, 4),
++    (.D, 2, 5), (.D, 2, 6), (.D, 2, 7), (.D, 2, 8), (.D, 2, 9), (.D, 2, 10), (.D, 2, 11),
++    (.D, 2, 12), (.D, 2, 13), (.D, 3, 3), (.D, 3, 4), (.D, 3, 5), (.D, 3, 6), (.D, 3, 7),
++    (.D, 3, 8), (.D, 3, 9), (.D, 3, 10), (.D, 3, 11), (.D, 3, 12), (.D, 3, 13), (.D, 4, 4),
++    (.D, 4, 5), (.D, 4, 6), (.D, 4, 7), (.D, 4, 8), (.D, 4, 9), (.D, 4, 10), (.D, 4, 11),
++    (.D, 4, 12), (.D, 4, 13), (.D, 5, 5), (.D, 5, 6), (.D, 5, 7), (.D, 5, 8), (.D, 5, 9),
++    (.D, 5, 10), (.D, 5, 11), (.D, 5, 12), (.D, 5, 13), (.D, 6, 6), (.D, 6, 7), (.D, 6, 8),
++    (.D, 6, 9), (.D, 6, 10), (.D, 6, 11), (.D, 6, 12), (.D, 6, 13), (.D, 7, 7), (.D, 7, 8),
++    (.D, 7, 9), (.D, 7, 10), (.D, 7, 11), (.D, 7, 12), (.D, 7, 13), (.D, 8, 8), (.D, 8, 9),
++    (.D, 8, 10), (.D, 8, 11), (.D, 8, 12), (.D, 8, 13), (.D, 9, 9), (.D, 9, 10),
++    (.D, 9, 11), (.D, 9, 12), (.D, 9, 13), (.D, 10, 10), (.D, 10, 11), (.D, 10, 12),
++    (.D, 10, 13), (.D, 11, 11), (.D, 11, 12), (.D, 11, 13), (.D, 12, 12), (.D, 12, 13),
++    (.D, 13, 13), (.E, 1, 10), (.E, 1, 11), (.E, 1, 12), (.E, 1, 13), (.E, 3, 8),
++    (.E, 3, 9), (.E, 3, 10), (.E, 3, 11), (.E, 3, 12), (.E, 3, 13), (.E, 4, 8), (.E, 4, 9),
++    (.E, 4, 10), (.E, 4, 11), (.E, 4, 12), (.E, 4, 13), (.E, 5, 9), (.E, 5, 10),
++    (.E, 5, 11), (.E, 5, 12), (.E, 5, 13), (.E, 6, 10), (.E, 6, 11), (.E, 6, 12),
++    (.E, 6, 13) ]
++
++end BGP212.Packing
+diff --git a/Challenge.lean b/Challenge.lean
+index 323fa03..d86411f 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -3,3 +3,4 @@ import Challenge.AppendixB
+ import Challenge.A2Combinatorial
+ import Challenge.MultiShift
+ import Challenge.MultiShiftB2
++import Challenge.Packing
+diff --git a/Challenge/Packing.lean b/Challenge/Packing.lean
+new file mode 100644
+index 0000000..1f15f9f
+--- /dev/null
++++ b/Challenge/Packing.lean
+@@ -0,0 +1,53 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 7.4, Proposition 7.8 (A)–(E), Lemma 7.10 (p. 36).
++-/
++import BGP212.Packing
++
++/-! # A3a: packing statements
++
++Statements only; proofs live in `Solution/Packing.lean`. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.Ledger BGP212.Packing
++
++/-- **Greedy packing.** Items each at most `s`, bins of nonnegative capacity, and a nonempty
++set `sel` of distinct bins whose capacities exceed the total by the greedy loss
++`(|sel| − 1)·s`: then the items pack. -/
++theorem greedy_pack (caps items : List Rat) (s : Rat) (sel : List Nat)
++    (hsel : sel ≠ []) (hnd : sel.Nodup) (hin : ∀ i ∈ sel, i < caps.length)
++    (hcap : ∀ k, k < caps.length → 0 ≤ caps[k]!) (hs : ∀ y ∈ items, y ≤ s)
++    (hT : items.sum ≤ (sel.map fun i => caps[i]!).sum - ((sel.length : Rat) - 1) * s) :
++    Packs caps items :=
++  sorry
++
++/-- **The largest coordinate on a side.** With every coordinate at least `δ` and side sum at
++most `Bc`, each coordinate is at most `Bc − (k − 1)δ`, `k` the number of coordinates
++(Lemma 4.2's argument for a single coordinate). -/
++theorem largest_coordinate (δ' Bc : Rat) (ys : List Rat) (hδ : ∀ y ∈ ys, δ' ≤ y)
++    (hsum : ys.sum ≤ Bc) :
++    ∀ y ∈ ys, y ≤ Bc - ((ys.length : Rat) - 1) * δ' :=
++  sorry
++
++/-- `ω(1,1)` of Proposition 7.8 equals Table 3's `ω`. -/
++theorem omega_matches_table3 : ω11 = ω :=
++  sorry
++
++/-- **The A3a root ledger.** 296 settled and 159 open roots, together exactly the 455
++roots of Lemma 7.10. -/
++theorem root_ledger :
++    settledRoots.length = 296 ∧ openRoots.length = 159 ∧
++    (settledRoots ++ openRoots).Perm allRoots ∧ allRoots.length = 455 :=
++  sorry
++
++/-- **Lemma 7.10, settled roots.** Each of the 296 settled roots holds for every profile in
++its domain `Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)`; the settled (D) root uniformly over its full
++`(γ, ω₀)` box. -/
++theorem lemma_7_10_settled :
++    ∀ r ∈ settledRoots, Root r.1 r.2.1 r.2.2 :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/packing_a3a.json b/Comparator/packing_a3a.json
+new file mode 100644
+index 0000000..d0eb992
+--- /dev/null
++++ b/Comparator/packing_a3a.json
+@@ -0,0 +1,36 @@
++{
++    "challenge_module": "Challenge.Packing",
++    "solution_module": "Solution.Packing",
++    "theorem_names": [
++        "BGP212.Challenge.greedy_pack",
++        "BGP212.Challenge.largest_coordinate",
++        "BGP212.Challenge.omega_matches_table3",
++        "BGP212.Challenge.root_ledger",
++        "BGP212.Challenge.lemma_7_10_settled"
++    ],
++    "definition_names": [
++        "BGP212.Packing.InXi",
++        "BGP212.Packing.binSum",
++        "BGP212.Packing.Packs",
++        "BGP212.Packing.ω11",
++        "BGP212.Packing.capsA1",
++        "BGP212.Packing.capsA2",
++        "BGP212.Packing.capsB",
++        "BGP212.Packing.capsC",
++        "BGP212.Packing.capsD",
++        "BGP212.Packing.capsE",
++        "BGP212.Packing.Root",
++        "BGP212.Packing.allRoots",
++        "BGP212.Packing.settledRoots",
++        "BGP212.Packing.openRoots",
++        "BGP212.Params.B",
++        "BGP212.Params.δ",
++        "BGP212.Params.εa",
++        "BGP212.Ledger.packingPairs"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index a718697..04a33b7 100644
+--- a/README.md
++++ b/README.md
+@@ -63,19 +63,26 @@ and the W-trick of Definition 4.5. Through `admissible_iff_local_factors`, Lemma
+ a residue `b` with `gcd(b + h, W) = 1` for all `h ∈ H₄₅` and every `W`; at
+ `W = 2·3·…·23` that residue is unique, `b = 74549147`.
+ 
++The sixth pair is A3a (`Challenge/Packing.lean`, `Solution/Packing.lean`), the first part
++of Lemma 7.10's factor packing: a generic greedy packing lemma and 296 of the 455 packing
++roots, each proved for every rough profile in its domain (the settled condition-(D) root
++uniformly over its full (γ, ω₀) box). Certificates are in
++`specs/certificates/packing_a3a.json`; the kernel re-checks every inequality. The other 159
++roots are listed in `openRoots` and stay outside the proved scope until A3b.
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
+   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+-  W-trick for H₄₅ (B2).
++  W-trick for H₄₅ (B2); 296 of the 455 packing roots of Lemma 7.10 (A3a).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
+ - **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
+   criterion (Theorem 4.10) and the deduction of Theorem 1.1.
+-- **External certificates:** the 455 polytope packing certificates of Lemma 7.10 (their
+-  count is checked here) and the exact variational certificate of Theorem 11.1.
++- **External certificates:** the 159 packing roots of Lemma 7.10 still open after A3a
++  (listed in `openRoots`), and the exact variational certificate of Theorem 11.1.
+ 
+ ## Comparator Verification
+ 
+@@ -91,6 +98,13 @@ Then
+ ./verify.sh
+ ```
+ 
++To regenerate and cross-check the A3a certificate data (exploratory, outside the kernel):
++
++```text
++python3 -I specs/checks/packing_ledger.py specs/certificates/packing_a3a.json
++python3 -I specs/checks/packing_certificates_match.py
++```
++
+ builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 14acbcd..0ae11c6 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -3,3 +3,4 @@ import Solution.AppendixB
+ import Solution.A2Combinatorial
+ import Solution.MultiShift
+ import Solution.MultiShiftB2
++import Solution.Packing
+diff --git a/Solution/Packing.lean b/Solution/Packing.lean
+new file mode 100644
+index 0000000..f4d8ca5
+--- /dev/null
++++ b/Solution/Packing.lean
+@@ -0,0 +1,607 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 7.4, Proposition 7.8 (A)–(E), Lemma 7.10 (p. 36).
++-/
++import BGP212.Packing
++
++/-! # A3a: packing proofs
++
++Core Lean only.
++
++* `greedy_pack`: fill the selected bins in turn; each filled bin wastes less than `s`.
++* `largest_coordinate`: on a side of `k` coordinates, each is at most `B − (k − 1)δ`.
++* The 295 settled roots of conditions (A), (B), (C), (E) come with a certificate, the bin
++  selection(s) in `certTable`; `certValid` re-checks every inequality in exact rationals
++  inside the kernel (`decide +kernel`), and `pack_of_cert` turns a valid certificate into the
++  root. The certificate table only chooses bins; it asserts nothing the kernel does not check.
++* The settled (D) root `(1, 1)` is proved by hand, uniformly over the full `(γ, ω₀)` box. -/
++
++namespace BGP212.Packing
++
++open BGP212.Params BGP212.Ledger
++
++/-! ## Bin loads -/
++
++theorem binSum_nil_left (as : List Nat) (k : Nat) : binSum [] as k = 0 := by
++  simp [binSum]
++
++theorem binSum_cons (x : Rat) (xs : List Rat) (a : Nat) (as : List Nat) (k : Nat) :
++    binSum (x :: xs) (a :: as) k = (if a = k then x else 0) + binSum xs as k := by
++  unfold binSum
++  by_cases h : a = k
++  · subst h; simp
++  · simp [h]; grind
++
++theorem binSum_append : ∀ (xs ys : List Rat) (as bs : List Nat), as.length = xs.length →
++    ∀ k, binSum (xs ++ ys) (as ++ bs) k = binSum xs as k + binSum ys bs k
++  | [], ys, [], bs, _, k => by simp [binSum_nil_left]; grind
++  | x :: xs, ys, a :: as, bs, h, k => by
++      simp only [List.cons_append, binSum_cons]
++      rw [binSum_append xs ys as bs (by simpa using h) k]
++      grind
++  | [], _, _ :: _, _, h, _ => by simp at h
++  | _ :: _, _, [], _, h, _ => by simp at h
++
++theorem binSum_replicate (i k : Nat) : ∀ xs : List Rat,
++    binSum xs (List.replicate xs.length i) k = if i = k then xs.sum else 0
++  | [] => by simp [binSum_nil_left]
++  | x :: xs => by
++      rw [List.length_cons, List.replicate_succ, binSum_cons, binSum_replicate i k xs]
++      by_cases h : i = k <;> simp [h, List.sum_cons] <;> grind
++
++theorem binSum_avoid (k : Nat) : ∀ (xs : List Rat) (as : List Nat), (∀ a ∈ as, a ≠ k) →
++    binSum xs as k = 0
++  | [], _, _ => binSum_nil_left _ _
++  | _ :: _, [], _ => by simp [binSum]
++  | x :: xs, a :: as, h => by
++      rw [binSum_cons, binSum_avoid k xs as (fun b hb => h b (by simp [hb]))]
++      simp [h a (by simp)]; grind
++
++/-! ## Filling one bin -/
++
++theorem fill (s : Rat) : ∀ (items : List Rat) (c : Rat), 0 ≤ c → (∀ y ∈ items, y ≤ s) →
++    ∃ j, j ≤ items.length ∧ (items.take j).sum ≤ c ∧
++      (j = items.length ∨ c - s < (items.take j).sum)
++  | [], c, hc, _ => ⟨0, by simp, by simp; grind, Or.inl rfl⟩
++  | y :: ys, c, hc, hs => by
++      by_cases hy : y ≤ c
++      · obtain ⟨j, hj, h1, h2⟩ := fill s ys (c - y) (by grind) (fun z hz => hs z (by simp [hz]))
++        refine ⟨j + 1, by simp; omega, ?_, ?_⟩
++        · simp only [List.take_succ_cons, List.sum_cons]; grind
++        · rcases h2 with h | h
++          · left; simp [h]
++          · right; simp only [List.take_succ_cons, List.sum_cons]; grind
++      · have := hs y (by simp)
++        exact ⟨0, by simp, by simp; grind, Or.inr (by simp; grind)⟩
++
++/-! ## Greedy packing -/
++
++theorem greedy_core (caps : List Rat) (s : Rat) (hcap : ∀ k, k < caps.length → 0 ≤ caps[k]!) :
++    ∀ (sel : List Nat), sel ≠ [] → sel.Nodup → (∀ i ∈ sel, i < caps.length) →
++    ∀ (items : List Rat), (∀ y ∈ items, y ≤ s) →
++      items.sum ≤ (sel.map fun i => caps[i]!).sum - ((sel.length : Rat) - 1) * s →
++      ∃ assign : List Nat, assign.length = items.length ∧ (∀ a ∈ assign, a ∈ sel) ∧
++        ∀ k ∈ sel, binSum items assign k ≤ caps[k]!
++  | [], h, _, _, _, _, _ => absurd rfl h
++  | [i], _, _, _, items, _, hT => by
++      refine ⟨List.replicate items.length i, by simp, ?_, ?_⟩
++      · intro a ha; simp [List.mem_replicate] at ha; simp [ha.2]
++      · intro k hk
++        simp only [List.mem_singleton] at hk
++        subst hk
++        rw [binSum_replicate]
++        simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
++          List.length_singleton, ite_true] at hT ⊢
++        grind
++  | i :: i2 :: rest, _, hnd, hin, items, hs, hT => by
++      have hc : 0 ≤ caps[i]! := hcap i (hin i (by simp))
++      have hi_notin : i ∉ i2 :: rest := (List.nodup_cons.mp hnd).1
++      obtain ⟨j, hj, h1, h2⟩ := fill s items (caps[i]!) hc hs
++      rcases h2 with hfull | hpart
++      · refine ⟨List.replicate items.length i, by simp, ?_, ?_⟩
++        · intro a ha; simp [List.mem_replicate] at ha; simp [ha.2]
++        · intro k hk
++          rw [binSum_replicate]
++          by_cases hik : i = k
++          · subst hik; simp only [ite_true]; rw [hfull, List.take_length] at h1; exact h1
++          · simp only [hik, ite_false]; exact hcap k (hin k hk)
++      · have hsplit : items = items.take j ++ items.drop j := (List.take_append_drop j items).symm
++        have hsum : items.sum = (items.take j).sum + (items.drop j).sum := by
++          have := congrArg List.sum hsplit
++          rw [List.sum_append] at this
++          exact this
++        have hT' : (items.drop j).sum ≤ ((i2 :: rest).map fun i => caps[i]!).sum -
++            (((i2 :: rest).length : Rat) - 1) * s := by
++          simp only [List.map_cons, List.sum_cons, List.length_cons] at hT ⊢
++          push_cast at hT ⊢
++          grind
++        obtain ⟨aR, hlen, hmem, hbound⟩ := greedy_core caps s hcap (i2 :: rest) (by simp)
++          (List.nodup_cons.mp hnd).2 (fun k hk => hin k (by simp [hk])) (items.drop j)
++          (fun y hy => hs y (List.mem_of_mem_drop hy)) hT'
++        have htl : (items.take j).length = j := by simp; omega
++        refine ⟨List.replicate j i ++ aR, ?_, ?_, ?_⟩
++        · simp [hlen]; omega
++        · intro a ha
++          rcases List.mem_append.mp ha with h | h
++          · simp [List.mem_replicate] at h; simp [h.2]
++          · exact List.mem_cons_of_mem i (hmem a h)
++        · intro k hk
++          have hb : binSum items (List.replicate j i ++ aR) k =
++              binSum (items.take j) (List.replicate j i) k + binSum (items.drop j) aR k := by
++            have := binSum_append (items.take j) (items.drop j) (List.replicate j i) aR
++              (by simp [htl]) k
++            rw [← hsplit] at this
++            exact this
++          rw [hb, show List.replicate j i = List.replicate (items.take j).length i by rw [htl],
++            binSum_replicate]
++          rcases List.mem_cons.mp hk with hki | hk'
++          · subst hki
++            have h0 : binSum (items.drop j) aR k = 0 :=
++              binSum_avoid k _ _ (fun a ha hak => hi_notin (hak ▸ hmem a ha))
++            simp only [ite_true, h0]; grind
++          · have hik : i ≠ k := fun h => hi_notin (h ▸ hk')
++            simp only [hik, ite_false]
++            have := hbound k hk'
++            grind
++
++end BGP212.Packing
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.Ledger BGP212.Packing
++
++theorem greedy_pack (caps items : List Rat) (s : Rat) (sel : List Nat)
++    (hsel : sel ≠ []) (hnd : sel.Nodup) (hin : ∀ i ∈ sel, i < caps.length)
++    (hcap : ∀ k, k < caps.length → 0 ≤ caps[k]!) (hs : ∀ y ∈ items, y ≤ s)
++    (hT : items.sum ≤ (sel.map fun i => caps[i]!).sum - ((sel.length : Rat) - 1) * s) :
++    Packs caps items := by
++  obtain ⟨assign, hlen, hmem, hbound⟩ := greedy_core caps s hcap sel hsel hnd hin items hs hT
++  refine ⟨assign, hlen, fun a ha => hin a (hmem a ha), fun k hk => ?_⟩
++  by_cases hks : k ∈ sel
++  · exact hbound k hks
++  · rw [binSum_avoid k items assign (fun a ha hak => hks (hak ▸ hmem a ha))]
++    exact hcap k hk
++
++theorem perm_sum' {l1 l2 : List Rat} (h : l1.Perm l2) : l1.sum = l2.sum := by
++  induction h with
++  | nil => rfl
++  | cons x _ ih => simp [List.sum_cons, ih]
++  | swap x y l => simp [List.sum_cons]; grind
++  | trans _ _ ih1 ih2 => rw [ih1, ih2]
++
++theorem sum_ge_length_mul (δ' : Rat) : ∀ ys : List Rat, (∀ y ∈ ys, δ' ≤ y) →
++    (ys.length : Rat) * δ' ≤ ys.sum
++  | [], _ => by simp
++  | y :: ys, h => by
++      have h1 := h y (by simp)
++      have h2 := sum_ge_length_mul δ' ys (fun z hz => h z (by simp [hz]))
++      simp only [List.length_cons, List.sum_cons]
++      push_cast
++      grind
++
++theorem largest_coordinate (δ' Bc : Rat) (ys : List Rat) (hδ : ∀ y ∈ ys, δ' ≤ y)
++    (hsum : ys.sum ≤ Bc) :
++    ∀ y ∈ ys, y ≤ Bc - ((ys.length : Rat) - 1) * δ' := by
++  intro y hy
++  have hp := List.perm_cons_erase hy
++  have hs : ys.sum = y + (ys.erase y).sum := by
++    have := perm_sum' hp
++    simpa [List.sum_cons] using this
++  have hl : ys.length = (ys.erase y).length + 1 := by
++    have := hp.length_eq
++    simpa using this
++  have hge := sum_ge_length_mul δ' (ys.erase y)
++    (fun z hz => hδ z (List.mem_of_mem_erase hz))
++  rw [hl]
++  push_cast
++  grind
++
++theorem omega_matches_table3 : ω11 = ω := by
++  decide +kernel
++
++theorem root_ledger :
++    settledRoots.length = 296 ∧ openRoots.length = 159 ∧
++    (settledRoots ++ openRoots).Perm allRoots ∧ allRoots.length = 455 := by
++  decide +kernel
++
++/-! ## Certificates for the constant-capacity conditions -/
++
++/-- The per-profile item bound `max(B₁,ₘ − (m−1)δ, B₁,ₘ′ − (m′−1)δ)`. -/
++def smax (m m' : Nat) : Rat := max (B m - ((m : Rat) - 1) * δ) (B m' - ((m' : Rat) - 1) * δ)
++
++/-- A greedy certificate: bins `sel` of `caps` absorb total `T` with item bound `s`. -/
++def CertOK (caps : List Rat) (T s : Rat) (sel : List Nat) : Prop :=
++  sel ≠ [] ∧ sel.Nodup ∧ (∀ i ∈ sel, i < caps.length) ∧
++    (∀ k, k < caps.length → 0 ≤ caps[k]!) ∧
++    T ≤ (sel.map fun i => caps[i]!).sum - ((sel.length : Rat) - 1) * s
++
++instance (caps : List Rat) (T s : Rat) (sel : List Nat) : Decidable (CertOK caps T s sel) := by
++  unfold CertOK; infer_instance
++
++/-- A certificate row: condition, `m`, `m′`, the bin selection, and for (A) the selection
++for its second partition. -/
++def certValid : Cond × Nat × Nat × List Nat × List Nat → Prop
++  | (.A, m, m', s1, s2) => CertOK capsA1 (B m + B m') (smax m m') s1 ∧
++      CertOK capsA2 (B m + B m') (smax m m') s2
++  | (.B, m, m', s1, _) => CertOK capsB (B m + B m') (smax m m') s1
++  | (.C, m, m', s1, _) => CertOK capsC (B m + B m') (smax m m') s1
++  | (.E, m, m', s1, _) => CertOK capsE (B m + B m') (smax m m') s1
++  | (.D, _, _, _, _) => False
++
++instance (x : Cond × Nat × Nat × List Nat × List Nat) : Decidable (certValid x) := by
++  rcases x with ⟨c, m, m', s1, s2⟩; cases c <;> unfold certValid <;> infer_instance
++
++/-- The certificate table for the 295 settled roots of (A), (B), (C), (E), generated by
++specs/checks/packing_ledger.py and stored in specs/certificates/packing_a3a.json. -/
++def certTable : List (Cond × Nat × Nat × List Nat × List Nat) := [
++    (.A, 1, 1, [0], [0]),
++    (.A, 1, 2, [0], [0]),
++    (.A, 1, 3, [0], [0]),
++    (.A, 1, 4, [0], [0]),
++    (.A, 1, 5, [0], [0]),
++    (.A, 1, 6, [0], [0]),
++    (.A, 1, 7, [0], [0]),
++    (.A, 1, 8, [0], [0]),
++    (.A, 1, 9, [0], [0]),
++    (.A, 1, 10, [0], [0]),
++    (.A, 1, 11, [0], [0]),
++    (.A, 1, 12, [0], [0]),
++    (.A, 1, 13, [0], [0]),
++    (.A, 2, 2, [0], [0]),
++    (.A, 2, 3, [0], [0]),
++    (.A, 2, 4, [0], [0]),
++    (.A, 2, 5, [0], [0]),
++    (.A, 2, 6, [0], [0]),
++    (.A, 2, 7, [0], [0]),
++    (.A, 2, 8, [0], [0]),
++    (.A, 2, 9, [0], [0]),
++    (.A, 2, 10, [0], [0]),
++    (.A, 2, 11, [0], [0]),
++    (.A, 2, 12, [0], [0]),
++    (.A, 2, 13, [0], [0]),
++    (.A, 3, 3, [0], [0]),
++    (.A, 3, 4, [0], [0]),
++    (.A, 3, 5, [0], [0]),
++    (.A, 3, 6, [0], [0]),
++    (.A, 3, 7, [0], [0]),
++    (.A, 4, 4, [0], [0]),
++    (.A, 4, 5, [0], [0]),
++    (.A, 4, 6, [0, 1], [0]),
++    (.A, 5, 5, [0, 1], [0]),
++    (.A, 5, 6, [0, 1], [0]),
++    (.A, 6, 6, [0, 1], [0]),
++    (.A, 6, 7, [0, 1], [0]),
++    (.A, 7, 7, [0, 1], [0]),
++    (.A, 7, 8, [0, 1], [0]),
++    (.A, 8, 8, [0, 1], [0]),
++    (.A, 8, 9, [0, 1], [0]),
++    (.A, 8, 10, [0, 1], [0]),
++    (.A, 8, 11, [0, 1], [0]),
++    (.A, 8, 12, [0, 1], [0]),
++    (.A, 8, 13, [0, 1], [0]),
++    (.A, 9, 9, [0, 1], [0]),
++    (.A, 9, 10, [0, 1], [0]),
++    (.A, 9, 11, [0, 1], [0]),
++    (.A, 9, 12, [0, 1], [0]),
++    (.A, 9, 13, [0, 1], [0]),
++    (.A, 10, 10, [0, 1], [0]),
++    (.A, 10, 11, [0, 1], [0]),
++    (.A, 10, 12, [0, 1], [0]),
++    (.A, 10, 13, [0, 1], [0]),
++    (.A, 11, 11, [0, 1], [0]),
++    (.A, 11, 12, [0, 1], [0]),
++    (.A, 11, 13, [0, 1], [0]),
++    (.A, 12, 12, [0, 1], [0]),
++    (.A, 12, 13, [0, 1], [0]),
++    (.A, 13, 13, [0, 1], [0]),
++    (.B, 1, 1, [0], []),
++    (.B, 1, 2, [0], []),
++    (.B, 1, 3, [0], []),
++    (.B, 1, 4, [0], []),
++    (.B, 1, 5, [0], []),
++    (.B, 1, 6, [0], []),
++    (.B, 1, 7, [0], []),
++    (.B, 1, 8, [0], []),
++    (.B, 1, 9, [0], []),
++    (.B, 1, 10, [0], []),
++    (.B, 1, 11, [0], []),
++    (.B, 1, 12, [0], []),
++    (.B, 1, 13, [0], []),
++    (.B, 2, 2, [0], []),
++    (.B, 2, 3, [0], []),
++    (.B, 2, 4, [0], []),
++    (.B, 2, 5, [0], []),
++    (.B, 2, 6, [0], []),
++    (.B, 2, 7, [0], []),
++    (.B, 2, 8, [0], []),
++    (.B, 2, 9, [0], []),
++    (.B, 2, 10, [0], []),
++    (.B, 2, 11, [0], []),
++    (.B, 2, 12, [0], []),
++    (.B, 2, 13, [0], []),
++    (.B, 3, 3, [0], []),
++    (.B, 3, 4, [0], []),
++    (.B, 3, 5, [0], []),
++    (.B, 3, 6, [0], []),
++    (.B, 3, 7, [0], []),
++    (.B, 3, 8, [0], []),
++    (.B, 3, 9, [0], []),
++    (.B, 3, 10, [0], []),
++    (.B, 3, 11, [0], []),
++    (.B, 3, 12, [0], []),
++    (.B, 3, 13, [0], []),
++    (.B, 4, 4, [0], []),
++    (.B, 4, 5, [0], []),
++    (.B, 4, 6, [0], []),
++    (.B, 4, 7, [0], []),
++    (.B, 4, 8, [0], []),
++    (.B, 4, 9, [0], []),
++    (.B, 4, 10, [0], []),
++    (.B, 4, 11, [0], []),
++    (.B, 4, 12, [0], []),
++    (.B, 4, 13, [0], []),
++    (.B, 5, 5, [0], []),
++    (.B, 5, 6, [0], []),
++    (.B, 5, 7, [0], []),
++    (.B, 5, 8, [0], []),
++    (.B, 5, 9, [0], []),
++    (.B, 5, 10, [0], []),
++    (.B, 5, 11, [0], []),
++    (.B, 5, 12, [0], []),
++    (.B, 5, 13, [0], []),
++    (.B, 6, 6, [0], []),
++    (.B, 6, 7, [0], []),
++    (.B, 6, 8, [0], []),
++    (.B, 6, 9, [0], []),
++    (.B, 6, 10, [0], []),
++    (.B, 6, 11, [0], []),
++    (.B, 6, 12, [0], []),
++    (.B, 6, 13, [0], []),
++    (.B, 7, 7, [0], []),
++    (.B, 7, 8, [0], []),
++    (.B, 7, 9, [0], []),
++    (.B, 7, 10, [0], []),
++    (.B, 7, 11, [0], []),
++    (.B, 7, 12, [0], []),
++    (.B, 7, 13, [0], []),
++    (.B, 8, 8, [0], []),
++    (.B, 8, 9, [0], []),
++    (.B, 8, 10, [0], []),
++    (.B, 8, 11, [0], []),
++    (.B, 8, 12, [0], []),
++    (.B, 8, 13, [0], []),
++    (.B, 9, 9, [0], []),
++    (.B, 9, 10, [0], []),
++    (.B, 9, 11, [0], []),
++    (.B, 9, 12, [0], []),
++    (.B, 9, 13, [0], []),
++    (.B, 10, 10, [0], []),
++    (.B, 10, 11, [0], []),
++    (.B, 10, 12, [0], []),
++    (.B, 10, 13, [0], []),
++    (.B, 11, 11, [0], []),
++    (.B, 11, 12, [0], []),
++    (.B, 11, 13, [0], []),
++    (.B, 12, 12, [0], []),
++    (.B, 12, 13, [0], []),
++    (.B, 13, 13, [0], []),
++    (.C, 1, 1, [0], []),
++    (.C, 1, 2, [0], []),
++    (.C, 1, 3, [0], []),
++    (.C, 1, 4, [0], []),
++    (.C, 1, 5, [0], []),
++    (.C, 1, 6, [0], []),
++    (.C, 1, 7, [0], []),
++    (.C, 1, 8, [0], []),
++    (.C, 1, 9, [0], []),
++    (.C, 1, 10, [0], []),
++    (.C, 1, 11, [0], []),
++    (.C, 1, 12, [0], []),
++    (.C, 1, 13, [0], []),
++    (.C, 2, 2, [0], []),
++    (.C, 2, 3, [0], []),
++    (.C, 2, 4, [0], []),
++    (.C, 2, 5, [0], []),
++    (.C, 2, 6, [0], []),
++    (.C, 2, 7, [0], []),
++    (.C, 2, 8, [0], []),
++    (.C, 2, 9, [0], []),
++    (.C, 2, 10, [0], []),
++    (.C, 2, 11, [0], []),
++    (.C, 2, 12, [0], []),
++    (.C, 2, 13, [0], []),
++    (.C, 3, 3, [0], []),
++    (.C, 3, 4, [0], []),
++    (.C, 3, 5, [0], []),
++    (.C, 3, 6, [0], []),
++    (.C, 3, 7, [0], []),
++    (.C, 3, 8, [0], []),
++    (.C, 3, 9, [0], []),
++    (.C, 3, 10, [0], []),
++    (.C, 3, 11, [0], []),
++    (.C, 3, 12, [0], []),
++    (.C, 3, 13, [0], []),
++    (.C, 4, 4, [0], []),
++    (.C, 4, 5, [0], []),
++    (.C, 4, 6, [0], []),
++    (.C, 4, 7, [0], []),
++    (.C, 4, 8, [0], []),
++    (.C, 4, 9, [0], []),
++    (.C, 4, 10, [0], []),
++    (.C, 4, 11, [0], []),
++    (.C, 4, 12, [0], []),
++    (.C, 4, 13, [0], []),
++    (.C, 5, 5, [0], []),
++    (.C, 5, 6, [0], []),
++    (.C, 5, 7, [0], []),
++    (.C, 5, 8, [0], []),
++    (.C, 5, 9, [0], []),
++    (.C, 5, 10, [0], []),
++    (.C, 5, 11, [0], []),
++    (.C, 5, 12, [0], []),
++    (.C, 5, 13, [0], []),
++    (.C, 6, 6, [0], []),
++    (.C, 6, 7, [0], []),
++    (.C, 6, 8, [0], []),
++    (.C, 6, 9, [0], []),
++    (.C, 6, 10, [0], []),
++    (.C, 6, 11, [0], []),
++    (.C, 6, 12, [0], []),
++    (.C, 6, 13, [0], []),
++    (.C, 7, 7, [0], []),
++    (.C, 7, 8, [0], []),
++    (.C, 7, 9, [0], []),
++    (.C, 7, 10, [0], []),
++    (.C, 7, 11, [0], []),
++    (.C, 7, 12, [0], []),
++    (.C, 7, 13, [0], []),
++    (.C, 8, 8, [0], []),
++    (.C, 8, 9, [0], []),
++    (.C, 8, 10, [0], []),
++    (.C, 8, 11, [0], []),
++    (.C, 8, 12, [0], []),
++    (.C, 8, 13, [0], []),
++    (.C, 9, 9, [0], []),
++    (.C, 13, 13, [0, 1], []),
++    (.E, 1, 1, [0], []),
++    (.E, 1, 2, [0], []),
++    (.E, 1, 3, [0], []),
++    (.E, 1, 4, [0], []),
++    (.E, 1, 5, [0], []),
++    (.E, 1, 6, [0], []),
++    (.E, 1, 7, [0, 1], []),
++    (.E, 1, 8, [0, 1], []),
++    (.E, 1, 9, [0, 1], []),
++    (.E, 2, 2, [0], []),
++    (.E, 2, 3, [0], []),
++    (.E, 2, 4, [0], []),
++    (.E, 2, 5, [0], []),
++    (.E, 2, 6, [0], []),
++    (.E, 2, 7, [0, 1], []),
++    (.E, 2, 8, [0, 1], []),
++    (.E, 2, 9, [0, 1], []),
++    (.E, 2, 10, [0, 1], []),
++    (.E, 2, 11, [0, 1], []),
++    (.E, 2, 12, [0, 1], []),
++    (.E, 2, 13, [0, 1], []),
++    (.E, 3, 3, [0], []),
++    (.E, 3, 4, [0, 1], []),
++    (.E, 3, 5, [0, 1], []),
++    (.E, 3, 6, [0, 1], []),
++    (.E, 3, 7, [0, 1], []),
++    (.E, 4, 4, [0, 1], []),
++    (.E, 4, 5, [0, 1], []),
++    (.E, 4, 6, [0, 1], []),
++    (.E, 4, 7, [0, 1], []),
++    (.E, 5, 5, [0, 1], []),
++    (.E, 5, 6, [0, 1], []),
++    (.E, 5, 7, [0, 1], []),
++    (.E, 5, 8, [0, 1], []),
++    (.E, 6, 6, [0, 1], []),
++    (.E, 6, 7, [0, 1], []),
++    (.E, 6, 8, [0, 1], []),
++    (.E, 6, 9, [0, 1], []),
++    (.E, 7, 7, [0, 1], []),
++    (.E, 7, 8, [0, 1], []),
++    (.E, 7, 9, [0, 1], []),
++    (.E, 7, 10, [0, 1], []),
++    (.E, 7, 11, [0, 1], []),
++    (.E, 7, 12, [0, 1], []),
++    (.E, 7, 13, [0, 1], []),
++    (.E, 8, 8, [0, 1], []),
++    (.E, 8, 9, [0, 1], []),
++    (.E, 8, 10, [0, 1], []),
++    (.E, 8, 11, [0, 1], []),
++    (.E, 8, 12, [0, 1], []),
++    (.E, 8, 13, [0, 1], []),
++    (.E, 9, 9, [0, 1], []),
++    (.E, 9, 10, [0, 1], []),
++    (.E, 9, 11, [0, 1], []),
++    (.E, 9, 12, [0, 1], []),
++    (.E, 9, 13, [0, 1], []),
++    (.E, 10, 10, [0, 1], []),
++    (.E, 10, 11, [0, 1], []),
++    (.E, 10, 12, [0, 1], []),
++    (.E, 10, 13, [0, 1], []),
++    (.E, 11, 11, [0, 1], []),
++    (.E, 11, 12, [0, 1], []),
++    (.E, 11, 13, [0, 1], []),
++    (.E, 12, 12, [0, 1], []),
++    (.E, 12, 13, [0, 1], []),
++    (.E, 13, 13, [0, 1], []) ]
++
++theorem pack_of_cert {caps : List Rat} {m m' : Nat} {sel : List Nat}
++    (hc : CertOK caps (B m + B m') (smax m m') sel) {ys ys' : List Rat}
++    (hX : InXi (B m) (B m') m m' ys ys') : Packs caps (ys ++ ys') := by
++  obtain ⟨hlen, hlen', hrange, hs1, hs2⟩ := hX
++  obtain ⟨hne, hnd, hin, hcap, hT⟩ := hc
++  apply greedy_pack caps (ys ++ ys') (smax m m') sel hne hnd hin hcap
++  · intro y hy
++    rcases List.mem_append.mp hy with h | h
++    · have := largest_coordinate δ (B m) ys
++        (fun z hz => (hrange z (List.mem_append_left _ hz)).1) hs1 y h
++      rw [hlen] at this
++      unfold smax; grind
++    · have := largest_coordinate δ (B m') ys'
++        (fun z hz => (hrange z (List.mem_append_right _ hz)).1) hs2 y h
++      rw [hlen'] at this
++      unfold smax; grind
++  · rw [List.sum_append]; grind
++
++theorem root_of_cert : ∀ x, certValid x → Root x.1 x.2.1 x.2.2.1
++  | (.A, _, _, _, _), h => fun _ _ hX => ⟨pack_of_cert h.1 hX, pack_of_cert h.2 hX⟩
++  | (.B, _, _, _, _), h => fun _ _ hX => pack_of_cert h hX
++  | (.C, _, _, _, _), h => fun _ _ hX => pack_of_cert h hX
++  | (.E, _, _, _, _), h => fun _ _ hX => pack_of_cert h hX
++  | (.D, _, _, _, _), h => h.elim
++
++theorem certTable_valid : ∀ x ∈ certTable, certValid x := by
++  decide +kernel
++
++theorem settled_covered :
++    ∀ r ∈ settledRoots, r = (Cond.D, 1, 1) ∨ ∃ x ∈ certTable, (x.1, x.2.1, x.2.2.1) = r := by
++  decide +kernel
++
++/-! ## The settled (D) root, uniformly over the box -/
++
++theorem root_D_1_1 : Root .D 1 1 := by
++  intro ys ys' hX γ ω0 hω1 hω2 hγ1 hγ2
++  have hB1 : B 1 = 777 / 5000 := by decide +kernel
++  obtain ⟨hlen, hlen', hrange, hs1, hs2⟩ := hX
++  have hδ : δ = 41 / 2500 := rfl
++  have hε : εa = 1 / 10000000000 := rfl
++  have hω : ω11 = 7 / 1000 := by decide +kernel
++  apply greedy_pack (capsD γ ω0) (ys ++ ys') (B 1) [0] (by simp) (by simp) (by simp [capsD])
++  · intro k hk
++    simp only [capsD, List.length_cons, List.length_nil] at hk
++    rw [hω] at hω2 hγ2
++    rw [hε] at hγ1 hγ2
++    rw [hδ] at hγ2
++    rcases (by omega : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3) with rfl | rfl | rfl | rfl <;>
++      simp only [capsD, List.getElem!_cons_zero, List.getElem!_cons_succ, hδ, hε] <;> grind
++  · intro y hy
++    rcases List.mem_append.mp hy with h | h
++    · have := largest_coordinate δ (B 1) ys
++        (fun z hz => (hrange z (List.mem_append_left _ hz)).1) hs1 y h
++      rw [hlen] at this; grind
++    · have := largest_coordinate δ (B 1) ys'
++        (fun z hz => (hrange z (List.mem_append_right _ hz)).1) hs2 y h
++      rw [hlen'] at this; grind
++  · simp only [capsD, List.map_cons, List.map_nil, List.sum_cons, List.sum_nil,
++      List.getElem!_cons_zero, List.length_singleton, List.sum_append]
++    rw [hB1] at hs1 hs2
++    rw [hδ, hε]
++    rw [hω] at hω2
++    rw [hε] at hγ1
++    grind
++
++theorem lemma_7_10_settled :
++    ∀ r ∈ settledRoots, Root r.1 r.2.1 r.2.2 := by
++  intro r hr
++  rcases settled_covered r hr with h | ⟨x, hx, hxr⟩
++  · subst h; exact root_D_1_1
++  · rw [← hxr]; exact root_of_cert x (certTable_valid x hx)
++
++end BGP212.Challenge
+diff --git a/specs/certificates/packing_a3a.json b/specs/certificates/packing_a3a.json
+new file mode 100644
+index 0000000..87c5478
+--- /dev/null
++++ b/specs/certificates/packing_a3a.json
+@@ -0,0 +1,6098 @@
++{
++ "settled": [
++  [
++   "A",
++   1,
++   1
++  ],
++  [
++   "A",
++   1,
++   2
++  ],
++  [
++   "A",
++   1,
++   3
++  ],
++  [
++   "A",
++   1,
++   4
++  ],
++  [
++   "A",
++   1,
++   5
++  ],
++  [
++   "A",
++   1,
++   6
++  ],
++  [
++   "A",
++   1,
++   7
++  ],
++  [
++   "A",
++   1,
++   8
++  ],
++  [
++   "A",
++   1,
++   9
++  ],
++  [
++   "A",
++   1,
++   10
++  ],
++  [
++   "A",
++   1,
++   11
++  ],
++  [
++   "A",
++   1,
++   12
++  ],
++  [
++   "A",
++   1,
++   13
++  ],
++  [
++   "A",
++   2,
++   2
++  ],
++  [
++   "A",
++   2,
++   3
++  ],
++  [
++   "A",
++   2,
++   4
++  ],
++  [
++   "A",
++   2,
++   5
++  ],
++  [
++   "A",
++   2,
++   6
++  ],
++  [
++   "A",
++   2,
++   7
++  ],
++  [
++   "A",
++   2,
++   8
++  ],
++  [
++   "A",
++   2,
++   9
++  ],
++  [
++   "A",
++   2,
++   10
++  ],
++  [
++   "A",
++   2,
++   11
++  ],
++  [
++   "A",
++   2,
++   12
++  ],
++  [
++   "A",
++   2,
++   13
++  ],
++  [
++   "A",
++   3,
++   3
++  ],
++  [
++   "A",
++   3,
++   4
++  ],
++  [
++   "A",
++   3,
++   5
++  ],
++  [
++   "A",
++   3,
++   6
++  ],
++  [
++   "A",
++   3,
++   7
++  ],
++  [
++   "A",
++   4,
++   4
++  ],
++  [
++   "A",
++   4,
++   5
++  ],
++  [
++   "A",
++   4,
++   6
++  ],
++  [
++   "A",
++   5,
++   5
++  ],
++  [
++   "A",
++   5,
++   6
++  ],
++  [
++   "A",
++   6,
++   6
++  ],
++  [
++   "A",
++   6,
++   7
++  ],
++  [
++   "A",
++   7,
++   7
++  ],
++  [
++   "A",
++   7,
++   8
++  ],
++  [
++   "A",
++   8,
++   8
++  ],
++  [
++   "A",
++   8,
++   9
++  ],
++  [
++   "A",
++   8,
++   10
++  ],
++  [
++   "A",
++   8,
++   11
++  ],
++  [
++   "A",
++   8,
++   12
++  ],
++  [
++   "A",
++   8,
++   13
++  ],
++  [
++   "A",
++   9,
++   9
++  ],
++  [
++   "A",
++   9,
++   10
++  ],
++  [
++   "A",
++   9,
++   11
++  ],
++  [
++   "A",
++   9,
++   12
++  ],
++  [
++   "A",
++   9,
++   13
++  ],
++  [
++   "A",
++   10,
++   10
++  ],
++  [
++   "A",
++   10,
++   11
++  ],
++  [
++   "A",
++   10,
++   12
++  ],
++  [
++   "A",
++   10,
++   13
++  ],
++  [
++   "A",
++   11,
++   11
++  ],
++  [
++   "A",
++   11,
++   12
++  ],
++  [
++   "A",
++   11,
++   13
++  ],
++  [
++   "A",
++   12,
++   12
++  ],
++  [
++   "A",
++   12,
++   13
++  ],
++  [
++   "A",
++   13,
++   13
++  ],
++  [
++   "B",
++   1,
++   1
++  ],
++  [
++   "B",
++   1,
++   2
++  ],
++  [
++   "B",
++   1,
++   3
++  ],
++  [
++   "B",
++   1,
++   4
++  ],
++  [
++   "B",
++   1,
++   5
++  ],
++  [
++   "B",
++   1,
++   6
++  ],
++  [
++   "B",
++   1,
++   7
++  ],
++  [
++   "B",
++   1,
++   8
++  ],
++  [
++   "B",
++   1,
++   9
++  ],
++  [
++   "B",
++   1,
++   10
++  ],
++  [
++   "B",
++   1,
++   11
++  ],
++  [
++   "B",
++   1,
++   12
++  ],
++  [
++   "B",
++   1,
++   13
++  ],
++  [
++   "B",
++   2,
++   2
++  ],
++  [
++   "B",
++   2,
++   3
++  ],
++  [
++   "B",
++   2,
++   4
++  ],
++  [
++   "B",
++   2,
++   5
++  ],
++  [
++   "B",
++   2,
++   6
++  ],
++  [
++   "B",
++   2,
++   7
++  ],
++  [
++   "B",
++   2,
++   8
++  ],
++  [
++   "B",
++   2,
++   9
++  ],
++  [
++   "B",
++   2,
++   10
++  ],
++  [
++   "B",
++   2,
++   11
++  ],
++  [
++   "B",
++   2,
++   12
++  ],
++  [
++   "B",
++   2,
++   13
++  ],
++  [
++   "B",
++   3,
++   3
++  ],
++  [
++   "B",
++   3,
++   4
++  ],
++  [
++   "B",
++   3,
++   5
++  ],
++  [
++   "B",
++   3,
++   6
++  ],
++  [
++   "B",
++   3,
++   7
++  ],
++  [
++   "B",
++   3,
++   8
++  ],
++  [
++   "B",
++   3,
++   9
++  ],
++  [
++   "B",
++   3,
++   10
++  ],
++  [
++   "B",
++   3,
++   11
++  ],
++  [
++   "B",
++   3,
++   12
++  ],
++  [
++   "B",
++   3,
++   13
++  ],
++  [
++   "B",
++   4,
++   4
++  ],
++  [
++   "B",
++   4,
++   5
++  ],
++  [
++   "B",
++   4,
++   6
++  ],
++  [
++   "B",
++   4,
++   7
++  ],
++  [
++   "B",
++   4,
++   8
++  ],
++  [
++   "B",
++   4,
++   9
++  ],
++  [
++   "B",
++   4,
++   10
++  ],
++  [
++   "B",
++   4,
++   11
++  ],
++  [
++   "B",
++   4,
++   12
++  ],
++  [
++   "B",
++   4,
++   13
++  ],
++  [
++   "B",
++   5,
++   5
++  ],
++  [
++   "B",
++   5,
++   6
++  ],
++  [
++   "B",
++   5,
++   7
++  ],
++  [
++   "B",
++   5,
++   8
++  ],
++  [
++   "B",
++   5,
++   9
++  ],
++  [
++   "B",
++   5,
++   10
++  ],
++  [
++   "B",
++   5,
++   11
++  ],
++  [
++   "B",
++   5,
++   12
++  ],
++  [
++   "B",
++   5,
++   13
++  ],
++  [
++   "B",
++   6,
++   6
++  ],
++  [
++   "B",
++   6,
++   7
++  ],
++  [
++   "B",
++   6,
++   8
++  ],
++  [
++   "B",
++   6,
++   9
++  ],
++  [
++   "B",
++   6,
++   10
++  ],
++  [
++   "B",
++   6,
++   11
++  ],
++  [
++   "B",
++   6,
++   12
++  ],
++  [
++   "B",
++   6,
++   13
++  ],
++  [
++   "B",
++   7,
++   7
++  ],
++  [
++   "B",
++   7,
++   8
++  ],
++  [
++   "B",
++   7,
++   9
++  ],
++  [
++   "B",
++   7,
++   10
++  ],
++  [
++   "B",
++   7,
++   11
++  ],
++  [
++   "B",
++   7,
++   12
++  ],
++  [
++   "B",
++   7,
++   13
++  ],
++  [
++   "B",
++   8,
++   8
++  ],
++  [
++   "B",
++   8,
++   9
++  ],
++  [
++   "B",
++   8,
++   10
++  ],
++  [
++   "B",
++   8,
++   11
++  ],
++  [
++   "B",
++   8,
++   12
++  ],
++  [
++   "B",
++   8,
++   13
++  ],
++  [
++   "B",
++   9,
++   9
++  ],
++  [
++   "B",
++   9,
++   10
++  ],
++  [
++   "B",
++   9,
++   11
++  ],
++  [
++   "B",
++   9,
++   12
++  ],
++  [
++   "B",
++   9,
++   13
++  ],
++  [
++   "B",
++   10,
++   10
++  ],
++  [
++   "B",
++   10,
++   11
++  ],
++  [
++   "B",
++   10,
++   12
++  ],
++  [
++   "B",
++   10,
++   13
++  ],
++  [
++   "B",
++   11,
++   11
++  ],
++  [
++   "B",
++   11,
++   12
++  ],
++  [
++   "B",
++   11,
++   13
++  ],
++  [
++   "B",
++   12,
++   12
++  ],
++  [
++   "B",
++   12,
++   13
++  ],
++  [
++   "B",
++   13,
++   13
++  ],
++  [
++   "C",
++   1,
++   1
++  ],
++  [
++   "C",
++   1,
++   2
++  ],
++  [
++   "C",
++   1,
++   3
++  ],
++  [
++   "C",
++   1,
++   4
++  ],
++  [
++   "C",
++   1,
++   5
++  ],
++  [
++   "C",
++   1,
++   6
++  ],
++  [
++   "C",
++   1,
++   7
++  ],
++  [
++   "C",
++   1,
++   8
++  ],
++  [
++   "C",
++   1,
++   9
++  ],
++  [
++   "C",
++   1,
++   10
++  ],
++  [
++   "C",
++   1,
++   11
++  ],
++  [
++   "C",
++   1,
++   12
++  ],
++  [
++   "C",
++   1,
++   13
++  ],
++  [
++   "C",
++   2,
++   2
++  ],
++  [
++   "C",
++   2,
++   3
++  ],
++  [
++   "C",
++   2,
++   4
++  ],
++  [
++   "C",
++   2,
++   5
++  ],
++  [
++   "C",
++   2,
++   6
++  ],
++  [
++   "C",
++   2,
++   7
++  ],
++  [
++   "C",
++   2,
++   8
++  ],
++  [
++   "C",
++   2,
++   9
++  ],
++  [
++   "C",
++   2,
++   10
++  ],
++  [
++   "C",
++   2,
++   11
++  ],
++  [
++   "C",
++   2,
++   12
++  ],
++  [
++   "C",
++   2,
++   13
++  ],
++  [
++   "C",
++   3,
++   3
++  ],
++  [
++   "C",
++   3,
++   4
++  ],
++  [
++   "C",
++   3,
++   5
++  ],
++  [
++   "C",
++   3,
++   6
++  ],
++  [
++   "C",
++   3,
++   7
++  ],
++  [
++   "C",
++   3,
++   8
++  ],
++  [
++   "C",
++   3,
++   9
++  ],
++  [
++   "C",
++   3,
++   10
++  ],
++  [
++   "C",
++   3,
++   11
++  ],
++  [
++   "C",
++   3,
++   12
++  ],
++  [
++   "C",
++   3,
++   13
++  ],
++  [
++   "C",
++   4,
++   4
++  ],
++  [
++   "C",
++   4,
++   5
++  ],
++  [
++   "C",
++   4,
++   6
++  ],
++  [
++   "C",
++   4,
++   7
++  ],
++  [
++   "C",
++   4,
++   8
++  ],
++  [
++   "C",
++   4,
++   9
++  ],
++  [
++   "C",
++   4,
++   10
++  ],
++  [
++   "C",
++   4,
++   11
++  ],
++  [
++   "C",
++   4,
++   12
++  ],
++  [
++   "C",
++   4,
++   13
++  ],
++  [
++   "C",
++   5,
++   5
++  ],
++  [
++   "C",
++   5,
++   6
++  ],
++  [
++   "C",
++   5,
++   7
++  ],
++  [
++   "C",
++   5,
++   8
++  ],
++  [
++   "C",
++   5,
++   9
++  ],
++  [
++   "C",
++   5,
++   10
++  ],
++  [
++   "C",
++   5,
++   11
++  ],
++  [
++   "C",
++   5,
++   12
++  ],
++  [
++   "C",
++   5,
++   13
++  ],
++  [
++   "C",
++   6,
++   6
++  ],
++  [
++   "C",
++   6,
++   7
++  ],
++  [
++   "C",
++   6,
++   8
++  ],
++  [
++   "C",
++   6,
++   9
++  ],
++  [
++   "C",
++   6,
++   10
++  ],
++  [
++   "C",
++   6,
++   11
++  ],
++  [
++   "C",
++   6,
++   12
++  ],
++  [
++   "C",
++   6,
++   13
++  ],
++  [
++   "C",
++   7,
++   7
++  ],
++  [
++   "C",
++   7,
++   8
++  ],
++  [
++   "C",
++   7,
++   9
++  ],
++  [
++   "C",
++   7,
++   10
++  ],
++  [
++   "C",
++   7,
++   11
++  ],
++  [
++   "C",
++   7,
++   12
++  ],
++  [
++   "C",
++   7,
++   13
++  ],
++  [
++   "C",
++   8,
++   8
++  ],
++  [
++   "C",
++   8,
++   9
++  ],
++  [
++   "C",
++   8,
++   10
++  ],
++  [
++   "C",
++   8,
++   11
++  ],
++  [
++   "C",
++   8,
++   12
++  ],
++  [
++   "C",
++   8,
++   13
++  ],
++  [
++   "C",
++   9,
++   9
++  ],
++  [
++   "C",
++   13,
++   13
++  ],
++  [
++   "D",
++   1,
++   1
++  ],
++  [
++   "E",
++   1,
++   1
++  ],
++  [
++   "E",
++   1,
++   2
++  ],
++  [
++   "E",
++   1,
++   3
++  ],
++  [
++   "E",
++   1,
++   4
++  ],
++  [
++   "E",
++   1,
++   5
++  ],
++  [
++   "E",
++   1,
++   6
++  ],
++  [
++   "E",
++   1,
++   7
++  ],
++  [
++   "E",
++   1,
++   8
++  ],
++  [
++   "E",
++   1,
++   9
++  ],
++  [
++   "E",
++   2,
++   2
++  ],
++  [
++   "E",
++   2,
++   3
++  ],
++  [
++   "E",
++   2,
++   4
++  ],
++  [
++   "E",
++   2,
++   5
++  ],
++  [
++   "E",
++   2,
++   6
++  ],
++  [
++   "E",
++   2,
++   7
++  ],
++  [
++   "E",
++   2,
++   8
++  ],
++  [
++   "E",
++   2,
++   9
++  ],
++  [
++   "E",
++   2,
++   10
++  ],
++  [
++   "E",
++   2,
++   11
++  ],
++  [
++   "E",
++   2,
++   12
++  ],
++  [
++   "E",
++   2,
++   13
++  ],
++  [
++   "E",
++   3,
++   3
++  ],
++  [
++   "E",
++   3,
++   4
++  ],
++  [
++   "E",
++   3,
++   5
++  ],
++  [
++   "E",
++   3,
++   6
++  ],
++  [
++   "E",
++   3,
++   7
++  ],
++  [
++   "E",
++   4,
++   4
++  ],
++  [
++   "E",
++   4,
++   5
++  ],
++  [
++   "E",
++   4,
++   6
++  ],
++  [
++   "E",
++   4,
++   7
++  ],
++  [
++   "E",
++   5,
++   5
++  ],
++  [
++   "E",
++   5,
++   6
++  ],
++  [
++   "E",
++   5,
++   7
++  ],
++  [
++   "E",
++   5,
++   8
++  ],
++  [
++   "E",
++   6,
++   6
++  ],
++  [
++   "E",
++   6,
++   7
++  ],
++  [
++   "E",
++   6,
++   8
++  ],
++  [
++   "E",
++   6,
++   9
++  ],
++  [
++   "E",
++   7,
++   7
++  ],
++  [
++   "E",
++   7,
++   8
++  ],
++  [
++   "E",
++   7,
++   9
++  ],
++  [
++   "E",
++   7,
++   10
++  ],
++  [
++   "E",
++   7,
++   11
++  ],
++  [
++   "E",
++   7,
++   12
++  ],
++  [
++   "E",
++   7,
++   13
++  ],
++  [
++   "E",
++   8,
++   8
++  ],
++  [
++   "E",
++   8,
++   9
++  ],
++  [
++   "E",
++   8,
++   10
++  ],
++  [
++   "E",
++   8,
++   11
++  ],
++  [
++   "E",
++   8,
++   12
++  ],
++  [
++   "E",
++   8,
++   13
++  ],
++  [
++   "E",
++   9,
++   9
++  ],
++  [
++   "E",
++   9,
++   10
++  ],
++  [
++   "E",
++   9,
++   11
++  ],
++  [
++   "E",
++   9,
++   12
++  ],
++  [
++   "E",
++   9,
++   13
++  ],
++  [
++   "E",
++   10,
++   10
++  ],
++  [
++   "E",
++   10,
++   11
++  ],
++  [
++   "E",
++   10,
++   12
++  ],
++  [
++   "E",
++   10,
++   13
++  ],
++  [
++   "E",
++   11,
++   11
++  ],
++  [
++   "E",
++   11,
++   12
++  ],
++  [
++   "E",
++   11,
++   13
++  ],
++  [
++   "E",
++   12,
++   12
++  ],
++  [
++   "E",
++   12,
++   13
++  ],
++  [
++   "E",
++   13,
++   13
++  ]
++ ],
++ "open": [
++  [
++   "A",
++   3,
++   8
++  ],
++  [
++   "A",
++   3,
++   9
++  ],
++  [
++   "A",
++   3,
++   10
++  ],
++  [
++   "A",
++   3,
++   11
++  ],
++  [
++   "A",
++   3,
++   12
++  ],
++  [
++   "A",
++   3,
++   13
++  ],
++  [
++   "A",
++   4,
++   7
++  ],
++  [
++   "A",
++   4,
++   8
++  ],
++  [
++   "A",
++   4,
++   9
++  ],
++  [
++   "A",
++   4,
++   10
++  ],
++  [
++   "A",
++   4,
++   11
++  ],
++  [
++   "A",
++   4,
++   12
++  ],
++  [
++   "A",
++   4,
++   13
++  ],
++  [
++   "A",
++   5,
++   7
++  ],
++  [
++   "A",
++   5,
++   8
++  ],
++  [
++   "A",
++   5,
++   9
++  ],
++  [
++   "A",
++   5,
++   10
++  ],
++  [
++   "A",
++   5,
++   11
++  ],
++  [
++   "A",
++   5,
++   12
++  ],
++  [
++   "A",
++   5,
++   13
++  ],
++  [
++   "A",
++   6,
++   8
++  ],
++  [
++   "A",
++   6,
++   9
++  ],
++  [
++   "A",
++   6,
++   10
++  ],
++  [
++   "A",
++   6,
++   11
++  ],
++  [
++   "A",
++   6,
++   12
++  ],
++  [
++   "A",
++   6,
++   13
++  ],
++  [
++   "A",
++   7,
++   9
++  ],
++  [
++   "A",
++   7,
++   10
++  ],
++  [
++   "A",
++   7,
++   11
++  ],
++  [
++   "A",
++   7,
++   12
++  ],
++  [
++   "A",
++   7,
++   13
++  ],
++  [
++   "C",
++   9,
++   10
++  ],
++  [
++   "C",
++   9,
++   11
++  ],
++  [
++   "C",
++   9,
++   12
++  ],
++  [
++   "C",
++   9,
++   13
++  ],
++  [
++   "C",
++   10,
++   10
++  ],
++  [
++   "C",
++   10,
++   11
++  ],
++  [
++   "C",
++   10,
++   12
++  ],
++  [
++   "C",
++   10,
++   13
++  ],
++  [
++   "C",
++   11,
++   11
++  ],
++  [
++   "C",
++   11,
++   12
++  ],
++  [
++   "C",
++   11,
++   13
++  ],
++  [
++   "C",
++   12,
++   12
++  ],
++  [
++   "C",
++   12,
++   13
++  ],
++  [
++   "D",
++   1,
++   2
++  ],
++  [
++   "D",
++   1,
++   3
++  ],
++  [
++   "D",
++   1,
++   4
++  ],
++  [
++   "D",
++   1,
++   5
++  ],
++  [
++   "D",
++   1,
++   6
++  ],
++  [
++   "D",
++   1,
++   7
++  ],
++  [
++   "D",
++   1,
++   8
++  ],
++  [
++   "D",
++   1,
++   9
++  ],
++  [
++   "D",
++   1,
++   10
++  ],
++  [
++   "D",
++   1,
++   11
++  ],
++  [
++   "D",
++   1,
++   12
++  ],
++  [
++   "D",
++   1,
++   13
++  ],
++  [
++   "D",
++   2,
++   2
++  ],
++  [
++   "D",
++   2,
++   3
++  ],
++  [
++   "D",
++   2,
++   4
++  ],
++  [
++   "D",
++   2,
++   5
++  ],
++  [
++   "D",
++   2,
++   6
++  ],
++  [
++   "D",
++   2,
++   7
++  ],
++  [
++   "D",
++   2,
++   8
++  ],
++  [
++   "D",
++   2,
++   9
++  ],
++  [
++   "D",
++   2,
++   10
++  ],
++  [
++   "D",
++   2,
++   11
++  ],
++  [
++   "D",
++   2,
++   12
++  ],
++  [
++   "D",
++   2,
++   13
++  ],
++  [
++   "D",
++   3,
++   3
++  ],
++  [
++   "D",
++   3,
++   4
++  ],
++  [
++   "D",
++   3,
++   5
++  ],
++  [
++   "D",
++   3,
++   6
++  ],
++  [
++   "D",
++   3,
++   7
++  ],
++  [
++   "D",
++   3,
++   8
++  ],
++  [
++   "D",
++   3,
++   9
++  ],
++  [
++   "D",
++   3,
++   10
++  ],
++  [
++   "D",
++   3,
++   11
++  ],
++  [
++   "D",
++   3,
++   12
++  ],
++  [
++   "D",
++   3,
++   13
++  ],
++  [
++   "D",
++   4,
++   4
++  ],
++  [
++   "D",
++   4,
++   5
++  ],
++  [
++   "D",
++   4,
++   6
++  ],
++  [
++   "D",
++   4,
++   7
++  ],
++  [
++   "D",
++   4,
++   8
++  ],
++  [
++   "D",
++   4,
++   9
++  ],
++  [
++   "D",
++   4,
++   10
++  ],
++  [
++   "D",
++   4,
++   11
++  ],
++  [
++   "D",
++   4,
++   12
++  ],
++  [
++   "D",
++   4,
++   13
++  ],
++  [
++   "D",
++   5,
++   5
++  ],
++  [
++   "D",
++   5,
++   6
++  ],
++  [
++   "D",
++   5,
++   7
++  ],
++  [
++   "D",
++   5,
++   8
++  ],
++  [
++   "D",
++   5,
++   9
++  ],
++  [
++   "D",
++   5,
++   10
++  ],
++  [
++   "D",
++   5,
++   11
++  ],
++  [
++   "D",
++   5,
++   12
++  ],
++  [
++   "D",
++   5,
++   13
++  ],
++  [
++   "D",
++   6,
++   6
++  ],
++  [
++   "D",
++   6,
++   7
++  ],
++  [
++   "D",
++   6,
++   8
++  ],
++  [
++   "D",
++   6,
++   9
++  ],
++  [
++   "D",
++   6,
++   10
++  ],
++  [
++   "D",
++   6,
++   11
++  ],
++  [
++   "D",
++   6,
++   12
++  ],
++  [
++   "D",
++   6,
++   13
++  ],
++  [
++   "D",
++   7,
++   7
++  ],
++  [
++   "D",
++   7,
++   8
++  ],
++  [
++   "D",
++   7,
++   9
++  ],
++  [
++   "D",
++   7,
++   10
++  ],
++  [
++   "D",
++   7,
++   11
++  ],
++  [
++   "D",
++   7,
++   12
++  ],
++  [
++   "D",
++   7,
++   13
++  ],
++  [
++   "D",
++   8,
++   8
++  ],
++  [
++   "D",
++   8,
++   9
++  ],
++  [
++   "D",
++   8,
++   10
++  ],
++  [
++   "D",
++   8,
++   11
++  ],
++  [
++   "D",
++   8,
++   12
++  ],
++  [
++   "D",
++   8,
++   13
++  ],
++  [
++   "D",
++   9,
++   9
++  ],
++  [
++   "D",
++   9,
++   10
++  ],
++  [
++   "D",
++   9,
++   11
++  ],
++  [
++   "D",
++   9,
++   12
++  ],
++  [
++   "D",
++   9,
++   13
++  ],
++  [
++   "D",
++   10,
++   10
++  ],
++  [
++   "D",
++   10,
++   11
++  ],
++  [
++   "D",
++   10,
++   12
++  ],
++  [
++   "D",
++   10,
++   13
++  ],
++  [
++   "D",
++   11,
++   11
++  ],
++  [
++   "D",
++   11,
++   12
++  ],
++  [
++   "D",
++   11,
++   13
++  ],
++  [
++   "D",
++   12,
++   12
++  ],
++  [
++   "D",
++   12,
++   13
++  ],
++  [
++   "D",
++   13,
++   13
++  ],
++  [
++   "E",
++   1,
++   10
++  ],
++  [
++   "E",
++   1,
++   11
++  ],
++  [
++   "E",
++   1,
++   12
++  ],
++  [
++   "E",
++   1,
++   13
++  ],
++  [
++   "E",
++   3,
++   8
++  ],
++  [
++   "E",
++   3,
++   9
++  ],
++  [
++   "E",
++   3,
++   10
++  ],
++  [
++   "E",
++   3,
++   11
++  ],
++  [
++   "E",
++   3,
++   12
++  ],
++  [
++   "E",
++   3,
++   13
++  ],
++  [
++   "E",
++   4,
++   8
++  ],
++  [
++   "E",
++   4,
++   9
++  ],
++  [
++   "E",
++   4,
++   10
++  ],
++  [
++   "E",
++   4,
++   11
++  ],
++  [
++   "E",
++   4,
++   12
++  ],
++  [
++   "E",
++   4,
++   13
++  ],
++  [
++   "E",
++   5,
++   9
++  ],
++  [
++   "E",
++   5,
++   10
++  ],
++  [
++   "E",
++   5,
++   11
++  ],
++  [
++   "E",
++   5,
++   12
++  ],
++  [
++   "E",
++   5,
++   13
++  ],
++  [
++   "E",
++   6,
++   10
++  ],
++  [
++   "E",
++   6,
++   11
++  ],
++  [
++   "E",
++   6,
++   12
++  ],
++  [
++   "E",
++   6,
++   13
++  ]
++ ],
++ "certificates": [
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 1,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "777/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 2,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1571/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 3,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "413/1250",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 4,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "847/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 5,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "173/500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 6,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "44/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 7,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1793/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 8,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1819/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 9,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "46/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 10,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 11,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 1,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 2,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "397/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 3,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1669/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 4,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1711/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 5,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1747/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 6,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1777/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 7,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "181/500",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 8,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "459/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 9,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1857/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 10,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 11,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 2,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "A",
++   "m": 3,
++   "m_prime": 3,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "7/20",
++   "s": "711/5000"
++  },
++  {
++   "cond": "A",
++   "m": 3,
++   "m_prime": 4,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "224/625",
++   "s": "711/5000"
++  },
++  {
++   "cond": "A",
++   "m": 3,
++   "m_prime": 5,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "457/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "A",
++   "m": 3,
++   "m_prime": 6,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "711/5000"
++  },
++  {
++   "cond": "A",
++   "m": 3,
++   "m_prime": 7,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1891/5000",
++   "s": "711/5000"
++  },
++  {
++   "cond": "A",
++   "m": 4,
++   "m_prime": 4,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "917/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "A",
++   "m": 4,
++   "m_prime": 5,
++   "bins": {
++    "A1": [
++     0
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "187/500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "A",
++   "m": 4,
++   "m_prime": 6,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "19/50",
++   "s": "671/5000"
++  },
++  {
++   "cond": "A",
++   "m": 5,
++   "m_prime": 5,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "953/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "A",
++   "m": 5,
++   "m_prime": 6,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "242/625",
++   "s": "1/8"
++  },
++  {
++   "cond": "A",
++   "m": 6,
++   "m_prime": 6,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "983/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "A",
++   "m": 6,
++   "m_prime": 7,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1999/5000",
++   "s": "573/5000"
++  },
++  {
++   "cond": "A",
++   "m": 7,
++   "m_prime": 7,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "254/625",
++   "s": "131/1250"
++  },
++  {
++   "cond": "A",
++   "m": 7,
++   "m_prime": 8,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1029/2500",
++   "s": "131/1250"
++  },
++  {
++   "cond": "A",
++   "m": 8,
++   "m_prime": 8,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "521/1250",
++   "s": "117/1250"
++  },
++  {
++   "cond": "A",
++   "m": 8,
++   "m_prime": 9,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "421/1000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "A",
++   "m": 8,
++   "m_prime": 10,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "A",
++   "m": 8,
++   "m_prime": 11,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "A",
++   "m": 8,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "A",
++   "m": 8,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "A",
++   "m": 9,
++   "m_prime": 9,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1063/2500",
++   "s": "407/5000"
++  },
++  {
++   "cond": "A",
++   "m": 9,
++   "m_prime": 10,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "A",
++   "m": 9,
++   "m_prime": 11,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "A",
++   "m": 9,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "A",
++   "m": 9,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "A",
++   "m": 10,
++   "m_prime": 10,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "A",
++   "m": 10,
++   "m_prime": 11,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "A",
++   "m": 10,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "A",
++   "m": 10,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "A",
++   "m": 11,
++   "m_prime": 11,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "A",
++   "m": 11,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "A",
++   "m": 11,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "A",
++   "m": 12,
++   "m_prime": 12,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "179/5000"
++  },
++  {
++   "cond": "A",
++   "m": 12,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "179/5000"
++  },
++  {
++   "cond": "A",
++   "m": 13,
++   "m_prime": 13,
++   "bins": {
++    "A1": [
++     0,
++     1
++    ],
++    "A2": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "97/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 1,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "777/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 2,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1571/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 3,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "413/1250",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 4,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "847/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 5,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "173/500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 6,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "44/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1793/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1819/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "46/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 1,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 2,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "397/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 3,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1669/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 4,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1711/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 5,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1747/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 6,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1777/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "181/500",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "459/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1857/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 2,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 3,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "7/20",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 4,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "224/625",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 5,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "457/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 6,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1891/5000",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1917/5000",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "969/2500",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 3,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 4,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "917/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 5,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "187/500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 6,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "19/50",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1933/5000",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1959/5000",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "99/250",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 4,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 5,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "953/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 6,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "242/625",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1969/5000",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "399/1000",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "252/625",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 5,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 6,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "983/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1999/5000",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "81/200",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1023/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 6,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 7,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "254/625",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1029/2500",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2079/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 7,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "B",
++   "m": 8,
++   "m_prime": 8,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "521/1250",
++   "s": "117/1250"
++  },
++  {
++   "cond": "B",
++   "m": 8,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "421/1000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "B",
++   "m": 8,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "B",
++   "m": 8,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "B",
++   "m": 8,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "B",
++   "m": 8,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "B",
++   "m": 9,
++   "m_prime": 9,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1063/2500",
++   "s": "407/5000"
++  },
++  {
++   "cond": "B",
++   "m": 9,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "B",
++   "m": 9,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "B",
++   "m": 9,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "B",
++   "m": 9,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "B",
++   "m": 10,
++   "m_prime": 10,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "B",
++   "m": 10,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "B",
++   "m": 10,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "B",
++   "m": 10,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "B",
++   "m": 11,
++   "m_prime": 11,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "B",
++   "m": 11,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "B",
++   "m": 11,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "B",
++   "m": 12,
++   "m_prime": 12,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "179/5000"
++  },
++  {
++   "cond": "B",
++   "m": 12,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "179/5000"
++  },
++  {
++   "cond": "B",
++   "m": 13,
++   "m_prime": 13,
++   "bins": {
++    "B": [
++     0
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "97/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 1,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "777/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 2,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1571/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 3,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "413/1250",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 4,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "847/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 5,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "173/500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 6,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "44/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1793/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1819/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "46/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 1,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 2,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "397/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 3,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1669/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 4,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1711/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 5,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1747/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 6,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1777/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "181/500",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "459/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1857/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 2,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 3,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "7/20",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 4,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "224/625",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 5,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "457/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 6,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1891/5000",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1917/5000",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "969/2500",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 3,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "489/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 4,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "917/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 5,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "187/500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 6,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "19/50",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1933/5000",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1959/5000",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "99/250",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 4,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "999/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 5,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "953/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 6,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "242/625",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1969/5000",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "399/1000",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "252/625",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 5,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1017/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 6,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "983/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1999/5000",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "81/200",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1023/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 6,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "258/625",
++   "s": "573/5000"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 7,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "254/625",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1029/2500",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2079/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 7,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "C",
++   "m": 8,
++   "m_prime": 8,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "521/1250",
++   "s": "117/1250"
++  },
++  {
++   "cond": "C",
++   "m": 8,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "421/1000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "C",
++   "m": 8,
++   "m_prime": 10,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "C",
++   "m": 8,
++   "m_prime": 11,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "C",
++   "m": 8,
++   "m_prime": 12,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "C",
++   "m": 8,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "C",
++   "m": 9,
++   "m_prime": 9,
++   "bins": {
++    "C": [
++     0
++    ]
++   },
++   "total_bound": "1063/2500",
++   "s": "407/5000"
++  },
++  {
++   "cond": "C",
++   "m": 13,
++   "m_prime": 13,
++   "bins": {
++    "C": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "97/5000"
++  },
++  {
++   "cond": "D",
++   "m": 1,
++   "m_prime": 1,
++   "bins": {
++    "D": [
++     0
++    ]
++   },
++   "total_bound": "777/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 1,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "777/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 2,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "1571/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 3,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "413/1250",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 4,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "847/2500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 5,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "173/500",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 6,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "44/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1793/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 8,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1819/5000",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 1,
++   "m_prime": 9,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "46/125",
++   "s": "777/5000"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 2,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "397/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 3,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "1669/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 4,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "1711/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 5,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "1747/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 6,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "1777/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "181/500",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 8,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "459/1250",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 9,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1857/5000",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 10,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 11,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 2,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "3/8",
++   "s": "89/625"
++  },
++  {
++   "cond": "E",
++   "m": 3,
++   "m_prime": 3,
++   "bins": {
++    "E": [
++     0
++    ]
++   },
++   "total_bound": "7/20",
++   "s": "711/5000"
++  },
++  {
++   "cond": "E",
++   "m": 3,
++   "m_prime": 4,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "224/625",
++   "s": "711/5000"
++  },
++  {
++   "cond": "E",
++   "m": 3,
++   "m_prime": 5,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "457/1250",
++   "s": "711/5000"
++  },
++  {
++   "cond": "E",
++   "m": 3,
++   "m_prime": 6,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "929/2500",
++   "s": "711/5000"
++  },
++  {
++   "cond": "E",
++   "m": 3,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1891/5000",
++   "s": "711/5000"
++  },
++  {
++   "cond": "E",
++   "m": 4,
++   "m_prime": 4,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "917/2500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "E",
++   "m": 4,
++   "m_prime": 5,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "187/500",
++   "s": "671/5000"
++  },
++  {
++   "cond": "E",
++   "m": 4,
++   "m_prime": 6,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "19/50",
++   "s": "671/5000"
++  },
++  {
++   "cond": "E",
++   "m": 4,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1933/5000",
++   "s": "671/5000"
++  },
++  {
++   "cond": "E",
++   "m": 5,
++   "m_prime": 5,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "953/2500",
++   "s": "1/8"
++  },
++  {
++   "cond": "E",
++   "m": 5,
++   "m_prime": 6,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "242/625",
++   "s": "1/8"
++  },
++  {
++   "cond": "E",
++   "m": 5,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1969/5000",
++   "s": "1/8"
++  },
++  {
++   "cond": "E",
++   "m": 5,
++   "m_prime": 8,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "399/1000",
++   "s": "1/8"
++  },
++  {
++   "cond": "E",
++   "m": 6,
++   "m_prime": 6,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "983/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "E",
++   "m": 6,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1999/5000",
++   "s": "573/5000"
++  },
++  {
++   "cond": "E",
++   "m": 6,
++   "m_prime": 8,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "81/200",
++   "s": "573/5000"
++  },
++  {
++   "cond": "E",
++   "m": 6,
++   "m_prime": 9,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1023/2500",
++   "s": "573/5000"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 7,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "254/625",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 8,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1029/2500",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 9,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2079/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 10,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 11,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 7,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2097/5000",
++   "s": "131/1250"
++  },
++  {
++   "cond": "E",
++   "m": 8,
++   "m_prime": 8,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "521/1250",
++   "s": "117/1250"
++  },
++  {
++   "cond": "E",
++   "m": 8,
++   "m_prime": 9,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "421/1000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "E",
++   "m": 8,
++   "m_prime": 10,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "E",
++   "m": 8,
++   "m_prime": 11,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "E",
++   "m": 8,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "E",
++   "m": 8,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "2123/5000",
++   "s": "117/1250"
++  },
++  {
++   "cond": "E",
++   "m": 9,
++   "m_prime": 9,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1063/2500",
++   "s": "407/5000"
++  },
++  {
++   "cond": "E",
++   "m": 9,
++   "m_prime": 10,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "E",
++   "m": 9,
++   "m_prime": 11,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "E",
++   "m": 9,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "E",
++   "m": 9,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "268/625",
++   "s": "407/5000"
++  },
++  {
++   "cond": "E",
++   "m": 10,
++   "m_prime": 10,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "E",
++   "m": 10,
++   "m_prime": 11,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "E",
++   "m": 10,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "E",
++   "m": 10,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "343/5000"
++  },
++  {
++   "cond": "E",
++   "m": 11,
++   "m_prime": 11,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "E",
++   "m": 11,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "E",
++   "m": 11,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "261/5000"
++  },
++  {
++   "cond": "E",
++   "m": 12,
++   "m_prime": 12,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "179/5000"
++  },
++  {
++   "cond": "E",
++   "m": 12,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "179/5000"
++  },
++  {
++   "cond": "E",
++   "m": 13,
++   "m_prime": 13,
++   "bins": {
++    "E": [
++     0,
++     1
++    ]
++   },
++   "total_bound": "1081/2500",
++   "s": "97/5000"
++  }
++ ]
++}
+\ No newline at end of file
+diff --git a/specs/checks/packing_certificates_match.py b/specs/checks/packing_certificates_match.py
+new file mode 100644
+index 0000000..38bb30e
+--- /dev/null
++++ b/specs/checks/packing_certificates_match.py
+@@ -0,0 +1,26 @@
++"""Check that Solution/Packing.lean's certTable and BGP212/Packing.lean's settledRoots /
++openRoots equal the exploratory ledger in specs/certificates/packing_a3a.json.
++Run from the repository root: python3 -I specs/checks/packing_certificates_match.py"""
++import json, re
++L = json.load(open("specs/certificates/packing_a3a.json"))
++sol = open("Solution/Packing.lean").read()
++dat = open("BGP212/Packing.lean").read()
++def roots(name):
++    body = dat[dat.index(f"def {name}"):]
++    body = body[body.index("[") : body.index("]") + 1]
++    return [(c, int(m), int(mp)) for c, m, mp in re.findall(r"\(\.(\w), (\d+), (\d+)\)", body)]
++table = sol[sol.index("def certTable"):]
++table = table[table.index("[") : table.index(" ]") + 2]
++rows = re.findall(r"\(\.(\w), (\d+), (\d+), \[([\d, ]*)\], \[([\d, ]*)\]\)", table)
++lean_certs = {(c, int(m), int(mp)): ([int(x) for x in a.split(",") if x.strip()],
++                                     [int(x) for x in b.split(",") if x.strip()]) for c, m, mp, a, b in rows}
++json_certs = {}
++for x in L["certificates"]:
++    if x["cond"] == "D":
++        continue
++    b = x["bins"]
++    json_certs[(x["cond"], x["m"], x["m_prime"])] = (b.get("A1", b.get(x["cond"])), b.get("A2", []) if x["cond"] == "A" else [])
++assert roots("settledRoots") == [tuple(r) for r in L["settled"]], "settledRoots differ"
++assert roots("openRoots") == [tuple(r) for r in L["open"]], "openRoots differ"
++assert lean_certs == json_certs, "certificate table differs"
++print(f"match: {len(roots('settledRoots'))} settled, {len(roots('openRoots'))} open, {len(lean_certs)} certificates")
+diff --git a/specs/checks/packing_ledger.py b/specs/checks/packing_ledger.py
+new file mode 100644
+index 0000000..00a6b39
+--- /dev/null
++++ b/specs/checks/packing_ledger.py
+@@ -0,0 +1,54 @@
++"""A3a ledger generator (exploratory; the Lean checker re-derives every settled root).
++Semantics match Solution/Packing.lean: a root (c, m, m') is settled when some nonempty
++set S of bins satisfies  B_m + B_m' <= sum_{S} cap - (|S| - 1) * s(m, m'),
++s(m, m') = max(B_m - (m-1) delta, B_m' - (m'-1) delta), and every bin capacity is >= 0.
++Condition A needs both of its partitions. Condition D must hold for every (gamma, omega0)
++in its box; for a fixed S the bound is affine, so the four corners decide it."""
++from fractions import Fraction as F
++from itertools import combinations
++import json, sys
++A1=F(257,1000); d=F(41,2500); e=F(1,10**10); x1=F(19,50); x2=F(2,5); x3=F(2,5)
++Bt=[777,794,875,917,953,983,1016,1042,1063,1081]
++def B(m): return F(0) if m==0 else (F(Bt[m-1],5000) if m<=10 else F(1081,5000))
++w=A1-F(1,4)
++caps={
++ "A1":[x1-2*e, F(1,6)-4*w-2*e],
++ "A2":[F(1,2)-2*w-2*e, F(1,14)-F(68,14)*w-2*e],
++ "B": [F(2,5)+F(24,5)*w+F(7,5)*d-2*e, F(1,14)-F(24,7)*w-2*e],
++ "C": [F(1,3)+F(24,3)*w+F(7,3)*d-4*e, F(1,10)-F(34,5)*w-F(7,5)*d-4*e, 2*w+d-4*e],
++ "E": [1-6*w-F(3,2)*x3-2*e, F(5,2)*w+F(3,8)*x3-2*e],
++}
++def capsD(g,o): return [g-2*d-8*o-e, F(1,2)-g-2*o-e, 4*o+d-e, 8*o]
++gbox=[x2-e, F(1,3)+8*w+F(7,3)*d+3*e]; obox=[F(0), w]
++corners=[(g,o) for g in gbox for o in obox]
++def smax(m,mp): return max(B(m)-(m-1)*d, B(mp)-(mp-1)*d)
++def find(cl, T, s):
++    if any(c<0 for c in cl): return None
++    for k in range(1,len(cl)+1):
++        for S in combinations(range(len(cl)),k):
++            if T <= sum(cl[i] for i in S)-(k-1)*s: return list(S)
++    return None
++def findD(T,s):
++    for k in range(1,5):
++        for S in combinations(range(4),k):
++            if all(min(capsD(*c))>=0 for c in corners) and all(T <= sum(capsD(*c)[i] for i in S)-(k-1)*s for c in corners):
++                return list(S)
++    return None
++settled=[]; open_=[]; certs=[]
++for c in "ABCDE":
++  for m in range(1,14):
++    for mp in range(m,14):
++      T=B(m)+B(mp); s=smax(m,mp)
++      if c=="A":
++          S1=find(caps["A1"],T,s); S2=find(caps["A2"],T,s); ok=S1 is not None and S2 is not None; cert={"A1":S1,"A2":S2}
++      elif c=="D":
++          S=findD(T,s); ok=S is not None; cert={"D":S}
++      else:
++          S=find(caps[c],T,s); ok=S is not None; cert={c:S}
++      (settled if ok else open_).append((c,m,mp))
++      if ok: certs.append({"cond":c,"m":m,"m_prime":mp,"bins":cert,"total_bound":str(T),"s":str(s)})
++print(len(settled),len(open_),len(settled)+len(open_))
++from collections import Counter
++print("settled by condition", dict(Counter(r[0] for r in settled)))
++print("D settled:", [r for r in settled if r[0]=="D"], [x for x in certs if x["cond"]=="D"])
++json.dump({"settled":settled,"open":open_,"certificates":certs}, open(sys.argv[1],"w"), indent=1)
+diff --git a/specs/results/A3a_packing.yaml b/specs/results/A3a_packing.yaml
+new file mode 100644
+index 0000000..9660362
+--- /dev/null
++++ b/specs/results/A3a_packing.yaml
+@@ -0,0 +1,83 @@
++# Result record: sixth Challenge/Solution pair (A3a, Lemma 7.10 packing, first part)
++
++identity:
++  id: A3a
++  statement: "Lemma 7.10: 296 of its 455 packing roots, plus the greedy packing lemma and the root ledger"
++  source: "Source/bgp212.pdf: Definition 7.4 (p. 28), Proposition 7.8 (A)–(E) (pp. 31–32), Lemma 7.10 (p. 36)"
++  specification: specs/A0_parameters.yaml   # Table 3 via BGP212.Params
++
++state:
++  mathematical: proved          # for the 296 settled roots; 159 roots remain open
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++verification:
++  challenge: Challenge/Packing.lean
++  solution: Solution/Packing.lean
++  definitions: BGP212/Packing.lean
++  comparator_config: Comparator/packing_a3a.json
++  theorems:
++    greedy_pack: "items ≤ s, capacities ≥ 0, distinct bins sel: total ≤ Σ_sel cap − (|sel| − 1)s ⟹ the items pack"
++    largest_coordinate: "on a side of k coordinates, each ≥ δ, sum ≤ B: each coordinate ≤ B − (k − 1)δ"
++    omega_matches_table3: "ω(1,1) = (A₁ + A₁)/2 − 1/4 equals Table 3's ω = 7/1000"
++    root_ledger: "settledRoots (296) and openRoots (159) together are a permutation of allRoots (455)"
++    lemma_7_10_settled: "every settled root holds for every profile in Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)"
++  faithfulness:
++    profile_domain: "InXi is Definition 7.4: m and m′ coordinates, each in [δ, 1], side sums ≤ B₁,ₘ and B₁,ₘ′"
++    partitions: "Packs encodes a partition I₁ ∪ … ∪ I_k as an assignment of coordinates to bins; empty parts allowed"
++    capacities: "transcribed from Proposition 7.8 (A)–(E) with ω(1,1) and ϵ = εₐ = 10⁻¹⁰; condition (A) requires both of its partitions"
++    uniformity: >
++      Each Root quantifies over every profile in its domain. The settled (D) root (1, 1)
++      quantifies over the full box 0 ≤ ω₀ ≤ ω(1,1), 2/5 − εₐ ≤ γ ≤ 1/3 + 8ω(1,1) + 7δ/3 + 3εₐ,
++      and is proved for arbitrary (γ, ω₀) in that box by linear arithmetic; no sampling or
++      corner evaluation enters the kernel proof.
++  certificate_strategy: >
++    For (A), (B), (C), (E) each settled root carries a certificate, the bin selection(s) in
++    certTable. certValid re-checks in exact rationals inside the kernel (decide +kernel):
++    selection nonempty and duplicate-free, indices in range, every capacity ≥ 0, and
++    B₁,ₘ + B₁,ₘ′ ≤ Σ_sel cap − (|sel| − 1)·s(m, m′) with
++    s(m, m′) = max(B₁,ₘ − (m − 1)δ, B₁,ₘ′ − (m′ − 1)δ). pack_of_cert turns a valid certificate
++    into the root through greedy_pack and largest_coordinate.
++  certificate_data:
++    file: specs/certificates/packing_a3a.json
++    generator: specs/checks/packing_ledger.py
++    consistency_check: specs/checks/packing_certificates_match.py   # Lean tables = JSON
++    counts: { settled: 296, open: 159, certificates: 295, hand_proved: "(D, 1, 1)" }
++    settled_by_condition: { A: 60, B: 91, C: 78, D: 1, E: 66 }
++    open_by_condition: { A: 31, C: 13, D: 90, E: 25 }
++  exploratory_vs_proved: >
++    The Python generator is exploratory: it searches bin subsets and writes the ledger. The
++    kernel-checked content is lemma_7_10_settled and root_ledger; every inequality a
++    certificate relies on is re-checked by the Lean kernel.
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: Lean 4 kernel + core library (Mathlib absent from this pair)
++  scope_boundary:
++    - "159 roots stay open: A3b targets them with subdivision and Farkas certificates."
++    - "Profiles with an empty side (m = 0 or m′ = 0) follow in the source by adjoining a part of size δ; that reduction is outside A3a."
++  negative_controls:
++    - change: "greedy loss (|sel| − 1)·s weakened to (|sel| − 2)·s in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.greedy_pack'"
++    - change: "lemma_7_10_settled claimed for allRoots (all 455) in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_7_10_settled'"
++    - change: "open root (D, 1, 2) moved into settledRoots"
++      result: "Solution fails to build: kernel errors at root_ledger and settled_covered"
++    - change: "capacity of (A) first bin lowered from ξ₁ − 2ϵ to ξ₁ − 1/10"
++      result: "Solution fails to build: 'Tactic decide failed' at certTable_valid"
++  sandbox: >
++    Comparator ran with the pass-through landrun stand-in in the authoring environment.
++    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  solution_build_time: "about 20 s"
++  run_date: 2026-10-16
++  commit_hash: null   # set to the verified commit after the VPS run
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index a98b5ee..bb8acbb 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
