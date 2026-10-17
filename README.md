@@ -70,19 +70,25 @@ uniformly over its full (γ, ω₀) box). Certificates are in
 `specs/certificates/packing_a3a.json`; the kernel re-checks every inequality. The other 159
 roots are listed in `openRoots` and stay outside the proved scope until A3b.
 
+The seventh pair is A3b (`Challenge/PackingB.lean`, `Solution/PackingB.lean`), a verified
+certificate checker for Lemma 7.10 (Farkas certificates over subdivision trees of sorted
+cells, `Solution/PackingCert.lean`) and 116 further roots: all remaining (A), (C), (E) roots
+and 47 of the 90 (D) roots, uniformly over the (γ, ω₀) box. With A3a, **412 of the 455
+roots** are proved. The 43 remaining (D) roots are listed in `openRootsB`.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
-  W-trick for H₄₅ (B2); 296 of the 455 packing roots of Lemma 7.10 (A3a).
+  W-trick for H₄₅ (B2); 412 of the 455 packing roots of Lemma 7.10 (A3a, A3b).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
 - **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
   criterion (Theorem 4.10) and the deduction of Theorem 1.1.
-- **External certificates:** the 159 packing roots of Lemma 7.10 still open after A3a
-  (listed in `openRoots`), and the exact variational certificate of Theorem 11.1.
+- **Open, outside the proved scope:** the 43 condition-(D) packing roots of Lemma 7.10
+  listed in `openRootsB`, and the exact variational certificate of Theorem 11.1.
 
 ## Comparator Verification
 
@@ -103,6 +109,14 @@ To regenerate and cross-check the A3a certificate data (exploratory, outside the
 ```text
 python3 -I specs/checks/packing_ledger.py specs/certificates/packing_a3a.json
 python3 -I specs/checks/packing_certificates_match.py
+```
+
+For A3b (the generator needs SciPy; it proposes candidates only):
+
+```text
+python3 -I specs/checks/packing_a3b_generate.py specs/certificates/packing_a3a.json /tmp/a3b.json
+cmp /tmp/a3b.json specs/certificates/packing_a3b.json
+python3 -I specs/checks/packing_a3b_emit.py specs/certificates/packing_a3b.json . --check
 ```
 
 builds the project and runs Lean Comparator on each config in `Comparator/`.

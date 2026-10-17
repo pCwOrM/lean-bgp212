@@ -4,3 +4,4 @@ import Solution.A2Combinatorial
 import Solution.MultiShift
 import Solution.MultiShiftB2
 import Solution.Packing
+import Solution.PackingB
