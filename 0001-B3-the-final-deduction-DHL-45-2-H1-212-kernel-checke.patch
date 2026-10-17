@@ -1,0 +1,1080 @@
+From 86b3f9b3fc1290aefd931eb38c29316dd3d4bb9c Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 10:39:44 -0600
+Subject: [PATCH] B3: the final deduction, DHL[45,2] => H1 <= 212
+ kernel-checked
+
+Proves dhl_45_implies_gap (and the general dhl_implies_gap, h1_liminf),
+Lemma 4.9's W-trick coprimality step in printed and prime-factor forms,
+its connection to B2 (h45_wtrick_coprime, w >= 103, sharp), and the
+squarefree combined modulus. Theorem 4.10 enters as the SieveInputs
+interface; final_deduction gives DHL[45,2] and H1 <= 212 relative to the
+named inputs, with A4's theorem_7_11 supplying the distribution bridge.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                                   |   1 +
+ BGP212/Gap.lean                               | 113 +++++
+ Challenge.lean                                |   1 +
+ Challenge/Gap.lean                            | 131 ++++++
+ Comparator/final_deduction.json               |  48 ++
+ README.md                                     |  36 +-
+ Solution.lean                                 |   1 +
+ Solution/Gap.lean                             | 440 ++++++++++++++++++
+ .../final_deduction_negative_controls.py      |  33 ++
+ specs/results/B3_final_deduction.yaml         | 141 ++++++
+ verify.sh                                     |   2 +-
+ 11 files changed, 945 insertions(+), 2 deletions(-)
+ create mode 100644 BGP212/Gap.lean
+ create mode 100644 Challenge/Gap.lean
+ create mode 100644 Comparator/final_deduction.json
+ create mode 100644 Solution/Gap.lean
+ create mode 100644 specs/checks/final_deduction_negative_controls.py
+ create mode 100644 specs/results/B3_final_deduction.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 1156589..3bb32a2 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -8,3 +8,4 @@ import BGP212.WTrick
+ import BGP212.Packing
+ import BGP212.PackingLedgerB
+ import BGP212.Theorem711
++import BGP212.Gap
+diff --git a/BGP212/Gap.lean b/BGP212/Gap.lean
+new file mode 100644
+index 0000000..de51a05
+--- /dev/null
++++ b/BGP212/Gap.lean
+@@ -0,0 +1,113 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §2 (admissibility, DHL[k, m], H₁), Definition 4.1, Definition 4.5
++and Lemma 4.9 (the W-trick), Theorem 4.10, Theorem 11.1 and §9.3, Lemma 12.1 and the
++proof of Theorem 1.1 (§12).
++-/
++import BGP212.Basic
++import BGP212.WTrick
++import BGP212.Theorem711
++import Mathlib.Data.Nat.Nth
++import Mathlib.NumberTheory.Primorial
++import Mathlib.Order.LiminfLimsup
++import Mathlib.Data.Real.Basic
++
++/-! # B3: the final deduction
++
++Track B (Mathlib). The objects of the last step of the paper:
++
++* `AdmissibleZ`, `DHL`: §2, "for every admissible k-tuple H, there are infinitely many
++  integers n such that at least m of n + h₁, …, n + h_k are prime".
++* `primeGap`, `H1Le`: `H₁ = liminf (p_{n+1} − p_n)`; `H1Le D` says `p_{n+1} − p_n ≤ D` for
++  infinitely many `n`, which for a sequence of naturals is `liminf ≤ D` (`h1_liminf`).
++* `StadlmannSupport`: the datum of Definition 4.1 (rational, as §2 fixes), its constraints
++  (`Valid`, A4's `SupportDatum`), and the set `T_k` itself (`supportSet`).
++* `SieveInputs`: Theorem 4.10 and its two inputs as named hypotheses. The distribution input
++  is tied to A4: `equidistributed_of_coverage` takes exactly the two conclusions of
++  `theorem_7_11`. -/
++
++namespace BGP212.Gap
++
++open BGP212.Params BGP212.T711 Filter
++
++/-! ## §2: admissibility, DHL, H₁ -/
++
++/-- An integer is prime: a positive integer whose value is a prime natural. -/
++def PrimeZ (z : ℤ) : Prop := 0 < z ∧ z.toNat.Prime
++
++instance : DecidablePred PrimeZ := fun z => inferInstanceAs (Decidable (0 < z ∧ z.toNat.Prime))
++
++/-- §2: a finite set of distinct integers omitting at least one residue class modulo every
++prime. -/
++def AdmissibleZ (H : Finset ℤ) : Prop :=
++  ∀ p : ℕ, p.Prime → ∃ r : ℤ, ∀ h ∈ H, ¬ ((p : ℤ) ∣ h - r)
++
++/-- **DHL[k, m]** (§2): for every admissible `k`-tuple `H` there are infinitely many integers
++`n` such that at least `m` of the `n + h` (`h ∈ H`) are prime. -/
++def DHL (k m : ℕ) : Prop :=
++  ∀ H : Finset ℤ, H.card = k → AdmissibleZ H →
++    {n : ℤ | m ≤ (H.filter fun h => PrimeZ (n + h)).card}.Infinite
++
++/-- `p_{n+1} − p_n`, with `p_0 = 2` the first prime. -/
++noncomputable def primeGap (n : ℕ) : ℕ := Nat.nth Nat.Prime (n + 1) - Nat.nth Nat.Prime n
++
++/-- **`H₁ ≤ D`**: infinitely many consecutive primes differ by at most `D`. -/
++def H1Le (D : ℕ) : Prop := ∃ᶠ n in atTop, primeGap n ≤ D
++
++/-! ## Definition 4.1: the Stadlmann support -/
++
++/-- The datum of Definition 4.1: `k` shifts, `n` bands, `δ`, `ε`, `A = (A₀, …, A_n)`, and the
++caps `B_{j,m}`. -/
++structure StadlmannSupport where
++  k : ℕ
++  n : ℕ
++  δ : ℚ
++  ε : ℚ
++  A : ℕ → ℚ
++  B : ℕ → ℕ → ℚ
++
++namespace StadlmannSupport
++
++/-- Definition 4.1's constraints on the datum (A4's `SupportDatum`), with `k ≥ 1`. -/
++def Valid (T : StadlmannSupport) : Prop := 0 < T.k ∧ SupportDatum T.n T.A T.B T.δ T.ε
++
++/-- **Definition 4.1**: `T_k(δ, A, B, ε)`, the union over bands `j` of the points
++`t ∈ [0, 1]^k` with `A_{j−1} + ε ≤ S(t) < A_j + ε` and `M_δ(t) ≤ B_{j, |R_δ(t)|}`. -/
++def supportSet (T : StadlmannSupport) : Set (Fin T.k → ℝ) :=
++  {t | (∀ i, 0 ≤ t i ∧ t i ≤ 1) ∧ ∃ j, 1 ≤ j ∧ j ≤ T.n ∧
++    ((T.A (j - 1) + T.ε : ℚ) : ℝ) ≤ ∑ i, t i ∧ ∑ i, t i < ((T.A j + T.ε : ℚ) : ℝ) ∧
++    ∑ i ∈ Finset.univ.filter (fun i => (T.δ : ℝ) < t i), t i ≤
++      ((T.B j (Finset.univ.filter (fun i => (T.δ : ℝ) < t i)).card : ℚ) : ℝ)}
++
++end StadlmannSupport
++
++/-- Table 3's support: `k = 45`, one band, `δ = 41/2500`, `ε = εₛ = 1/125`. -/
++def table3Support : StadlmannSupport := ⟨45, 1, δ, εs, A3, B3⟩
++
++/-! ## Theorem 4.10 and its inputs -/
++
++/-- **The sieve criterion and its inputs, as named hypotheses** (outside the proved scope).
++
++* `Equidistributed T`: Definition 4.4 for `ρ = 1_P` — `1_P` is equidistributed for the moduli
++  generated by `T` (the bound (4.7) for every `A > 0`, `ε₀ > 0`, uniformly in primitive
++  residue classes).
++* `VariationalIneq T`: Theorem 4.10's variational hypothesis — some nonzero symmetric
++  `F ∈ L²(T_k)` satisfies `k·J_T(F) > I_T(F)` (Definition 4.6).
++* `theorem_4_10`: the direct-prime sieve criterion (Proposition 4.7 at `ρ = 1_P`,
++  `c₁ = c₂ = 0`, through Proposition 4.8 and Lemma 4.9).
++* `theorem_11_1`: Theorem 11.1 with the §9.3 rescaling, in Theorem 4.10's physical form.
++* `equidistributed_of_coverage`: the distribution input at Table 3 from the two conclusions
++  of Theorem 7.11 (`A.PositiveLevel`, `A.HalfLevel`, which A4's `theorem_7_11` proves from
++  `A`): Theorem 8.3's absolute discrepancy bound over `Q_BV ∪ Q_tr ∪ Q₀ ∪ Q₊` is (4.7) for
++  `ρ = 1_P`. -/
++structure SieveInputs (A : AnalyticInputs) where
++  Equidistributed : StadlmannSupport → Prop
++  VariationalIneq : StadlmannSupport → Prop
++  theorem_4_10 : ∀ T : StadlmannSupport, T.Valid → Equidistributed T → VariationalIneq T →
++    DHL T.k 2
++  theorem_11_1 : VariationalIneq table3Support
++  equidistributed_of_coverage : A.PositiveLevel → A.HalfLevel → Equidistributed table3Support
++
++end BGP212.Gap
+diff --git a/Challenge.lean b/Challenge.lean
+index 84593ef..094e18b 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -7,3 +7,4 @@ import Challenge.Packing
+ import Challenge.PackingB
+ import Challenge.PackingC
+ import Challenge.Theorem711
++import Challenge.Gap
+diff --git a/Challenge/Gap.lean b/Challenge/Gap.lean
+new file mode 100644
+index 0000000..b79fc07
+--- /dev/null
++++ b/Challenge/Gap.lean
+@@ -0,0 +1,131 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §2, Definition 4.1, Definition 4.5, Lemma 4.9, Theorem 4.10,
++Theorem 11.1 and §9.3, Lemma 12.1, the proof of Theorem 1.1 (§12).
++-/
++import BGP212.Gap
++
++/-! # B3: the final deduction
++
++Statements only; proofs live in `Solution/Gap.lean`. Objects are defined in
++`BGP212/Gap.lean`. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.T711 BGP212.Gap Filter
++
++/-- `H₁ = liminf (p_{n+1} − p_n) ≤ D` from `H1Le D`. -/
++theorem h1_liminf {D : ℕ} (h : H1Le D) : Filter.liminf primeGap atTop ≤ D :=
++  sorry
++
++/-- **DHL[k, 2] ⇒ H₁ ≤ D** for any admissible `k`-tuple of diameter at most `D` (§2: "DHL[k, 2]
++implies H₁ ≤ H(k)"). -/
++theorem dhl_implies_gap (k D : ℕ) (H : Finset ℤ) (hcard : H.card = k) (hadm : AdmissibleZ H)
++    (hdiam : ∀ a ∈ H, ∀ b ∈ H, b - a ≤ D) (hdhl : DHL k 2) : H1Le D :=
++  sorry
++
++/-- Lemma 12.1 for the `ℤ`-shift form of `H₄₅`: 45 elements, admissible, diameter 212. -/
++theorem h45Z_facts :
++    BGP212.WTrick.H45Z.card = 45 ∧ AdmissibleZ BGP212.WTrick.H45Z ∧
++      ∀ a ∈ BGP212.WTrick.H45Z, ∀ b ∈ BGP212.WTrick.H45Z, b - a ≤ 212 :=
++  sorry
++
++/-- **DHL[45, 2] ⇒ H₁ ≤ 212** (the last sentence of the proof of Theorem 1.1). -/
++theorem dhl_45_implies_gap : DHL 45 2 → H1Le 212 :=
++  sorry
++
++/-- **Lemma 4.9's W-trick step, prime-factor form**: every prime `p ≤ w` divides `W`;
++`gcd(b + h, W) = 1` on `H`; every prime dividing a difference of distinct shifts is at most
++`w`; a solution `n ≡ b (mod W)`, `n ≡ −h (mod D_h)` exists. Then the `D_h` are coprime to `W`
++and pairwise coprime. -/
++theorem wtrick_coprime_of_primes (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ)
++    (hW : ∀ p : ℕ, p.Prime → p ≤ w → p ∣ W)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) W = 1)
++    (hn : (W : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hdiff : ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → ∀ p : ℕ, p.Prime → (p : ℤ) ∣ h - h' → p ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) W) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  sorry
++
++/-- **Lemma 4.9's W-trick step, as printed**: the shifts differ by at most `w`. -/
++theorem wtrick_coprime (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ)
++    (hW : ∀ p : ℕ, p.Prime → p ≤ w → p ∣ W)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) W = 1)
++    (hn : (W : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hsmall : ∀ h ∈ H, ∀ h' ∈ H, (h - h').natAbs ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) W) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  sorry
++
++/-- The W-trick step at `W = ∏_{p ≤ w} p` (Definition 4.5). -/
++theorem wtrick_coprime_primorial (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (w : ℕ)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) (primorial w) = 1)
++    (hn : (primorial w : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hsmall : ∀ h ∈ H, ∀ h' ∈ H, (h - h').natAbs ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) (primorial w)) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  sorry
++
++/-- The combined modulus `q = W · ∏ D_h` is squarefree. -/
++theorem wtrick_modulus_squarefree (H : Finset ℤ) (D : ℤ → ℕ) (W : ℕ) (hW : Squarefree W)
++    (hD : ∀ h ∈ H, Squarefree (D h)) (hcopW : ∀ h ∈ H, Nat.Coprime (D h) W)
++    (hcop : ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h')) :
++    Squarefree (W * ∏ h ∈ H, D h) :=
++  sorry
++
++/-- Every prime dividing a nonzero difference of `H₄₅` is at most 103. -/
++theorem h45_diff_primes : ∀ a ∈ BGP212.WTrick.H45Z, ∀ c ∈ BGP212.WTrick.H45Z, a ≠ c →
++    ∀ p : ℕ, p.Prime → (p : ℤ) ∣ a - c → p ≤ 103 :=
++  sorry
++
++/-- **B2 → Lemma 4.9 for `H₄₅`**: for `w ≥ 103`, B2's residue `b` and the coprimality of every
++compatible system of moduli. -/
++theorem h45_wtrick_coprime (w : ℕ) (hw : 103 ≤ w) :
++    ∃ b : ℕ, (∀ h ∈ BGP212.H45, Nat.gcd (b + h) (primorial w) = 1) ∧
++      ∀ (n : ℤ) (D : ℤ → ℕ), (primorial w : ℤ) ∣ n - b →
++        (∀ h ∈ BGP212.WTrick.H45Z, (D h : ℤ) ∣ n + h) →
++        (∀ h ∈ BGP212.WTrick.H45Z, Nat.Coprime (D h) (primorial w)) ∧
++          ∀ h ∈ BGP212.WTrick.H45Z, ∀ h' ∈ BGP212.WTrick.H45Z, h ≠ h' →
++            Nat.Coprime (D h) (D h') :=
++  sorry
++
++/-- The bound 103 is sharp: at `w = 102` the moduli for the shifts 0 and 206 can share 103. -/
++theorem h45_wtrick_sharp (b : ℕ) :
++    ∃ (n : ℤ) (D : ℤ → ℕ), (primorial 102 : ℤ) ∣ n - b ∧
++      (∀ h ∈ BGP212.WTrick.H45Z, (D h : ℤ) ∣ n + h) ∧
++      (0 : ℤ) ∈ BGP212.WTrick.H45Z ∧ (206 : ℤ) ∈ BGP212.WTrick.H45Z ∧
++      ¬ Nat.Coprime (D 0) (D 206) :=
++  sorry
++
++/-- The prime bound on differences is needed. -/
++theorem wtrick_needs_prime_bound :
++    ∃ (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ),
++      (∀ p : ℕ, p.Prime → p ≤ w → p ∣ W) ∧ (∀ h ∈ H, Int.gcd (b + h) W = 1) ∧
++      (W : ℤ) ∣ n - b ∧ (∀ h ∈ H, (D h : ℤ) ∣ n + h) ∧
++      ∃ h ∈ H, ∃ h' ∈ H, h ≠ h' ∧ ¬ Nat.Coprime (D h) (D h') :=
++  sorry
++
++/-- The condition `gcd(b + h, W) = 1` is needed. -/
++theorem wtrick_needs_coprime_residue :
++    ∃ (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ),
++      (∀ p : ℕ, p.Prime → p ≤ w → p ∣ W) ∧ (W : ℤ) ∣ n - b ∧ (∀ h ∈ H, (D h : ℤ) ∣ n + h) ∧
++      ∃ h ∈ H, ¬ Nat.Coprime (D h) W :=
++  sorry
++
++/-- Table 3 is a valid Stadlmann support (Definition 4.1, `k = 45`). -/
++theorem table3_valid : table3Support.Valid :=
++  sorry
++
++/-- The origin lies in Table 3's support set `T₄₅` (Definition 4.1, band `j = 1`). -/
++theorem zero_mem_table3Support : (fun _ => (0 : ℝ)) ∈ table3Support.supportSet :=
++  sorry
++
++/-- **The final deduction, relative to its named inputs**: Theorem 7.11's named analytic
++inputs `A` and the sieve inputs `S` (Theorem 4.10, Theorem 11.1, and the identification of
++Theorem 7.11's conclusion with Definition 4.4) give DHL[45, 2] and `H₁ ≤ 212`. -/
++theorem final_deduction (A : AnalyticInputs) (S : SieveInputs A) : DHL 45 2 ∧ H1Le 212 :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/final_deduction.json b/Comparator/final_deduction.json
+new file mode 100644
+index 0000000..e0ff96b
+--- /dev/null
++++ b/Comparator/final_deduction.json
+@@ -0,0 +1,48 @@
++{
++    "challenge_module": "Challenge.Gap",
++    "solution_module": "Solution.Gap",
++    "theorem_names": [
++        "BGP212.Challenge.h1_liminf",
++        "BGP212.Challenge.dhl_implies_gap",
++        "BGP212.Challenge.h45Z_facts",
++        "BGP212.Challenge.dhl_45_implies_gap",
++        "BGP212.Challenge.wtrick_coprime_of_primes",
++        "BGP212.Challenge.wtrick_coprime",
++        "BGP212.Challenge.wtrick_coprime_primorial",
++        "BGP212.Challenge.wtrick_modulus_squarefree",
++        "BGP212.Challenge.h45_diff_primes",
++        "BGP212.Challenge.h45_wtrick_coprime",
++        "BGP212.Challenge.h45_wtrick_sharp",
++        "BGP212.Challenge.wtrick_needs_prime_bound",
++        "BGP212.Challenge.wtrick_needs_coprime_residue",
++        "BGP212.Challenge.table3_valid",
++        "BGP212.Challenge.zero_mem_table3Support",
++        "BGP212.Challenge.final_deduction"
++    ],
++    "definition_names": [
++        "BGP212.Gap.PrimeZ",
++        "BGP212.Gap.AdmissibleZ",
++        "BGP212.Gap.DHL",
++        "BGP212.Gap.primeGap",
++        "BGP212.Gap.H1Le",
++        "BGP212.Gap.StadlmannSupport.Valid",
++        "BGP212.Gap.StadlmannSupport.supportSet",
++        "BGP212.Gap.table3Support",
++        "BGP212.WTrick.H45Z",
++        "BGP212.H45",
++        "BGP212.T711.SupportDatum",
++        "BGP212.T711.floorInv",
++        "BGP212.T711.A3",
++        "BGP212.T711.B3",
++        "BGP212.Params.A0",
++        "BGP212.Params.A1",
++        "BGP212.Params.B",
++        "BGP212.Params.δ",
++        "BGP212.Params.εs"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index a112cc9..75fe00a 100644
+--- a/README.md
++++ b/README.md
+@@ -109,13 +109,40 @@ Table 3 ─► definition_4_1_table3, prop_7_8_I_III_table3
+ all of the above ─► theorem_7_11_core ─► theorem_7_11 (H : AnalyticInputs)
+ ```
+ 
++The tenth pair is B3 (`Challenge/Gap.lean`, `Solution/Gap.lean`, objects in
++`BGP212/Gap.lean`): **the final deduction**.
++
++- `dhl_45_implies_gap : DHL 45 2 → H1Le 212`, from the general `dhl_implies_gap` (any
++  admissible `k`-tuple of diameter `D`) and Lemma 12.1; `h1_liminf` reads `H1Le D` as
++  `liminf (p_{n+1} − p_n) ≤ D`.
++- Lemma 4.9's W-trick step (`wtrick_coprime`, prime-factor form `wtrick_coprime_of_primes`,
++  squarefree combined modulus), connected to B2's `h45_wtrick_exists` by `h45_wtrick_coprime`.
++  For `H₄₅` every prime dividing a difference is at most 103, so `w ≥ 103` suffices, and 103
++  is sharp (`h45_wtrick_sharp`).
++- Theorem 4.10 as an interface (`SieveInputs`): the sieve criterion, Theorem 11.1, and the
++  bridge from Theorem 7.11's two conclusions to Definition 4.4 at Table 3, each a named field.
++- `final_deduction (A : AnalyticInputs) (S : SieveInputs A) : DHL 45 2 ∧ H1Le 212`.
++
++```text
++Lemma 12.1 + §2 ─► dhl_implies_gap ─► dhl_45_implies_gap
++B2 h45_wtrick_exists + wtrick_coprime_of_primes + h45_diff_primes ─► h45_wtrick_coprime
++A4 theorem_7_11 (A) ─► S.equidistributed_of_coverage ─┐
++S.theorem_11_1 ───────────────────────────────────────┼─► S.theorem_4_10 ─► DHL 45 2 ─► H1Le 212
++table3_valid ─────────────────────────────────────────┘
++```
++
++**Scope.** The paper proves `H₁ ≤ 212` unconditionally. Here, `DHL[45, 2] ⇒ H₁ ≤ 212` and every
++combinatorial ingredient are proved outright; `H₁ ≤ 212` itself is proved relative to the
++named fields of `AnalyticInputs` and `SieveInputs` (`specs/results/B3_final_deduction.yaml`).
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
+   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
+-  combinatorial hypothesis of Theorem 7.11 at Table 3 (A4).
++  combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
++  W-trick step of Lemma 4.9 (B3).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -172,6 +199,13 @@ python3 -I specs/checks/theorem_7_11_negative_controls.py /tmp/a4_neg
+ for f in /tmp/a4_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For B3's negative controls:
++
++```text
++python3 -I specs/checks/final_deduction_negative_controls.py /tmp/b3_neg
++for f in /tmp/b3_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index de287f8..546ce54 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -7,3 +7,4 @@ import Solution.Packing
+ import Solution.PackingB
+ import Solution.PackingC
+ import Solution.Theorem711
++import Solution.Gap
+diff --git a/Solution/Gap.lean b/Solution/Gap.lean
+new file mode 100644
+index 0000000..f11b03f
+--- /dev/null
++++ b/Solution/Gap.lean
+@@ -0,0 +1,440 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §2, Definition 4.5, Lemma 4.9, Theorem 4.10, Lemma 12.1, §12.
++-/
++import BGP212.Gap
++import Solution.Lemma12_1
++import Solution.MultiShiftB2
++import Solution.Theorem711
++import Mathlib.Data.Nat.GCD.BigOperators
++import Mathlib.Data.Int.Interval
++import Mathlib.Data.Nat.Prime.Int
++
++/-! # B3: proofs
++
++* `dhl_implies_gap`: DHL[k, 2] and one admissible `k`-tuple of diameter `D` give `H₁ ≤ D`.
++* `wtrick_coprime`: the coprimality step of Lemma 4.9.
++* `final_deduction`: DHL[45, 2] and `H₁ ≤ 212` from the named inputs of Theorems 4.10,
++  7.11 and 11.1. -/
++
++namespace BGP212.Gap
++
++open BGP212.Params BGP212.T711 Filter
++
++/-! ## Primes and consecutive gaps -/
++
++theorem primes_infinite : (Set.ofPred Nat.Prime).Infinite := Nat.infinite_setOfPred_prime
++
++/-- Two primes `p < q` give a consecutive gap at index `count p` of size at most `q − p`. -/
++theorem gap_le_of_primes {p q : ℕ} (hp : p.Prime) (hq : q.Prime) (hpq : p < q) :
++    Nat.nth Nat.Prime (Nat.count Nat.Prime p) = p ∧
++      primeGap (Nat.count Nat.Prime p) ≤ q - p := by
++  have h1 : Nat.nth Nat.Prime (Nat.count Nat.Prime p) = p := Nat.nth_count hp
++  refine ⟨h1, ?_⟩
++  have hc : Nat.count Nat.Prime p + 1 ≤ Nat.count Nat.Prime q := by
++    have := Nat.count_monotone Nat.Prime (Nat.succ_le_of_lt hpq)
++    rw [Nat.count_succ] at this
++    simpa [hp] using this
++  have h2 : Nat.nth Nat.Prime (Nat.count Nat.Prime p + 1) ≤ q := by
++    have := (Nat.nth_le_nth primes_infinite).mpr hc
++    rwa [Nat.nth_count hq] at this
++  unfold primeGap
++  omega
++
++/-- **`H₁` as a lim inf.** For the natural-valued sequence of gaps, `H1Le D` gives
++`liminf (p_{n+1} − p_n) ≤ D`. -/
++theorem h1_liminf {D : ℕ} (h : H1Le D) : Filter.liminf primeGap atTop ≤ D :=
++  Filter.liminf_le_of_frequently_le h
++
++/-- Primes `p < q` with `q − p ≤ D` and `p` arbitrarily large give `H₁ ≤ D`. -/
++theorem h1_of_pairs {D : ℕ}
++    (h : ∀ M : ℕ, ∃ p q : ℕ, M ≤ p ∧ p.Prime ∧ q.Prime ∧ p < q ∧ q - p ≤ D) : H1Le D := by
++  rw [H1Le, Filter.frequently_atTop]
++  intro N
++  obtain ⟨p, q, hM, hp, hq, hpq, hD⟩ := h (Nat.nth Nat.Prime N)
++  obtain ⟨h1, h2⟩ := gap_le_of_primes hp hq hpq
++  refine ⟨Nat.count Nat.Prime p, ?_, le_trans h2 hD⟩
++  by_contra hlt
++  have := (Nat.nth_strictMono primes_infinite) (lt_of_not_ge hlt)
++  omega
++
++/-! ## DHL[k, 2] ⇒ H₁ ≤ D -/
++
++/-- At least two primes among the `n + h` give `h < h′` in `H` with both `n + h`, `n + h′`
++prime. -/
++theorem two_primes {H : Finset ℤ} {n : ℤ}
++    (h : 2 ≤ (H.filter fun h => PrimeZ (n + h)).card) :
++    ∃ a ∈ H, ∃ b ∈ H, a < b ∧ PrimeZ (n + a) ∧ PrimeZ (n + b) := by
++  obtain ⟨a, ha, b, hb, hab⟩ :=
++    (Finset.one_lt_card (s := H.filter fun h => PrimeZ (n + h))).mp (by omega)
++  simp only [Finset.mem_filter] at ha hb
++  rcases lt_or_gt_of_ne hab with h1 | h1
++  · exact ⟨a, ha.1, b, hb.1, h1, ha.2, hb.2⟩
++  · exact ⟨b, hb.1, a, ha.1, h1, hb.2, ha.2⟩
++
++/-- **DHL[k, 2] ⇒ H₁ ≤ D**, for any admissible `k`-tuple `H` of diameter at most `D`: the
++infinitely many translates `n + H` containing two primes are bounded below (a prime is
++positive), hence unbounded above, and each gives primes `p < q` with `q − p ≤ D`. -/
++theorem dhl_implies_gap (k D : ℕ) (H : Finset ℤ) (hcard : H.card = k) (hadm : AdmissibleZ H)
++    (hdiam : ∀ a ∈ H, ∀ b ∈ H, b - a ≤ D) (hdhl : DHL k 2) : H1Le D := by
++  have hinf := hdhl H hcard hadm
++  apply h1_of_pairs
++  intro M
++  -- every n in the set exceeds −max |h|
++  have hne : H.Nonempty := by
++    obtain ⟨n0, hn0⟩ := hinf.nonempty
++    have h0 : 2 ≤ (H.filter fun h => PrimeZ (n0 + h)).card := hn0
++    have h1 := Finset.card_filter_le H (fun h => PrimeZ (n0 + h))
++    exact Finset.card_pos.mp (by omega)
++  set c : ℤ := H.sup' hne (fun h => |h|)
++  obtain ⟨n, hn, hnM⟩ : ∃ n ∈ {n : ℤ | 2 ≤ (H.filter fun h => PrimeZ (n + h)).card},
++      (M : ℤ) + c ≤ n := by
++    by_contra hcon
++    push Not at hcon
++    apply hinf
++    apply (Set.finite_Icc (-c) ((M : ℤ) + c)).subset
++    intro n hn
++    obtain ⟨a, ha, -, -, -, hpa, -⟩ := two_primes hn
++    have hac := abs_le.mp (Finset.le_sup' (fun h => |h|) ha : |a| ≤ c)
++    have := hpa.1
++    exact ⟨by omega, le_of_lt (hcon n hn)⟩
++  obtain ⟨a, ha, b, hb, hab, hpa, hpb⟩ := two_primes hn
++  have hac := abs_le.mp (Finset.le_sup' (fun h => |h|) ha : |a| ≤ c)
++  have ha0 := hpa.1
++  have hb0 := hpb.1
++  have hd := hdiam a ha b hb
++  refine ⟨(n + a).toNat, (n + b).toNat, by omega, hpa.2, hpb.2, by omega, by omega⟩
++
++/-! ## H₄₅ -/
++
++theorem h45Z_card : BGP212.WTrick.H45Z.card = 45 := by decide
++
++/-- Lemma 12.1's admissibility, transported to `ℤ`-shifts. -/
++theorem h45Z_admissible : AdmissibleZ BGP212.WTrick.H45Z := by
++  intro p hp
++  obtain ⟨r, hr, hom⟩ := BGP212.Challenge.h45_admissible p (Nat.prime_def.mp hp)
++  refine ⟨r, fun h hh hdvd => ?_⟩
++  simp only [BGP212.WTrick.H45Z, List.mem_toFinset, List.mem_map] at hh
++  obtain ⟨h0, hh0, rfl⟩ := hh
++  have hmod : r ≡ h0 [MOD p] := (Nat.modEq_iff_dvd).mpr (by simpa using hdvd)
++  have : h0 % p = r := by
++    have := hmod.symm
++    unfold Nat.ModEq at this
++    rw [this, Nat.mod_eq_of_lt hr]
++  exact hom h0 hh0 this
++
++theorem h45Z_diameter : ∀ a ∈ BGP212.WTrick.H45Z, ∀ b ∈ BGP212.WTrick.H45Z, b - a ≤ 212 := by
++  decide
++
++/-- **DHL[45, 2] ⇒ H₁ ≤ 212** (Theorem 1.1's last step): apply DHL[45, 2] to `H₄₅`. -/
++theorem dhl_45_implies_gap : DHL 45 2 → H1Le 212 :=
++  dhl_implies_gap 45 212 BGP212.WTrick.H45Z h45Z_card h45Z_admissible h45Z_diameter
++
++/-! ## Lemma 4.9: the W-trick coprimality step -/
++
++/-- **The W-trick coprimality step, prime-factor form.** Let every prime `p ≤ w` divide `W`,
++let `gcd(b + h, W) = 1` for every shift `h ∈ H`, and let every prime dividing a difference of
++two distinct shifts be at most `w`. If some `n ≡ b (mod W)` satisfies `n ≡ −h (mod D_h)` for
++every `h ∈ H`, then every `D_h` is coprime to `W` and the `D_h` for distinct shifts are
++pairwise coprime. -/
++theorem wtrick_coprime_of_primes (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ)
++    (hW : ∀ p : ℕ, p.Prime → p ≤ w → p ∣ W)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) W = 1)
++    (hn : (W : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hdiff : ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → ∀ p : ℕ, p.Prime → (p : ℤ) ∣ h - h' → p ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) W) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') := by
++  have hcopW : ∀ h ∈ H, Nat.Coprime (D h) W := by
++    intro h hh
++    apply Nat.coprime_of_dvd
++    intro p hp hpD hpW
++    have h1 : (p : ℤ) ∣ n + h := (Int.natCast_dvd_natCast.mpr hpD).trans (hD h hh)
++    have h2 : (p : ℤ) ∣ n - b := (Int.natCast_dvd_natCast.mpr hpW).trans hn
++    have h3 : (p : ℤ) ∣ b + h := by
++      have := dvd_sub h1 h2
++      rwa [show n + h - (n - b) = b + h by ring] at this
++    have h4 : p ∣ Int.gcd (b + h) W :=
++      Int.natCast_dvd_natCast.mp (by
++        rw [Int.gcd_eq_gcd_ab (b + h) W]
++        exact dvd_add (dvd_mul_of_dvd_left h3 _)
++          (dvd_mul_of_dvd_left (Int.natCast_dvd_natCast.mpr hpW) _))
++    rw [hb h hh] at h4
++    exact hp.one_lt.ne' (Nat.dvd_one.mp h4)
++  refine ⟨hcopW, fun h hh h' hh' hne => ?_⟩
++  apply Nat.coprime_of_dvd
++  intro p hp hp1 hp2
++  have h1 : (p : ℤ) ∣ n + h := (Int.natCast_dvd_natCast.mpr hp1).trans (hD h hh)
++  have h2 : (p : ℤ) ∣ n + h' := (Int.natCast_dvd_natCast.mpr hp2).trans (hD h' hh')
++  have h3 : (p : ℤ) ∣ h - h' := by
++    have := dvd_sub h1 h2
++    rwa [show n + h - (n + h') = h - h' by ring] at this
++  have hpw : p ≤ w := hdiff h hh h' hh' hne p hp h3
++  exact Nat.Coprime.coprime_dvd_left hp1 (hcopW h hh) |>.eq_one_of_dvd (hW p hp hpw) |>
++    fun e => hp.one_lt.ne' e
++
++/-- **The W-trick coprimality step (Lemma 4.9).** As printed: the shifts differ by at most
++`w` ("once x is large enough that |hᵢ − hᵢ′| < log log log x"). -/
++theorem wtrick_coprime (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ)
++    (hW : ∀ p : ℕ, p.Prime → p ≤ w → p ∣ W)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) W = 1)
++    (hn : (W : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hsmall : ∀ h ∈ H, ∀ h' ∈ H, (h - h').natAbs ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) W) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  wtrick_coprime_of_primes H D n b W w hW hb hn hD fun h hh h' hh' hne _ _ hp =>
++    le_trans (Nat.le_of_dvd (Int.natAbs_pos.mpr (sub_ne_zero.mpr hne)) (Int.natCast_dvd.mp hp))
++      (hsmall h hh h' hh')
++
++/-- The W-trick at `W = ∏_{p ≤ w} p` (Definition 4.5, with `w = log log log x`). -/
++theorem wtrick_coprime_primorial (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (w : ℕ)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) (primorial w) = 1)
++    (hn : (primorial w : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hsmall : ∀ h ∈ H, ∀ h' ∈ H, (h - h').natAbs ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) (primorial w)) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  wtrick_coprime H D n b (primorial w) w (fun _ hp hpw => (hp.dvd_primorial_iff).mpr hpw)
++    hb hn hD hsmall
++
++/-- The combined modulus `q = W · ∏_h D_h` of Lemma 4.9 is squarefree when `W` and every
++`D_h` are, given the coprimality of `wtrick_coprime`. -/
++theorem wtrick_modulus_squarefree (H : Finset ℤ) (D : ℤ → ℕ) (W : ℕ) (hW : Squarefree W)
++    (hD : ∀ h ∈ H, Squarefree (D h)) (hcopW : ∀ h ∈ H, Nat.Coprime (D h) W)
++    (hcop : ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h')) :
++    Squarefree (W * ∏ h ∈ H, D h) := by
++  induction H using Finset.induction_on with
++  | empty => simpa using hW
++  | insert a s ha ih =>
++      rw [Finset.prod_insert ha, show W * (D a * ∏ h ∈ s, D h) = D a * (W * ∏ h ∈ s, D h) by ring]
++      have ih' := ih (fun h hh => hD h (Finset.mem_insert_of_mem hh))
++        (fun h hh => hcopW h (Finset.mem_insert_of_mem hh))
++        (fun h hh h' hh' hne' => hcop h (Finset.mem_insert_of_mem hh) h'
++          (Finset.mem_insert_of_mem hh') hne')
++      refine Nat.squarefree_mul_iff.mpr ⟨?_, hD a (Finset.mem_insert_self a s), ih'⟩
++      refine Nat.Coprime.mul_right (hcopW a (Finset.mem_insert_self a s)) ?_
++      exact Nat.Coprime.prod_right fun h hh =>
++        hcop a (Finset.mem_insert_self a s) h (Finset.mem_insert_of_mem hh)
++          (fun e => ha (e ▸ hh))
++
++theorem h45Z_even : ∀ a ∈ BGP212.WTrick.H45Z, (2 : ℤ) ∣ a := by decide
++
++/-- **The primes dividing differences of `H₄₅` are at most 103.** Every element is even and
++every difference is at most 212 in size, so a prime dividing a nonzero difference `2e` is `2`
++or divides `e`, `|e| ≤ 106`; and 104, 105, 106 are composite. -/
++theorem h45_diff_primes : ∀ a ∈ BGP212.WTrick.H45Z, ∀ c ∈ BGP212.WTrick.H45Z, a ≠ c →
++    ∀ p : ℕ, p.Prime → (p : ℤ) ∣ a - c → p ≤ 103 := by
++  intro a ha c hc hne p hp hdvd
++  obtain ⟨e, he⟩ : (2 : ℤ) ∣ a - c := dvd_sub (h45Z_even a ha) (h45Z_even c hc)
++  have hd1 := h45Z_diameter a ha c hc
++  have hd2 := h45Z_diameter c hc a ha
++  have hpz : Prime (p : ℤ) := Nat.prime_iff_prime_int.mp hp
++  rw [he] at hdvd
++  rcases hpz.dvd_or_dvd hdvd with h2 | he'
++  · have : p ∣ 2 := Int.natCast_dvd_natCast.mp h2
++    have := Nat.le_of_dvd (by norm_num) this
++    omega
++  · have hepos : 0 < e.natAbs := Int.natAbs_pos.mpr (by rintro rfl; apply hne; omega)
++    have hle : p ≤ e.natAbs := Nat.le_of_dvd hepos (Int.natCast_dvd.mp he')
++    have he106 : e.natAbs ≤ 106 := by omega
++    by_contra hgt
++    have : p = 104 ∨ p = 105 ∨ p = 106 := by omega
++    rcases this with rfl | rfl | rfl <;> exact absurd hp (by decide)
++
++/-- **The W-trick for `H₄₅`** (B2 → Lemma 4.9): for every `w ≥ 103`, B2's residue class gives
++`b` with `gcd(b + h, ∏_{p ≤ w} p) = 1` on `H₄₅`, and then every compatible system of
++congruences has moduli pairwise coprime and coprime to `W`. -/
++theorem h45_wtrick_coprime (w : ℕ) (hw : 103 ≤ w) :
++    ∃ b : ℕ, (∀ h ∈ BGP212.H45, Nat.gcd (b + h) (primorial w) = 1) ∧
++      ∀ (n : ℤ) (D : ℤ → ℕ), (primorial w : ℤ) ∣ n - b →
++        (∀ h ∈ BGP212.WTrick.H45Z, (D h : ℤ) ∣ n + h) →
++        (∀ h ∈ BGP212.WTrick.H45Z, Nat.Coprime (D h) (primorial w)) ∧
++          ∀ h ∈ BGP212.WTrick.H45Z, ∀ h' ∈ BGP212.WTrick.H45Z, h ≠ h' →
++            Nat.Coprime (D h) (D h') := by
++  obtain ⟨b, hb⟩ := BGP212.Challenge.h45_wtrick_exists (primorial w) (primorial_pos w)
++  refine ⟨b, hb, fun n D hn hD => wtrick_coprime_of_primes _ D n b (primorial w) w
++    (fun _ hp hpw => (hp.dvd_primorial_iff).mpr hpw) ?_ hn hD ?_⟩
++  · intro h hh
++    simp only [BGP212.WTrick.H45Z, List.mem_toFinset, List.mem_map] at hh
++    obtain ⟨h0, hh0, rfl⟩ := hh
++    rw [show (b : ℤ) + (h0 : ℤ) = ((b + h0 : ℕ) : ℤ) by push_cast; ring, Int.gcd_natCast_natCast]
++    exact hb h0 hh0
++  · intro a ha c hc hne p hp hdvd
++    exact le_trans (h45_diff_primes a ha c hc hne p hp hdvd) hw
++
++/-- **103 is sharp.** At `w = 102`, for every `b` there are `n ≡ b (mod ∏_{p ≤ 102} p)` and
++moduli `D_h | n + h` with `D_0 = D_206 = 103`, not coprime: the prime 103 divides
++`206 − 0`. -/
++theorem h45_wtrick_sharp (b : ℕ) :
++    ∃ (n : ℤ) (D : ℤ → ℕ), (primorial 102 : ℤ) ∣ n - b ∧
++      (∀ h ∈ BGP212.WTrick.H45Z, (D h : ℤ) ∣ n + h) ∧
++      (0 : ℤ) ∈ BGP212.WTrick.H45Z ∧ (206 : ℤ) ∈ BGP212.WTrick.H45Z ∧
++      ¬ Nat.Coprime (D 0) (D 206) := by
++  have hp : Nat.Prime 103 := by decide
++  have co : Nat.Coprime (primorial 102) 103 :=
++    Nat.Coprime.symm ((Nat.Prime.coprime_iff_not_dvd hp).mpr (by
++      rw [hp.dvd_primorial_iff]; omega))
++  obtain ⟨k, hk1, hk2⟩ := Nat.chineseRemainder co b 0
++  refine ⟨k, fun h => if h = 0 ∨ h = 206 then 103 else 1, ?_, ?_, by decide, by decide, by decide⟩
++  · have := (Nat.modEq_iff_dvd).mp hk1.symm
++    simpa using this
++  · intro h _
++    have h103 : (103 : ℤ) ∣ (k : ℤ) := by
++      have := (Nat.modEq_iff_dvd).mp hk2.symm
++      simpa using this
++    by_cases h0 : h = 0 ∨ h = 206
++    · simp only [h0, ite_true]
++      rcases h0 with rfl | rfl
++      · simpa using h103
++      · exact dvd_add h103 ⟨2, by norm_num⟩
++    · simp [h0]
++
++/-- Without the prime bound on differences the coprimality fails: `H = {0, 6}`, `W = 2`,
++`w = 2`, `b = 1`, `n = 3`, `D_0 = 3`, `D_6 = 9`. -/
++theorem wtrick_needs_prime_bound :
++    ∃ (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ),
++      (∀ p : ℕ, p.Prime → p ≤ w → p ∣ W) ∧ (∀ h ∈ H, Int.gcd (b + h) W = 1) ∧
++      (W : ℤ) ∣ n - b ∧ (∀ h ∈ H, (D h : ℤ) ∣ n + h) ∧
++      ∃ h ∈ H, ∃ h' ∈ H, h ≠ h' ∧ ¬ Nat.Coprime (D h) (D h') := by
++  refine ⟨{0, 6}, fun h => if h = 0 then 3 else 9, 3, 1, 2, 2, ?_, by decide, by decide,
++    by decide, 0, by decide, 6, by decide, by decide, by decide⟩
++  intro p hp hp2
++  have : p = 2 := by have := hp.two_le; omega
++  subst this; exact dvd_refl 2
++
++/-- Without `gcd(b + h, W) = 1` a modulus can share a prime with `W`: `H = {0}`, `W = 2`,
++`b = n = 0`, `D_0 = 2`. -/
++theorem wtrick_needs_coprime_residue :
++    ∃ (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ),
++      (∀ p : ℕ, p.Prime → p ≤ w → p ∣ W) ∧ (W : ℤ) ∣ n - b ∧ (∀ h ∈ H, (D h : ℤ) ∣ n + h) ∧
++      ∃ h ∈ H, ¬ Nat.Coprime (D h) W := by
++  refine ⟨{0}, fun _ => 2, 0, 0, 2, 2, ?_, by decide, by decide, 0, by decide, by decide⟩
++  intro p hp hp2
++  have : p = 2 := by have := hp.two_le; omega
++  subst this; exact dvd_refl 2
++
++/-! ## Theorem 4.10 at Table 3, and the final deduction -/
++
++theorem table3_valid : table3Support.Valid := ⟨by decide, support_datum_table3.1⟩
++
++/-- The origin lies in Table 3's support set `T₄₅` (band `j = 1`, no rough coordinates). -/
++theorem zero_mem_table3Support : (fun _ => (0 : ℝ)) ∈ table3Support.supportSet := by
++  refine ⟨fun _ => ⟨le_refl 0, zero_le_one⟩, 1, le_refl 1, le_refl 1, ?_, ?_, ?_⟩
++  · have : (A3 (1 - 1) + εs : ℚ) = 0 := by decide +kernel
++    simp only [table3Support] at *
++    rw [this]; simp
++  · have : (0 : ℚ) < A3 1 + εs := by decide +kernel
++    simp only [table3Support, Finset.sum_const_zero]
++    exact_mod_cast this
++  · have hB : ∀ m, (0 : ℚ) ≤ B m := by
++      intro m
++      rcases Nat.eq_zero_or_pos m with rfl | hm
++      · simp [B]
++      · exact le_trans (by decide +kernel) (BGP212.T711.B_pos m hm)
++    simp only [Finset.sum_const_zero]
++    exact_mod_cast hB _
++
++/-- **The final deduction, relative to its named inputs.** A4's `theorem_7_11` supplies the
++two conclusions that `equidistributed_of_coverage` turns into Definition 4.4 at Table 3;
++`theorem_11_1` supplies the variational inequality; Theorem 4.10 gives DHL[45, 2]; and
++`dhl_45_implies_gap` gives `H₁ ≤ 212`. -/
++theorem final_deduction (A : AnalyticInputs) (S : SieveInputs A) : DHL 45 2 ∧ H1Le 212 := by
++  have h711 := BGP212.T711.theorem_7_11 A
++  have hdist : S.Equidistributed table3Support := S.equidistributed_of_coverage h711.1 h711.2
++  have hdhl : DHL 45 2 := S.theorem_4_10 table3Support table3_valid hdist S.theorem_11_1
++  exact ⟨hdhl, dhl_45_implies_gap hdhl⟩
++
++end BGP212.Gap
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.T711 BGP212.Gap Filter
++
++theorem h1_liminf {D : ℕ} (h : H1Le D) : Filter.liminf primeGap atTop ≤ D :=
++  BGP212.Gap.h1_liminf h
++
++theorem dhl_implies_gap (k D : ℕ) (H : Finset ℤ) (hcard : H.card = k) (hadm : AdmissibleZ H)
++    (hdiam : ∀ a ∈ H, ∀ b ∈ H, b - a ≤ D) (hdhl : DHL k 2) : H1Le D :=
++  BGP212.Gap.dhl_implies_gap k D H hcard hadm hdiam hdhl
++
++theorem h45Z_facts :
++    BGP212.WTrick.H45Z.card = 45 ∧ AdmissibleZ BGP212.WTrick.H45Z ∧
++      ∀ a ∈ BGP212.WTrick.H45Z, ∀ b ∈ BGP212.WTrick.H45Z, b - a ≤ 212 :=
++  ⟨h45Z_card, h45Z_admissible, h45Z_diameter⟩
++
++theorem dhl_45_implies_gap : DHL 45 2 → H1Le 212 := BGP212.Gap.dhl_45_implies_gap
++
++theorem wtrick_coprime_of_primes (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ)
++    (hW : ∀ p : ℕ, p.Prime → p ≤ w → p ∣ W)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) W = 1)
++    (hn : (W : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hdiff : ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → ∀ p : ℕ, p.Prime → (p : ℤ) ∣ h - h' → p ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) W) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  BGP212.Gap.wtrick_coprime_of_primes H D n b W w hW hb hn hD hdiff
++
++theorem wtrick_coprime (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ)
++    (hW : ∀ p : ℕ, p.Prime → p ≤ w → p ∣ W)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) W = 1)
++    (hn : (W : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hsmall : ∀ h ∈ H, ∀ h' ∈ H, (h - h').natAbs ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) W) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  BGP212.Gap.wtrick_coprime H D n b W w hW hb hn hD hsmall
++
++theorem wtrick_coprime_primorial (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (w : ℕ)
++    (hb : ∀ h ∈ H, Int.gcd (b + h) (primorial w) = 1)
++    (hn : (primorial w : ℤ) ∣ n - b) (hD : ∀ h ∈ H, (D h : ℤ) ∣ n + h)
++    (hsmall : ∀ h ∈ H, ∀ h' ∈ H, (h - h').natAbs ≤ w) :
++    (∀ h ∈ H, Nat.Coprime (D h) (primorial w)) ∧
++      ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h') :=
++  BGP212.Gap.wtrick_coprime_primorial H D n b w hb hn hD hsmall
++
++theorem wtrick_modulus_squarefree (H : Finset ℤ) (D : ℤ → ℕ) (W : ℕ) (hW : Squarefree W)
++    (hD : ∀ h ∈ H, Squarefree (D h)) (hcopW : ∀ h ∈ H, Nat.Coprime (D h) W)
++    (hcop : ∀ h ∈ H, ∀ h' ∈ H, h ≠ h' → Nat.Coprime (D h) (D h')) :
++    Squarefree (W * ∏ h ∈ H, D h) :=
++  BGP212.Gap.wtrick_modulus_squarefree H D W hW hD hcopW hcop
++
++theorem h45_diff_primes : ∀ a ∈ BGP212.WTrick.H45Z, ∀ c ∈ BGP212.WTrick.H45Z, a ≠ c →
++    ∀ p : ℕ, p.Prime → (p : ℤ) ∣ a - c → p ≤ 103 :=
++  BGP212.Gap.h45_diff_primes
++
++theorem h45_wtrick_coprime (w : ℕ) (hw : 103 ≤ w) :
++    ∃ b : ℕ, (∀ h ∈ BGP212.H45, Nat.gcd (b + h) (primorial w) = 1) ∧
++      ∀ (n : ℤ) (D : ℤ → ℕ), (primorial w : ℤ) ∣ n - b →
++        (∀ h ∈ BGP212.WTrick.H45Z, (D h : ℤ) ∣ n + h) →
++        (∀ h ∈ BGP212.WTrick.H45Z, Nat.Coprime (D h) (primorial w)) ∧
++          ∀ h ∈ BGP212.WTrick.H45Z, ∀ h' ∈ BGP212.WTrick.H45Z, h ≠ h' →
++            Nat.Coprime (D h) (D h') :=
++  BGP212.Gap.h45_wtrick_coprime w hw
++
++theorem h45_wtrick_sharp (b : ℕ) :
++    ∃ (n : ℤ) (D : ℤ → ℕ), (primorial 102 : ℤ) ∣ n - b ∧
++      (∀ h ∈ BGP212.WTrick.H45Z, (D h : ℤ) ∣ n + h) ∧
++      (0 : ℤ) ∈ BGP212.WTrick.H45Z ∧ (206 : ℤ) ∈ BGP212.WTrick.H45Z ∧
++      ¬ Nat.Coprime (D 0) (D 206) :=
++  BGP212.Gap.h45_wtrick_sharp b
++
++theorem wtrick_needs_prime_bound :
++    ∃ (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ),
++      (∀ p : ℕ, p.Prime → p ≤ w → p ∣ W) ∧ (∀ h ∈ H, Int.gcd (b + h) W = 1) ∧
++      (W : ℤ) ∣ n - b ∧ (∀ h ∈ H, (D h : ℤ) ∣ n + h) ∧
++      ∃ h ∈ H, ∃ h' ∈ H, h ≠ h' ∧ ¬ Nat.Coprime (D h) (D h') :=
++  BGP212.Gap.wtrick_needs_prime_bound
++
++theorem wtrick_needs_coprime_residue :
++    ∃ (H : Finset ℤ) (D : ℤ → ℕ) (n b : ℤ) (W w : ℕ),
++      (∀ p : ℕ, p.Prime → p ≤ w → p ∣ W) ∧ (W : ℤ) ∣ n - b ∧ (∀ h ∈ H, (D h : ℤ) ∣ n + h) ∧
++      ∃ h ∈ H, ¬ Nat.Coprime (D h) W :=
++  BGP212.Gap.wtrick_needs_coprime_residue
++
++theorem table3_valid : table3Support.Valid := BGP212.Gap.table3_valid
++
++theorem zero_mem_table3Support : (fun _ => (0 : ℝ)) ∈ table3Support.supportSet :=
++  BGP212.Gap.zero_mem_table3Support
++
++theorem final_deduction (A : AnalyticInputs) (S : SieveInputs A) : DHL 45 2 ∧ H1Le 212 :=
++  BGP212.Gap.final_deduction A S
++
++end BGP212.Challenge
+diff --git a/specs/checks/final_deduction_negative_controls.py b/specs/checks/final_deduction_negative_controls.py
+new file mode 100644
+index 0000000..fa52fcc
+--- /dev/null
++++ b/specs/checks/final_deduction_negative_controls.py
+@@ -0,0 +1,33 @@
++"""B3 negative controls (outside the trusted base).
++
++Usage, from the repository root (after `lake build BGP212.Gap`):
++  python3 -I specs/checks/final_deduction_negative_controls.py OUTDIR
++  for f in OUTDIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++
++Each `ok_*.lean` file is a true statement and is accepted; each `nc_*.lean` file moves one
++quantity the B3 proofs depend on and is rejected (`decide` fails)."""
++import os, sys
++
++out = sys.argv[1]
++os.makedirs(out, exist_ok=True)
++HDR = "import BGP212.Gap\nopen BGP212 BGP212.WTrick BGP212.Gap\n"
++cases = {
++    "ok_diameter": ("H₄₅ has diameter at most 212",
++                    "example : ∀ a ∈ H45Z, ∀ b ∈ H45Z, b - a ≤ 212 := by decide"),
++    "nc_diameter": ("diameter at most 211",
++                    "example : ∀ a ∈ H45Z, ∀ b ∈ H45Z, b - a ≤ 211 := by decide"),
++    "ok_card": ("H₄₅ has 45 elements", "example : H45Z.card = 45 := by decide"),
++    "nc_card": ("44 elements", "example : H45Z.card = 44 := by decide"),
++    "ok_even": ("every element of H₄₅ is even", "example : ∀ a ∈ H45Z, (2 : ℤ) ∣ a := by decide"),
++    "nc_odd": ("some element of H₄₅ is odd", "example : ∃ a ∈ H45Z, ¬ (2 : ℤ) ∣ a := by decide"),
++    "ok_103": ("103 divides the difference 206 − 0 of H₄₅",
++               "example : (0 : ℤ) ∈ H45Z ∧ (206 : ℤ) ∈ H45Z ∧ (103 : ℤ) ∣ 206 - 0 := by decide"),
++    "nc_103": ("no difference of H₄₅ is divisible by 103 (would lower the W-trick bound below 103)",
++               "example : ∀ a ∈ H45Z, ∀ c ∈ H45Z, a ≠ c → ¬ (103 : ℤ) ∣ a - c := by decide"),
++    "ok_residue": ("B2's residue 74549147 is coprime to W23 on H₄₅",
++                   "example : ∀ h ∈ H45, Nat.gcd (74549147 + h) W23 = 1 := by decide"),
++    "nc_residue": ("the residue 74549148",
++                   "example : ∀ h ∈ H45, Nat.gcd (74549148 + h) W23 = 1 := by decide"),
++}
++for name, (what, body) in cases.items():
++    open(os.path.join(out, name + ".lean"), "w").write(f"{HDR}-- control: {what}\n{body}\n")
+diff --git a/specs/results/B3_final_deduction.yaml b/specs/results/B3_final_deduction.yaml
+new file mode 100644
+index 0000000..15b09c4
+--- /dev/null
++++ b/specs/results/B3_final_deduction.yaml
+@@ -0,0 +1,141 @@
++# Result record: tenth Challenge/Solution pair (B3, the final deduction)
++
++identity:
++  id: B3
++  statement: "DHL[45, 2] ⇒ H₁ ≤ 212 proved; Lemma 4.9's W-trick step proved and connected to B2; Theorem 4.10 as a named interface; H₁ ≤ 212 proved relative to the named inputs of Theorems 4.10, 7.11 and 11.1"
++  source: "Source/bgp212.pdf: §2 (admissibility, DHL[k, m], H₁) (p. 3), Definition 4.1 (p. 4), Definition 4.5 (p. 5), Lemma 4.9 and proof (pp. 10–11), Theorem 4.10 (p. 14), §9.3 (p. 40), Theorem 11.1 (p. 51), Lemma 12.1 and the proof of Theorem 1.1 (p. 52)"
++  builds_on: "A1 (Lemma 12.1), B2 (h45_wtrick_exists), A4 (theorem_7_11, support_datum_table3), all unchanged"
++
++state:
++  mathematical: proved          # final deduction; H₁ ≤ 212 relative to AnalyticInputs and SieveInputs
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++scope:
++  paper: "Theorem 1.1 (H₁ ≤ 212) is asserted unconditionally in the source, from Theorems 4.10, 7.11, 11.1 and Lemma 12.1."
++  lean_unconditional: >
++    dhl_45_implies_gap (DHL[45, 2] ⇒ H₁ ≤ 212), dhl_implies_gap (general k, D), h1_liminf,
++    the W-trick theorems, h45_diff_primes, h45_wtrick_coprime, h45_wtrick_sharp,
++    table3_valid, zero_mem_table3Support, and (from A4) every combinatorial hypothesis of
++    Theorem 7.11.
++  lean_conditional: >
++    final_deduction: DHL[45, 2] ∧ H₁ ≤ 212 for every A : AnalyticInputs (A4: Lemmas 5.3–5.7,
++    Proposition 7.8's assembly, Theorem 8.3) and S : SieveInputs A (Theorem 4.10,
++    Theorem 11.1 with §9.3, and the identification of Theorem 7.11's conclusion with
++    Definition 4.4 at Table 3).
++
++verification:
++  definitions: BGP212/Gap.lean
++  challenge: Challenge/Gap.lean
++  solution: Solution/Gap.lean
++  comparator_config: Comparator/final_deduction.json
++  negative_controls_script: specs/checks/final_deduction_negative_controls.py
++  signatures:
++    h1_liminf: "H1Le D → liminf primeGap atTop ≤ D"
++    dhl_implies_gap: "(k D) (H : Finset ℤ) → H.card = k → AdmissibleZ H → (∀ a b ∈ H, b − a ≤ D) → DHL k 2 → H1Le D"
++    h45Z_facts: "H45Z.card = 45 ∧ AdmissibleZ H45Z ∧ ∀ a b ∈ H45Z, b − a ≤ 212"
++    dhl_45_implies_gap: "DHL 45 2 → H1Le 212"
++    wtrick_coprime_of_primes: "(∀ p prime ≤ w, p ∣ W) → (∀ h ∈ H, gcd(b + h, W) = 1) → W ∣ n − b → (∀ h ∈ H, D h ∣ n + h) → (primes dividing distinct differences ≤ w) → (∀ h, Coprime (D h) W) ∧ pairwise Coprime"
++    wtrick_coprime: "same with |h − h′| ≤ w (the printed hypothesis)"
++    wtrick_coprime_primorial: "same at W = primorial w"
++    wtrick_modulus_squarefree: "Squarefree W → (∀ h, Squarefree (D h)) → coprimality → Squarefree (W · ∏ D h)"
++    h45_diff_primes: "∀ a ≠ c in H45Z, ∀ p prime, p ∣ a − c → p ≤ 103"
++    h45_wtrick_coprime: "103 ≤ w → ∃ b, (∀ h ∈ H45, gcd(b + h, primorial w) = 1) ∧ coprimality of every compatible system"
++    h45_wtrick_sharp: "∀ b, ∃ n D, primorial 102 ∣ n − b ∧ (∀ h, D h ∣ n + h) ∧ ¬ Coprime (D 0) (D 206)"
++    wtrick_needs_prime_bound: "a system meeting every hypothesis except the prime bound, with non-coprime moduli"
++    wtrick_needs_coprime_residue: "a system meeting every hypothesis except gcd(b + h, W) = 1, with D h sharing a prime with W"
++    table3_valid: "table3Support.Valid (k = 45, Definition 4.1)"
++    zero_mem_table3Support: "0 ∈ T₄₅ (Definition 4.1's set)"
++    final_deduction: "∀ (A : AnalyticInputs) (S : SieveInputs A), DHL 45 2 ∧ H1Le 212"
++  named_hypotheses:          # fields of SieveInputs A
++    Equidistributed: "Definition 4.4 for ρ = 1_P on the moduli generated by T (opaque predicate)"
++    VariationalIneq: "∃ nonzero symmetric F ∈ L²(T_k) with k·J_T(F) > I_T(F) (Definition 4.6; opaque predicate)"
++    theorem_4_10: "∀ T, T.Valid → Equidistributed T → VariationalIneq T → DHL T.k 2"
++    theorem_11_1: "VariationalIneq table3Support (Theorem 11.1 with the §9.3 rescaling)"
++    equidistributed_of_coverage: "A.PositiveLevel → A.HalfLevel → Equidistributed table3Support"
++  where_theorem_7_11_enters: >
++    final_deduction applies A4's theorem_7_11 to A, obtaining A.PositiveLevel ∧ A.HalfLevel;
++    S.equidistributed_of_coverage turns exactly those two conclusions into
++    Equidistributed table3Support. That bridge is a named hypothesis: Theorem 8.3's absolute
++    discrepancy bound over Q_BV ∪ Q_tr ∪ Q₀ ∪ Q₊ read as (4.7) for ρ = 1_P. A4's combinatorial
++    core enters only through theorem_7_11's antecedents; no analytic estimate is derived from it.
++  dependency_graph: |
++    Lemma 12.1 (A1) ──► h45Z_facts ──┐
++    §2 definitions ──────────────────┼─► dhl_implies_gap ──► dhl_45_implies_gap : DHL 45 2 → H1Le 212
++                                     │                                   ▲
++    B2 h45_wtrick_exists ─► h45_wtrick_coprime ◄── wtrick_coprime_of_primes ◄── h45_diff_primes (≤ 103)
++                                     (Lemma 4.9's step; h45_wtrick_sharp: 103 is sharp)
++    A4 theorem_7_11 (A) ─► A.PositiveLevel ∧ A.HalfLevel
++        ─► S.equidistributed_of_coverage ─► Equidistributed table3Support ─┐
++    S.theorem_11_1 ─► VariationalIneq table3Support ──────────────────────┼─► S.theorem_4_10 ─► DHL 45 2
++    table3_valid (A4 support_datum_table3) ───────────────────────────────┘          │
++                                                                    dhl_45_implies_gap ┘
++    final_deduction (A S) : DHL 45 2 ∧ H1Le 212
++  definitions_note: >
++    DHL quantifies over Finset ℤ of card k (distinct integers), admissibility omits a residue
++    class modulo every prime, and "infinitely many integers n" is Set.Infinite on ℤ. H1Le D is
++    "∃ᶠ n, p_{n+1} − p_n ≤ D" with p_n = Nat.nth Nat.Prime n; h1_liminf gives liminf ≤ D.
++    supportSet transcribes Definition 4.1's T_k over ℝ with the rational datum.
++  findings:
++    F1_wtrick_bound: >
++      Lemma 4.9 requires |h_i − h_i′| < log log log x. The proof uses only that every prime
++      dividing a difference of distinct shifts is at most w (wtrick_coprime_of_primes). For
++      H₄₅ every element is even, so every such prime is at most 103 (h45_diff_primes), and
++      w ≥ 103 suffices (h45_wtrick_coprime) in place of w > 212; 103 is sharp, since
++      103 ∣ 206 − 0 (h45_wtrick_sharp).
++    F2_hypotheses_needed: >
++      Both hypotheses of the coprimality step carry weight: wtrick_needs_prime_bound and
++      wtrick_needs_coprime_residue exhibit systems meeting every other hypothesis whose moduli
++      share a prime.
++    F3_theorem_11_1_normalization: >
++      Theorem 4.10 asks k·J_T(F) > I_T(F) with J_T one marginal (Definition 4.6), and §9.3 gives
++      k·J(F)/I(F) = (1/4)·k·J(F̃)/I(F̃). Theorem 11.1 prints J_T(F⋆)/I_T(F⋆) = 4.0043… > 4 and
++      §1 prints J_T(F⋆) − 4I_T(F⋆) > 0; these match the physical inequality when J_T in
++      Theorem 11.1 denotes the sum of the k marginals, k·J. With a single marginal the
++      printed ratio would correspond to k·J(F̃)/I(F̃) ≈ 45 × 4.004. The interface states
++      Theorem 4.10's form, k·J_T(F) > I_T(F), and theorem_11_1 is read in that form.
++    F4_paper_vs_lean: >
++      The paper's Theorem 1.1 is unconditional mathematics; in Lean, H₁ ≤ 212 holds relative to
++      the named fields of AnalyticInputs and SieveInputs, while DHL[45, 2] ⇒ H₁ ≤ 212 and every
++      combinatorial ingredient are proved outright.
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  negative_controls:
++    - change: "diameter of H₄₅ at most 211; card 44; some element odd; no difference divisible by 103; residue 74549148 coprime to W23 on H₄₅"
++      result: "kernel rejects each (decide fails)"
++    - change: "the five matching true statements (positive controls)"
++      result: "kernel accepts"
++    - change: "dhl_45_implies_gap claimed with H1Le 211 in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.dhl_45_implies_gap'"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run
++    with the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 12 minutes for the B3 comparator suite in the build container (it replays the A3c certificates through A4)"
++  run_date: 2026-10-17
++  commit_hash: PENDING_VPS
++
++next_development:
++  variational: >
++    V0: the 846-dimensional basis count of §10 in exact arithmetic. V1: the simplex moment
++    identity (10.1) as a kernel-checked rational formula. V2: define I_T and J_T concretely
++    (MeasureTheory) and prove the §9.3 rescaling I(F) = 4^{−k} I(F̃), J(F) = 4^{−(k+1)} J(F̃), so
++    VariationalIneq becomes a definition and theorem_11_1 a target. V3: with Axiom's P⋆,
++    check I_T(P⋆) > 0 and J_T(P⋆) − 4I_T(P⋆) > 0 exactly.
++  analytic: >
++    Make Definitions 4.3 and 4.4 concrete (generated moduli Q*(x; T, ε₀); the bound (4.7)),
++    so Equidistributed becomes a definition; then split equidistributed_of_coverage into
++    Theorem 8.3 over the four modulus ranges and the summation step. Lemma 8.1 and Lemmas
++    5.3–5.7 stay cited theorems, each one named hypothesis.
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 5f52a64..7e1bf3d 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
