@@ -1,6 +1,6 @@
 /-
 Copyright (c) 2026 thinkthoughts. All rights reserved.
-Released under Apache 2.0 license as described in the file LICENSE.
+Released under MIT license as described in the file LICENSE.
 Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
 (September 3, 2026), Lemma 12.1 (§12).
 -/

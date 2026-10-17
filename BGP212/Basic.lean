@@ -1,6 +1,6 @@
 /-
 Copyright (c) 2026 thinkthoughts. All rights reserved.
-Released under Apache 2.0 license as described in the file LICENSE.
+Released under MIT license as described in the file LICENSE.
 Source: Charton, Hong, Lau, Ono, Remy, Siu, Swaminathan, Thorner, Xie,
 "A New Bound for Small Gaps Between Primes", Axiom Math, preliminary draft
 (September 3, 2026), §2 (admissibility), §12 (the tuple H₄₅, Lemma 12.1).
