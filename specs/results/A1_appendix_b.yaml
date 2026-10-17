@@ -43,6 +43,7 @@ verification:
     The derivation check exposed SI-3: Table 6 row 14 equals the 15ϵ form, while
     Proposition 7.8 (II) states 9ϵ. Recorded in A0 and in source_inconsistencies.
   sandbox: >
+    VPS verified with landrun commit 811cfff51ceaf3d9843708aa6d22e9b84ccac8b4.
     Comparator ran with the pass-through landrun stand-in in the authoring
     environment. Rerun ./verify.sh on the VPS with the real landrun to record a
     sandboxed result here.
