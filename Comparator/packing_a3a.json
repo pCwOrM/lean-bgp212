@@ -1,0 +1,36 @@
+{
+    "challenge_module": "Challenge.Packing",
+    "solution_module": "Solution.Packing",
+    "theorem_names": [
+        "BGP212.Challenge.greedy_pack",
+        "BGP212.Challenge.largest_coordinate",
+        "BGP212.Challenge.omega_matches_table3",
+        "BGP212.Challenge.root_ledger",
+        "BGP212.Challenge.lemma_7_10_settled"
+    ],
+    "definition_names": [
+        "BGP212.Packing.InXi",
+        "BGP212.Packing.binSum",
+        "BGP212.Packing.Packs",
+        "BGP212.Packing.ω11",
+        "BGP212.Packing.capsA1",
+        "BGP212.Packing.capsA2",
+        "BGP212.Packing.capsB",
+        "BGP212.Packing.capsC",
+        "BGP212.Packing.capsD",
+        "BGP212.Packing.capsE",
+        "BGP212.Packing.Root",
+        "BGP212.Packing.allRoots",
+        "BGP212.Packing.settledRoots",
+        "BGP212.Packing.openRoots",
+        "BGP212.Params.B",
+        "BGP212.Params.δ",
+        "BGP212.Params.εa",
+        "BGP212.Ledger.packingPairs"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

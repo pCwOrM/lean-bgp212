@@ -63,19 +63,26 @@ and the W-trick of Definition 4.5. Through `admissible_iff_local_factors`, Lemma
 a residue `b` with `gcd(b + h, W) = 1` for all `h ∈ H₄₅` and every `W`; at
 `W = 2·3·…·23` that residue is unique, `b = 74549147`.
 
+The sixth pair is A3a (`Challenge/Packing.lean`, `Solution/Packing.lean`), the first part
+of Lemma 7.10's factor packing: a generic greedy packing lemma and 296 of the 455 packing
+roots, each proved for every rough profile in its domain (the settled condition-(D) root
+uniformly over its full (γ, ω₀) box). Certificates are in
+`specs/certificates/packing_a3a.json`; the kernel re-checks every inequality. The other 159
+roots are listed in `openRoots` and stay outside the proved scope until A3b.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
-  W-trick for H₄₅ (B2).
+  W-trick for H₄₅ (B2); 296 of the 455 packing roots of Lemma 7.10 (A3a).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
 - **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
   criterion (Theorem 4.10) and the deduction of Theorem 1.1.
-- **External certificates:** the 455 polytope packing certificates of Lemma 7.10 (their
-  count is checked here) and the exact variational certificate of Theorem 11.1.
+- **External certificates:** the 159 packing roots of Lemma 7.10 still open after A3a
+  (listed in `openRoots`), and the exact variational certificate of Theorem 11.1.
 
 ## Comparator Verification
 
@@ -89,6 +96,13 @@ Then
 
 ```text
 ./verify.sh
+```
+
+To regenerate and cross-check the A3a certificate data (exploratory, outside the kernel):
+
+```text
+python3 -I specs/checks/packing_ledger.py specs/certificates/packing_a3a.json
+python3 -I specs/checks/packing_certificates_match.py
 ```
 
 builds the project and runs Lean Comparator on each config in `Comparator/`.
