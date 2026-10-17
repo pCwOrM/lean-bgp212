@@ -1,0 +1,44 @@
+{
+    "challenge_module": "Challenge.Variational",
+    "solution_module": "Solution.Variational",
+    "theorem_names": [
+        "BGP212.Challenge.mem_partsLE",
+        "BGP212.Challenge.nodup_partsLE",
+        "BGP212.Challenge.p_eq_enumeration",
+        "BGP212.Challenge.partition_counts",
+        "BGP212.Challenge.dimension_identity",
+        "BGP212.Challenge.card_B21Idx",
+        "BGP212.Challenge.ordered_family_count",
+        "BGP212.Challenge.toPair_injective",
+        "BGP212.Challenge.toPair_range",
+        "BGP212.Challenge.B21_eq_span",
+        "BGP212.Challenge.power_sums_algebraically_independent",
+        "BGP212.Challenge.genIdx_linearIndependent",
+        "BGP212.Challenge.finrank_B21",
+        "BGP212.Challenge.simplexMoment_nil",
+        "BGP212.Challenge.simplexMoment_single",
+        "BGP212.Challenge.simplexMoment_snoc"
+    ],
+    "definition_names": [
+        "BGP212.Var.P",
+        "BGP212.Var.Plam",
+        "BGP212.Var.EvenParts",
+        "BGP212.Var.IsB21Index",
+        "BGP212.Var.gen",
+        "BGP212.Var.B21",
+        "BGP212.Var.B21Idx.a",
+        "BGP212.Var.B21Idx.lam",
+        "BGP212.Var.B21Idx.toPair",
+        "BGP212.Var.genIdx",
+        "BGP212.Var.p",
+        "BGP212.Var.partsLE",
+        "BGP212.Var.simplexMoment",
+        "BGP212.Var.betaMoment",
+        "BGP212.Params.L"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

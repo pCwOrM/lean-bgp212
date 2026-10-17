@@ -9,3 +9,4 @@ import BGP212.Packing
 import BGP212.PackingLedgerB
 import BGP212.Theorem711
 import BGP212.Gap
+import BGP212.Variational

@@ -1,0 +1,122 @@
+# Result record: eleventh Challenge/Solution pair (V0, the variational space B₂₁)
+
+identity:
+  id: V0
+  statement: "§11: B₂₁ = span_ℚ{(L − P₁)^a P_λ : a ≥ 0, λⱼ ∈ 2ℤ_{>0}, a + |λ| ≤ 21} in 45 variables has dimension exactly 846"
+  source: "Source/bgp212.pdf: §9.3 (L = 53/50, p. 40), §9.4 (I_T, J_T, p. 41), (10.1) (p. 41), §11 (B₂₁, p. 42)"
+  builds_on: "A1 (BGP212.Params.L), all earlier pairs unchanged"
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  definitions: BGP212/Variational.lean
+  challenge: Challenge/Variational.lean
+  solution: Solution/Variational.lean
+  comparator_config: Comparator/variational_v0.json
+  negative_controls_script: specs/checks/variational_v0_negative_controls.py
+  transcription:
+    P: "P j = psum (Fin 45) ℚ j = Σᵢ xᵢ^j (the 45 rescaled coordinates of §9.4)"
+    Plam: "P_λ = ∏ⱼ P_{λⱼ} over the multiset of parts; P_∅ = 1"
+    IsB21Index: "every part of λ positive and even, and a + |λ| ≤ 21 (a : ℕ, so a ≥ 0)"
+    gen: "(C L − P 1)^a * P_λ with L = 53/50"
+    B21: "Submodule.span ℚ {gen a λ | IsB21Index a λ}"
+    B21Idx: "Σ j : Fin 11, Nat.Partition j × Fin (22 − 2j): λ = 2μ with μ ⊢ j, a ≤ 21 − 2j"
+    p: "Fintype.card (Nat.Partition j) (Mathlib's partitions)"
+    partsLE: "an explicit, kernel-computable enumeration of partitions of j into parts ≤ k"
+  signatures:
+    mem_partsLE: "s ∈ partsLE j k ↔ (∀ x ∈ s, 0 < x ∧ x ≤ k) ∧ s.sum = j"
+    nodup_partsLE: "(partsLE j k).Nodup"
+    p_eq_enumeration: "p j = (partsLE j j).length"
+    partition_counts: "(List.range 11).map p = [1, 1, 2, 3, 5, 7, 11, 15, 22, 30, 42]"
+    dimension_identity: "∑ j ∈ range 11, p j * (22 − 2j) = 846"
+    card_B21Idx: "Fintype.card B21Idx = 846"
+    ordered_family_count: "∑ j ∈ range 11, card (Composition j) * (22 − 2j) = 4094"
+    toPair_injective: "Function.Injective B21Idx.toPair"
+    toPair_range: "(∃ i, i.toPair = (a, λ)) ↔ IsB21Index a λ"
+    B21_eq_span: "B21 = span ℚ (range genIdx)"
+    power_sums_algebraically_independent: "Function.Injective (aeval (R := ℚ) fun k : Fin 45 => P (k + 1))"
+    genIdx_linearIndependent: "LinearIndependent ℚ genIdx"
+    finrank_B21: "Module.finrank ℚ B21 = 846"
+    simplexMoment_nil: "simplexMoment R [] = 1"
+    simplexMoment_single: "simplexMoment R [e] = R^(e+1)/(e+1)"
+    simplexMoment_snoc: "simplexMoment R (e ++ [u]) = (∏ eᵢ!/(m + s)!) · betaMoment R u (m + s)"
+  proof_of_dimension: >
+    The family is the image of 846 distinct monomials y₁^a ∏_{q ∈ μ} y_{2q} of ℚ[y₁, …, y₄₅]
+    under σ : y₁ ↦ L − y₁ (an involution) followed by ψ : y_k ↦ P_k. ψ is injective: its image
+    lies in the symmetric subalgebra; Newton's identities (Mathlib's mul_esymm_eq_sum) put
+    every e_k, k ≤ 45, in its range over ℚ; composing with the inverse of Mathlib's
+    esymmAlgEquiv gives a surjective endomorphism of the Noetherian ring ℚ[y₁, …, y₄₅], which
+    is injective (injective_of_surjective_endo, kernels of iterates stabilize). Distinct
+    monomials are linearly independent (basisMonomials) and injective linear maps preserve
+    linear independence, so the 846 elements are independent and span B₂₁.
+  dimension_accounting: |
+    j = |λ|/2 :  0   1   2   3   4   5   6   7   8   9  10
+    p(j)      :  1   1   2   3   5   7  11  15  22  30  42
+    22 − 2j   : 22  20  18  16  14  12  10   8   6   4   2
+    product   : 22  20  36  48  70  84 110 120 132 120  84   total 846
+  findings:
+    F1_dimension_confirmed: >
+      The printed dimension 846 is exact: the 846 elements are linearly independent over ℚ in
+      45 variables (finrank_B21). Every index uses only P₁, P₂, P₄, …, P₂₀ (parts at most 20)
+      and total degree at most 21 ≤ 45, which is what makes the power sums independent here.
+    F2_repeated_monomials: >
+      "After repeated monomials are identified": reading λ as an ordered tuple of positive even
+      parts gives 4094 index pairs (ordered_family_count); identifying reorderings gives the
+      846 partitions. Distinct partitions then give distinct, independent elements, so no
+      further identification occurs.
+    F3_proper_subspace: >
+      B₂₁ is a proper subspace of the symmetric polynomials of degree at most 21, which have
+      dimension Σ_{d ≤ 21} p(d) = 3506 in at least 21 variables (exploratory count, kernel-checked
+      as the control ok_all_parts); B₂₁ keeps odd power sums only through P₁, inside L − P₁.
+    F4_J_normalization: >
+      B3's finding F3 (Theorem 11.1's J_T) is settled by §9.4: J_T(F) = 45 ∫_{T̂} (∫₀^{U(x̂)} F du)² dx̂
+      carries the factor k = 45, so Theorem 11.1's ratio J_T/I_T > 4 is the rescaled form of
+      Theorem 4.10's k·J_T(F) > I_T(F).
+  exploratory_vs_proved: >
+    Proved: every theorem listed under signatures. Exploratory (Python, outside the kernel):
+    the pre-check of the counts 846, 4094, 3506 and 1041; each is re-checked by the kernel
+    through partsLE.
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
+  negative_controls:
+    - change: "dimension 845; p(10) = 41; all parts allowed counted as 846; degree bound 22 counted as 846"
+      result: "kernel rejects each (decide fails)"
+    - change: "the true counts 846, 42, 3506, 1041 (positive controls)"
+      result: "kernel accepts"
+    - change: "finrank_B21 claimed as 845 in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.finrank_B21'"
+  sandbox: >
+    Comparator ran in the build container with the landrun pass-through shim; the VPS run
+    with the real landrun sandbox is recorded below.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  verify_time: "about 40 seconds for the V0 comparator suite in the build container"
+  run_date: 2026-10-17
+  commit_hash: PENDING_VPS
+
+next_development:
+  V1: >
+    The simplex moment identity (10.1) as an integral: ∫_{z ≥ 0, Σz ≤ R} ∏ zᵢ^{eᵢ} dz =
+    simplexMoment R e, by induction on m through simplexMoment_snoc, Fubini, and the Beta
+    integral ∫₀^R z^u (R − z)^v dz = betaMoment R u v (Mathlib MeasureTheory /
+    intervalIntegral). Then Lemma 10.1 for rational polytopes.
+  V2: >
+    I_T and J_T on B₂₁ as exact rational Gram matrices (846 × 846) via Proposition 10.2's
+    stratification, with the matrix entries generated outside and checked in the kernel.
+  V3: >
+    With Axiom's P⋆: I_T(P⋆) > 0 and J_T(P⋆) − 4 I_T(P⋆) > 0 exactly, making
+    SieveInputs.theorem_11_1 a theorem.
+
+footer: Admissible generalizations trail leading specifications.

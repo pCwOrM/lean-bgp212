@@ -135,6 +135,21 @@ table3_valid ──────────────────────�
 combinatorial ingredient are proved outright; `H₁ ≤ 212` itself is proved relative to the
 named fields of `AnalyticInputs` and `SieveInputs` (`specs/results/B3_final_deduction.yaml`).
 
+The eleventh pair is V0 (`Challenge/Variational.lean`, `Solution/Variational.lean`, objects
+in `BGP212/Variational.lean`): **the variational space `B₂₁` of §11 has dimension exactly 846**.
+
+- `B21 = span_ℚ {(L − P₁)^a P_λ : λⱼ ∈ 2ℤ_{>0}, a + |λ| ≤ 21}` over the 45 rescaled coordinates,
+  with `P_j` Mathlib's power sums and `λ` a multiset of parts.
+- `dimension_identity : Σ_{j ≤ 10} p(j)(22 − 2j) = 846`, with `p` Mathlib's partition count
+  (computed through a verified enumeration `partsLE`).
+- `B21Idx`, an explicit index type of 846 elements; `toPair_injective` and `toPair_range` show
+  it lists each printed pair `(a, λ)` exactly once.
+- `power_sums_algebraically_independent` (Newton's identities, the fundamental theorem of
+  symmetric polynomials, and Noetherianity) gives `genIdx_linearIndependent` and
+  `finrank_B21 : Module.finrank ℚ B21 = 846`.
+- For V1: `simplexMoment` (the right side of (10.1)) with its `m = 0`, `m = 1` and Fubini-step
+  identities.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -142,7 +157,7 @@ named fields of `AnalyticInputs` and `SieveInputs` (`specs/results/B3_final_dedu
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
-  W-trick step of Lemma 4.9 (B3).
+  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -204,6 +219,13 @@ For B3's negative controls:
 ```text
 python3 -I specs/checks/final_deduction_negative_controls.py /tmp/b3_neg
 for f in /tmp/b3_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V0's negative controls:
+
+```text
+python3 -I specs/checks/variational_v0_negative_controls.py /tmp/v0_neg
+for f in /tmp/v0_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
