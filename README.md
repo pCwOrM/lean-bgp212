@@ -109,13 +109,40 @@ Table 3 ─► definition_4_1_table3, prop_7_8_I_III_table3
 all of the above ─► theorem_7_11_core ─► theorem_7_11 (H : AnalyticInputs)
 ```
 
+The tenth pair is B3 (`Challenge/Gap.lean`, `Solution/Gap.lean`, objects in
+`BGP212/Gap.lean`): **the final deduction**.
+
+- `dhl_45_implies_gap : DHL 45 2 → H1Le 212`, from the general `dhl_implies_gap` (any
+  admissible `k`-tuple of diameter `D`) and Lemma 12.1; `h1_liminf` reads `H1Le D` as
+  `liminf (p_{n+1} − p_n) ≤ D`.
+- Lemma 4.9's W-trick step (`wtrick_coprime`, prime-factor form `wtrick_coprime_of_primes`,
+  squarefree combined modulus), connected to B2's `h45_wtrick_exists` by `h45_wtrick_coprime`.
+  For `H₄₅` every prime dividing a difference is at most 103, so `w ≥ 103` suffices, and 103
+  is sharp (`h45_wtrick_sharp`).
+- Theorem 4.10 as an interface (`SieveInputs`): the sieve criterion, Theorem 11.1, and the
+  bridge from Theorem 7.11's two conclusions to Definition 4.4 at Table 3, each a named field.
+- `final_deduction (A : AnalyticInputs) (S : SieveInputs A) : DHL 45 2 ∧ H1Le 212`.
+
+```text
+Lemma 12.1 + §2 ─► dhl_implies_gap ─► dhl_45_implies_gap
+B2 h45_wtrick_exists + wtrick_coprime_of_primes + h45_diff_primes ─► h45_wtrick_coprime
+A4 theorem_7_11 (A) ─► S.equidistributed_of_coverage ─┐
+S.theorem_11_1 ───────────────────────────────────────┼─► S.theorem_4_10 ─► DHL 45 2 ─► H1Le 212
+table3_valid ─────────────────────────────────────────┘
+```
+
+**Scope.** The paper proves `H₁ ≤ 212` unconditionally. Here, `DHL[45, 2] ⇒ H₁ ≤ 212` and every
+combinatorial ingredient are proved outright; `H₁ ≤ 212` itself is proved relative to the
+named fields of `AnalyticInputs` and `SieveInputs` (`specs/results/B3_final_deduction.yaml`).
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
-  combinatorial hypothesis of Theorem 7.11 at Table 3 (A4).
+  combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
+  W-trick step of Lemma 4.9 (B3).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -170,6 +197,13 @@ For A4's negative controls:
 ```text
 python3 -I specs/checks/theorem_7_11_negative_controls.py /tmp/a4_neg
 for f in /tmp/a4_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For B3's negative controls:
+
+```text
+python3 -I specs/checks/final_deduction_negative_controls.py /tmp/b3_neg
+for f in /tmp/b3_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

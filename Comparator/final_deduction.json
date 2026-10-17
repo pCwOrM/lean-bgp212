@@ -1,0 +1,48 @@
+{
+    "challenge_module": "Challenge.Gap",
+    "solution_module": "Solution.Gap",
+    "theorem_names": [
+        "BGP212.Challenge.h1_liminf",
+        "BGP212.Challenge.dhl_implies_gap",
+        "BGP212.Challenge.h45Z_facts",
+        "BGP212.Challenge.dhl_45_implies_gap",
+        "BGP212.Challenge.wtrick_coprime_of_primes",
+        "BGP212.Challenge.wtrick_coprime",
+        "BGP212.Challenge.wtrick_coprime_primorial",
+        "BGP212.Challenge.wtrick_modulus_squarefree",
+        "BGP212.Challenge.h45_diff_primes",
+        "BGP212.Challenge.h45_wtrick_coprime",
+        "BGP212.Challenge.h45_wtrick_sharp",
+        "BGP212.Challenge.wtrick_needs_prime_bound",
+        "BGP212.Challenge.wtrick_needs_coprime_residue",
+        "BGP212.Challenge.table3_valid",
+        "BGP212.Challenge.zero_mem_table3Support",
+        "BGP212.Challenge.final_deduction"
+    ],
+    "definition_names": [
+        "BGP212.Gap.PrimeZ",
+        "BGP212.Gap.AdmissibleZ",
+        "BGP212.Gap.DHL",
+        "BGP212.Gap.primeGap",
+        "BGP212.Gap.H1Le",
+        "BGP212.Gap.StadlmannSupport.Valid",
+        "BGP212.Gap.StadlmannSupport.supportSet",
+        "BGP212.Gap.table3Support",
+        "BGP212.WTrick.H45Z",
+        "BGP212.H45",
+        "BGP212.T711.SupportDatum",
+        "BGP212.T711.floorInv",
+        "BGP212.T711.A3",
+        "BGP212.T711.B3",
+        "BGP212.Params.A0",
+        "BGP212.Params.A1",
+        "BGP212.Params.B",
+        "BGP212.Params.δ",
+        "BGP212.Params.εs"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}
