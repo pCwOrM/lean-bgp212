@@ -81,6 +81,19 @@ specification:
         The printed caps differ from 4·B_{1,m} at every rung. §9.3 (L, τ, g) agrees with
         Table 3, so the divergence is confined to this proof sentence.
       status: unresolved
+    - id: SI-3
+      location: "Proposition 7.8 (II), p. 31; its derivation, p. 35; Appendix B Table 6 row 'Type II admissibility, first wall', p. 45"
+      source_text_proposition: "19/2 − 36An − 13δ − 9ϵ ≥ 0"
+      source_text_ledger: "Type II admissibility, first wall | left 0 | right 69599997/2000000000"
+      readings:
+        proposition_9_epsilon: "19/2 − 36A1 − 13δ − 9εa = 347999991/10000000000"
+        ledger_value: "69599997/2000000000 = 19/2 − 36A1 − 13δ − 15εa"
+      agreement: >
+        The ledger value equals the 15ϵ form, which is what the derivation on p. 35 gives
+        when it carries the trailing −ϵ of the δ*(γ) bound stated on p. 34
+        (6 × (−3ϵ/2 − ϵ) = −15ϵ). The 15ϵ form is the stronger statement and holds
+        with margin 0.0348 − 1.5·10⁻⁹. Found by the Lean derivation check in A1.
+      status: unresolved
 
   editorial_notes:
     - id: ED-1
@@ -100,7 +113,7 @@ verification:
     - "floor(1081/5000 ÷ 41/2500) = 13"
 
 result:
-  outcome: all derived readings match Table 3; SI-1 and SI-2 recorded
+  outcome: all derived readings match Table 3; SI-1, SI-2 and SI-3 recorded
   run_date: 2026-10-16
   commit_hash: null   # repository has no commits yet; filled at first commit
 

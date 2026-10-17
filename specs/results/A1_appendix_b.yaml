@@ -1,0 +1,65 @@
+# Result record: second Challenge/Solution pair (Table 3 parameters and Appendix B)
+
+identity:
+  id: A1-AppB
+  statement: "Table 3 parameter layer and Appendix B, Table 6 (exact slack ledger)"
+  source: "Source/bgp212.pdf: Table 3 (p. 39), §9.2–9.3 (p. 40), Lemma 9.1 (p. 41), Proposition 7.8 (p. 31), Table 2 (p. 38), Lemma 7.10 (p. 36), Table 6 (pp. 44–45)"
+  specification: specs/A0_parameters.yaml
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  challenge: Challenge/AppendixB.lean
+  solution: Solution/AppendixB.lean
+  data_modules: [BGP212/Params.lean, BGP212/Ledger.lean]
+  comparator_config: Comparator/appendix_b.json
+  theorems:
+    table3_rescaled: "g = 4δ, L = 4(A1+εs), τ = 4(A1−εs), A1±εs readings, 13δ ≤ B_{1,10} < 14δ"
+    table6_derivation: "all 21 rows: printed left/right = their formulas in the Table 3 parameters"
+    table6_slack: "all 21 rows: printed slack = right − left ≥ 0"
+    definition_4_1_caps: "δ < B_{1,m} ≤ B_{1,m+1} ≤ B_{1,m} + δ for every m ≥ 1"
+    cap_step_extremes: "rung steps over m = 1..10 lie in [17/5000, 81/5000], both attained"
+    packing_pairs: "91 pairs 1 ≤ m ≤ m′ ≤ 13 (× 5 conditions = 455 roots)"
+    dominant_wall: "ξ2/4 + 11/16 = 63/80; 3A1 + δ = 63/80 − 10⁻⁴; 3A1 + δ + 2εa < 63/80"
+    source_inconsistencies: "SI-1, SI-2, SI-3 as exact facts"
+  definitions_compared: "all Params constants, B, C, Ledger.table6, Ledger.packingPairs"
+  proof_method: >
+    `decide +kernel` on exact core-Lean rationals for every finite claim;
+    definition_4_1_caps adds a short argument for the constant tail m ≥ 11.
+  axioms_used: [propext, Quot.sound, Classical.choice]   # Classical.choice enters via core Rat order; all permitted
+  trusted_base: Lean 4 kernel + core library (Mathlib absent)
+  module_note: >
+    Params, Ledger and the AppendixB pair are plain Lean files, because core Rat
+    operations are private to their module and decide needs them to reduce.
+  scope_boundary:
+    - "Row 5 (first-rung cap wall): right side 778/5000 taken as printed; its formula is an open provenance item."
+    - "Row 19 (455 packing roots): this pair fixes the count 91 × 5; the 455 rational polytope certificates themselves are external."
+    - "Rows 20–21: Table 2 comparisons at the endpoint κ = (11/80)εa, as Table 6 prints them."
+  finding: >
+    The derivation check exposed SI-3: Table 6 row 14 equals the 15ϵ form, while
+    Proposition 7.8 (II) states 9ϵ. Recorded in A0 and in source_inconsistencies.
+  sandbox: >
+    Comparator ran with the pass-through landrun stand-in in the authoring
+    environment. Rerun ./verify.sh on the VPS with the real landrun to record a
+    sandboxed result here.
+  negative_control: >
+    Replacing row 14's 15εa with the proposition's 9εa in the Challenge made comparator
+    reject with "Challenge and solution theorem statement do not match:
+    'BGP212.Challenge.table6_derivation'".
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  run_date: 2026-10-16
+  commit_hash: null   # set to the verified commit after the VPS run
+
+footer: Admissible generalizations trail leading specifications.

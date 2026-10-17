@@ -1,0 +1,39 @@
+{
+    "challenge_module": "Challenge.AppendixB",
+    "solution_module": "Solution.AppendixB",
+    "theorem_names": [
+        "BGP212.Challenge.table3_rescaled",
+        "BGP212.Challenge.table6_derivation",
+        "BGP212.Challenge.table6_slack",
+        "BGP212.Challenge.definition_4_1_caps",
+        "BGP212.Challenge.cap_step_extremes",
+        "BGP212.Challenge.packing_pairs",
+        "BGP212.Challenge.dominant_wall",
+        "BGP212.Challenge.source_inconsistencies"
+    ],
+    "definition_names": [
+        "BGP212.Params.k",
+        "BGP212.Params.ω",
+        "BGP212.Params.A0",
+        "BGP212.Params.A1",
+        "BGP212.Params.εs",
+        "BGP212.Params.δ",
+        "BGP212.Params.ξ1",
+        "BGP212.Params.ξ2",
+        "BGP212.Params.ξ3",
+        "BGP212.Params.εa",
+        "BGP212.Params.Bnum",
+        "BGP212.Params.B",
+        "BGP212.Params.g",
+        "BGP212.Params.C",
+        "BGP212.Params.L",
+        "BGP212.Params.τ",
+        "BGP212.Ledger.table6",
+        "BGP212.Ledger.packingPairs"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

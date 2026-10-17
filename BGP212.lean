@@ -1,3 +1,3 @@
-module -- shake: keep-all --deprecated_module: ignore
-
-public import BGP212.Basic
+import BGP212.Basic
+import BGP212.Params
+import BGP212.Ledger
