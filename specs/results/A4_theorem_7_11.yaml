@@ -133,8 +133,9 @@ verification:
     - change: "perm_type_III claimed with the printed width dIIIprinted in the Challenge"
       result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.perm_type_III'"
   sandbox: >
-    Comparator ran in the build container with the landrun pass-through shim; the VPS run
-    with the real landrun sandbox is recorded below.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All nine Challenge/Solution suites passed Lean kernel verification.
+    Five negative boundary controls were rejected; five positive controls passed.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -146,7 +147,7 @@ result:
     - "Your solution is okay!"
   verify_time: "about 11.5 minutes for the A4 comparator suite in the build container (it replays the A3c certificates it imports)"
   run_date: 2026-10-17
-  commit_hash: PENDING_VPS
+  commit_hash: 387e7208d34e64855799b4b986e495c1d7e92d0d
 
 next_development:
   B3: >
