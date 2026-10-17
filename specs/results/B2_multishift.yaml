@@ -72,8 +72,8 @@ verification:
     - change: "changed the W-trick residue 74549147 to 74549148 in h45_wtrick_W23 in the Challenge"
       result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.h45_wtrick_W23'"
   sandbox: >
-    Comparator ran with the pass-through landrun stand-in in the authoring environment.
-    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All five Challenge/Solution suites passed Lean kernel verification.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -85,6 +85,6 @@ result:
     - "Lean default kernel accepts the solution"
     - "Your solution is okay!"
   run_date: 2026-10-16
-  commit_hash: null   # set to the verified commit after the VPS run
+  commit_hash: 0018bf6231343c26abb16e5b271c92809c03bd4b
 
 footer: Admissible generalizations trail leading specifications.
