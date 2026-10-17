@@ -1,0 +1,1502 @@
+From c08b33726ea22f9dd1b8fd46d031df209d24d84f Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 08:52:23 -0600
+Subject: [PATCH] A4: Lemma 7.10 to Theorem 7.11, combinatorial core
+ kernel-checked
+
+Proves at Table 3 every combinatorial hypothesis of Theorem 7.11's proof:
+Definition 4.1, Proposition 7.8 (I)-(III) and (A)-(E) quantified as
+printed (case split from the 455 roots), the permissible triples of
+Lemmas 5.3-5.7 at the proof's widths over every gamma-range, and the six
+containments Q in D_X via A2's Lemmas 7.5-7.7. Theorem 7.11 holds relative
+to AnalyticInputs (Lemmas 5.3-5.7, Prop 7.8 assembly, Theorem 8.3).
+Records six findings, including a Type III width gap of exactly epsilon.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                                   |   1 +
+ BGP212/Theorem711.lean                        | 295 +++++++++
+ Challenge.lean                                |   1 +
+ Challenge/Theorem711.lean                     | 145 +++++
+ Comparator/theorem_7_11.json                  |  90 +++
+ README.md                                     |  41 +-
+ Solution.lean                                 |   1 +
+ Solution/Theorem711.lean                      | 588 ++++++++++++++++++
+ .../checks/theorem_7_11_negative_controls.py  |  35 ++
+ specs/results/A4_theorem_7_11.yaml            | 166 +++++
+ verify.sh                                     |   2 +-
+ 11 files changed, 1360 insertions(+), 5 deletions(-)
+ create mode 100644 BGP212/Theorem711.lean
+ create mode 100644 Challenge/Theorem711.lean
+ create mode 100644 Comparator/theorem_7_11.json
+ create mode 100644 Solution/Theorem711.lean
+ create mode 100644 specs/checks/theorem_7_11_negative_controls.py
+ create mode 100644 specs/results/A4_theorem_7_11.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 1da0d51..1156589 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -7,3 +7,4 @@ import BGP212.GDTv1
+ import BGP212.WTrick
+ import BGP212.Packing
+ import BGP212.PackingLedgerB
++import BGP212.Theorem711
+diff --git a/BGP212/Theorem711.lean b/BGP212/Theorem711.lean
+new file mode 100644
+index 0000000..b178d65
+--- /dev/null
++++ b/BGP212/Theorem711.lean
+@@ -0,0 +1,295 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.1 (p. 4), Definition 7.1 (p. 26), Lemmas 5.3–5.7
++(pp. 16–17), Definition 7.4 (p. 28), Lemmas 7.5–7.7 (pp. 29–31), Proposition 7.8 and its
++proof (pp. 31–36), Lemma 7.10 and Theorem 7.11 (p. 36), Theorem 8.3 (p. 39), Table 3.
++-/
++import BGP212.Packing
++
++/-! # A4: the objects of Theorem 7.11
++
++Core Lean. Theorem 7.11 reads: "For the rational datum in Table 3, every modulus generated
++by the support is covered by Bombieri–Vinogradov, the half-level theorem, or one of
++Stadlmann's positive-level Type I, Type II, and Type III estimates." Its proof: "Lemma 7.10
++proves conditions A–E of Proposition 7.8 … Theorem 8.3 supplies the sub-half, transition,
++and endpoint blocks, and the strict positive-level walls license the remaining blocks
++through the estimates of Section 5."
++
++This file transcribes, for a general datum, every combinatorial object that proof uses:
++
++* `SupportDatum`: Definition 4.1's constraints on `(A, B, δ, ε)`.
++* `Xi`: Definition 7.4, a single tuple of length `m₁ + m₂` (the source's form).
++* `Prop78Scalar`, `Prop78Packing`: the hypotheses (I)–(III) and (A)–(E) of Proposition 7.8,
++  quantified exactly as printed: all bands `j, j′ ≤ n`, all `m, m′ ≤ ⌊1/δ⌋`, `m + m′ > 0`.
++* `PermI` … `PermIII`: the permissible triples of Lemmas 5.3–5.7, with a margin `η`
++  (`η = 0` is the printed strict form; `η > 0` is the "room to spare" of p. 16).
++* `dIlow` … `dIII`: the auxiliary widths `δ*(γ)` chosen in the proof of Proposition 7.8.
++* `WinI` …: the divisor windows of `D_I … D_III` in logarithmic form (closed windows, the
++  form Lemmas 7.5–7.7 deliver).
++* `ContainX`: the containments `Q ⊆ D_X` of the proof of Proposition 7.8, in log-size form.
++* `AnalyticInputs`: the analytic estimates, each a named hypothesis.
++
++Log-size conventions follow Lemmas 7.5–7.7 as formalized in A2: for Lemmas 7.5 and 7.6 the
++profile `y` is the rough logs scaled by `1/(1 − ε₀)` (Definition 4.3 (iii)), so a divisor's
++log-size is `(1 − ε₀)·Σ y + Σ z`; for Lemma 7.7 the profile is the rough logs themselves. -/
++
++namespace BGP212.T711
++
++open BGP212.Params BGP212.Packing
++
++/-! ## Definition 4.1 -/
++
++/-- `⌊1/δ⌋` as a natural number. -/
++def floorInv (δ' : Rat) : Nat := (1 / δ').floor.toNat
++
++/-- **Definition 4.1** (constraints on the datum): `−ε = A₀ < A₁ < ⋯ < Aₙ < 1/2 − ε`, and
++`B` an `n × ⌊1/δ⌋` matrix with `δ < B_{j,m} ≤ B_{j,m+1} ≤ B_{j,m} + δ` whenever both sides are
++defined, `B_{j,0} = 0`. -/
++def SupportDatum (n : Nat) (A : Nat → Rat) (Bm : Nat → Nat → Rat) (δ' ε : Rat) : Prop :=
++  0 < δ' ∧ 0 < ε ∧ A 0 = -ε ∧ (∀ j, j < n → A j < A (j + 1)) ∧ A n < 1 / 2 - ε ∧
++    ∀ j, 1 ≤ j → j ≤ n →
++      Bm j 0 = 0 ∧ (∀ m, 1 ≤ m → m ≤ floorInv δ' → δ' < Bm j m) ∧
++      ∀ m, 1 ≤ m → m + 1 ≤ floorInv δ' → Bm j m ≤ Bm j (m + 1) ∧ Bm j (m + 1) ≤ Bm j m + δ'
++
++/-! ## Table 3 as a datum -/
++
++/-- Table 3's bands: `n = 1`, `(A₀, A₁) = (−1/125, 257/1000)`. -/
++def A3 (j : Nat) : Rat := if j = 0 then A0 else A1
++
++/-- Table 3's caps `B_{1,m}` (Definition 4.1's `B_{j,0} = 0`); one band. -/
++def B3 (_j m : Nat) : Rat := B m
++
++/-! ## Definition 7.4 -/
++
++/-- **Definition 7.4.** `Ξ(B₁, B₂, m₁, m₂, δ)`: tuples in `[δ, 1]^{m₁+m₂}` whose first `m₁`
++coordinates sum to at most `B₁` and whose last `m₂` sum to at most `B₂`. -/
++def Xi (B1 B2 : Rat) (m1 m2 : Nat) (δ' : Rat) (ys : List Rat) : Prop :=
++  ys.length = m1 + m2 ∧ (∀ y ∈ ys, δ' ≤ y ∧ y ≤ 1) ∧
++    (ys.take m1).sum ≤ B1 ∧ (ys.drop m1).sum ≤ B2
++
++/-! ## Proposition 7.8: hypotheses -/
++
++/-- `ω(j, j′) = (A_j + A_j′)/2 − 1/4`. -/
++def omegaJJ (A : Nat → Rat) (j j' : Nat) : Rat := (A j + A j') / 2 - 1 / 4
++
++/-- (A), first partition (the range γ ≤ 1/2). -/
++def capsA1G (ξ1' ω' ϵ : Rat) : List Rat := [ξ1' - 2 * ϵ, 1 / 6 - 4 * ω' - 2 * ϵ]
++/-- (A), second partition (the range γ ∈ (1/2, 1/2 + 2ω + ε]). -/
++def capsA2G (ω' ϵ : Rat) : List Rat := [1 / 2 - 2 * ω' - 2 * ϵ, 1 / 14 - 68 / 14 * ω' - 2 * ϵ]
++/-- (B), Type IIa. -/
++def capsBG (ω' δ' ϵ : Rat) : List Rat :=
++  [2 / 5 + 24 * ω' / 5 + 7 * δ' / 5 - 2 * ϵ, 1 / 14 - 24 * ω' / 7 - 2 * ϵ]
++/-- (C), Type IIb. -/
++def capsCG (ω' δ' ϵ : Rat) : List Rat :=
++  [1 / 3 + 24 * ω' / 3 + 7 * δ' / 3 - 4 * ϵ, 1 / 10 - 34 * ω' / 5 - 7 * δ' / 5 - 4 * ϵ,
++   2 * ω' + δ' - 4 * ϵ]
++/-- (D), Type IIc, at `(γ, ω₀)`. -/
++def capsDG (γ ω0 δ' ϵ : Rat) : List Rat :=
++  [γ - 2 * δ' - 8 * ω0 - ϵ, 1 / 2 - γ - 2 * ω0 - ϵ, 4 * ω0 + δ' - ϵ, 8 * ω0]
++/-- (E), Type III. -/
++def capsEG (ξ3' ω' ϵ : Rat) : List Rat :=
++  [1 - 6 * ω' - 3 * ξ3' / 2 - 2 * ϵ, 5 * ω' / 2 + 3 * ξ3' / 8 - 2 * ϵ]
++
++/-- Conditions (A)–(E) of Proposition 7.8 for one tuple, at band pair parameter `ω`. -/
++def CondsAE (ξ1' ξ2' ξ3' ω' δ' ϵ : Rat) (ys : List Rat) : Prop :=
++  (Packs (capsA1G ξ1' ω' ϵ) ys ∧ Packs (capsA2G ω' ϵ) ys) ∧
++  Packs (capsBG ω' δ' ϵ) ys ∧
++  Packs (capsCG ω' δ' ϵ) ys ∧
++  (∀ ω0 γ, 0 ≤ ω0 → ω0 ≤ ω' → ξ2' - ϵ ≤ γ → γ ≤ 1 / 3 + 24 * ω' / 3 + 7 * δ' / 3 + 3 * ϵ →
++    Packs (capsDG γ ω0 δ' ϵ) ys) ∧
++  Packs (capsEG ξ3' ω' ϵ) ys
++
++/-- **Proposition 7.8, packing hypotheses (A)–(E)**, quantified as printed: for all
++`j, j′ ∈ {1, …, n}` and all `m, m′ ∈ {0, 1, …, ⌊1/δ⌋}` with `m + m′ > 0`, every tuple of
++`Ξ(B_{j,m}, B_{j′,m′}, m, m′, δ)` has properties (A)–(E). -/
++def Prop78Packing (n : Nat) (A : Nat → Rat) (Bm : Nat → Nat → Rat)
++    (δ' ξ1' ξ2' ξ3' ϵ : Rat) : Prop :=
++  ∀ j j', 1 ≤ j → j ≤ n → 1 ≤ j' → j' ≤ n →
++    ∀ m m', m ≤ floorInv δ' → m' ≤ floorInv δ' → 0 < m + m' →
++      ∀ ys, Xi (Bm j m) (Bm j' m') m m' δ' ys →
++        CondsAE ξ1' ξ2' ξ3' (omegaJJ A j j') δ' ϵ ys
++
++/-- **Proposition 7.8, scalar hypotheses (I)–(III).** -/
++def Prop78Scalar (n : Nat) (A : Nat → Rat) (δ' ξ1' ξ2' ξ3' ϵ : Rat) : Prop :=
++  -- (I) Type I
++  min (ξ1' - 4 * A n + 2 / 3) (9 / 7 - 34 / 7 * A n) - 2 * ϵ > δ' ∧
++  -- (II) Type II
++  19 / 2 - 36 * A n - 13 * δ' - 9 * ϵ ≥ 0 ∧
++  min (ξ2' / 10 - 32 * A n / 10 + 8 / 10) (ξ2' / 4 + 11 / 16 - 3 * A n) - 2 * ϵ ≥ δ' ∧
++  -- (III) Type III
++  11 / 8 - 7 / 2 * A n - 9 / 8 * ξ3' - 2 * ϵ > δ'
++
++/-! ## Lemmas 5.3–5.7: permissible triples (with margin `η`) -/
++
++/-- Lemma 5.3 (Type I). `ε` is the lemma's local retreat. -/
++def PermI (η ω' γ δs ε : Rat) : Prop :=
++  (γ ≤ 1 / 2 → 3 * γ - 12 * ω' - 3 * δs - η > 1) ∧
++  (1 / 2 < γ → γ ≤ 1 / 2 + 2 * ω' + ε → 68 * ω' + 14 * δs + η < 1)
++/-- Lemma 5.4 (Type IIa). -/
++def PermIIa (η ω' γ δs : Rat) : Prop :=
++  24 * ω' + 7 * δs - 5 * γ + η < -2 ∧ 8 * ω' + 3 * δs - γ + η < 0
++/-- Lemma 5.5 (Type IIb). -/
++def PermIIb (η ω' γ δs : Rat) : Prop :=
++  24 * ω' + 7 * δs - 3 * γ + η < -1 ∧ 8 * ω' + 3 * δs - γ + η < 0
++/-- Lemma 5.6 (Type IIc). -/
++def PermIIc (η ω' γ δs : Rat) : Prop :=
++  8 * ω' + 4 * δs + 2 * γ + η < 1 ∧ 32 * ω' + 10 * δs - γ + η < 0 ∧
++    48 * ω' + 16 * δs - 4 * γ + η < -1
++/-- Lemma 5.7 (Type III). -/
++def PermIII (η ω' γ δs : Rat) : Prop := 28 * ω' + 9 * γ + 8 * δs + η < 4
++
++/-! ## The proof of Proposition 7.8: ranges and widths `δ*(γ)` -/
++
++/-- Type I, `γ ≤ 1/2`: `δ*(γ) = γ − 4ω − 1/3 − ϵ`. -/
++def dIlow (ω' γ ϵ : Rat) : Rat := γ - 4 * ω' - 1 / 3 - ϵ
++/-- Type I, `γ ∈ (1/2, 1/2 + 2ω + ε]`: the top of the printed interval
++`[δ, 1/14 − 68ω/14 − ϵ]`. -/
++def dIhigh (ω' ϵ : Rat) : Rat := 1 / 14 - 68 / 14 * ω' - ϵ
++/-- Type IIa: `δ*(γ) = 5γ/7 − 2/7 − 24ω/7 − ϵ`. -/
++def dIIa (ω' γ ϵ : Rat) : Rat := 5 * γ / 7 - 2 / 7 - 24 * ω' / 7 - ϵ
++/-- Type IIb: `δ*(γ) = 3γ/7 − 1/7 − 24ω/7 − ϵ`. -/
++def dIIb (ω' γ ϵ : Rat) : Rat := 3 * γ / 7 - 1 / 7 - 24 * ω' / 7 - ϵ
++/-- Type III as printed: `δ* = 1/2 − 7ω/2 − 9ξ₃/8 − ϵ`. -/
++def dIIIprinted (ω' ξ3' ϵ : Rat) : Rat := 1 / 2 - 7 / 2 * ω' - 9 / 8 * ξ3' - ϵ
++/-- Type III, A4's choice: `δ* = 1/2 − 7ω/2 − 9ξ₃/8 − 11ϵ/8` (see `type_III_printed_gap`). -/
++def dIII (ω' ξ3' ϵ : Rat) : Rat := 1 / 2 - 7 / 2 * ω' - 9 / 8 * ξ3' - 11 * ϵ / 8
++
++/-- The upper end of the IIc range and lower end of the IIb range. -/
++def gIIc (ω' δ' ϵ : Rat) : Rat := 1 / 3 + 24 * ω' / 3 + 7 * δ' / 3 + 3 * ϵ
++/-- The upper end of the IIb range and lower end of the IIa range. -/
++def gIIa (ω' δ' ϵ : Rat) : Rat := 2 / 5 + 24 * ω' / 5 + 7 * δ' / 5 + 2 * ϵ
++
++/-! ## Divisor windows (log form) and the containments `Q ⊆ D_X` -/
++
++/-- Lemma 7.5's conclusion in log-size form: rough parts `I₁, I₂` of the profile and a smooth
++selection `J` with `log_x r = (1 − ε₀)Σ_{I₁} y + Σ_J z ∈ [a, b]`. -/
++def HasDiv1 (ε0 a b : Rat) (ys zs : List Rat) : Prop :=
++  ∃ y1 y2 J R : List Rat, ys.Perm (y1 ++ y2) ∧ zs.Perm (J ++ R) ∧
++    a ≤ (1 - ε0) * y1.sum + J.sum ∧ (1 - ε0) * y1.sum + J.sum ≤ b
++
++/-- Lemma 7.6's conclusion: `r` from `(I₁, J₁)` in `[a₁, b₁]` and `u` from `(I₂, J₂)` in
++`[a₂, b₂]`, disjoint. -/
++def HasDiv2 (ε0 a1 b1 a2 b2 : Rat) (ys zs : List Rat) : Prop :=
++  ∃ y1 y2 y3 J2 J1 R : List Rat, ys.Perm (y1 ++ y2 ++ y3) ∧ zs.Perm (J2 ++ J1 ++ R) ∧
++    a2 ≤ (1 - ε0) * y2.sum + J2.sum ∧ (1 - ε0) * y2.sum + J2.sum ≤ b2 ∧
++    a1 ≤ (1 - ε0) * y1.sum + J1.sum ∧ (1 - ε0) * y1.sum + J1.sum ≤ b1
++
++/-- Lemma 7.7's conclusion: `u` from `(I₂, J₂)` in `[a₂, b₂]`, `r` from `(I₁, I₄, J₁)` in
++`[a₁, b₁]`, and for every `c ∈ [a₁, b₁]` a `d₁ | r` from `(I₁, J′)`, `J′ ⊆ J₁`, in
++`[2c + a₃, 2c + b₃]` (with `c = log_x r`: `d₁ ∈ [r² x^{a₃}, r² x^{b₃}]`). -/
++def HasDiv3 (a1 b1 a2 b2 a3 b3 : Rat) (ys zs : List Rat) : Prop :=
++  ∃ y1 y2 y3 y4 J2 J1 R : List Rat, ys.Perm (y1 ++ y2 ++ y3 ++ y4) ∧ zs.Perm (J2 ++ J1 ++ R) ∧
++    a2 ≤ y2.sum + J2.sum ∧ y2.sum + J2.sum ≤ b2 ∧
++    a1 ≤ y1.sum + y4.sum + J1.sum ∧ y1.sum + y4.sum + J1.sum ≤ b1 ∧
++    ∀ c : Rat, a1 ≤ c → c ≤ b1 →
++      ∃ J' R' : List Rat, J1.Perm (J' ++ R') ∧
++        2 * c + a3 ≤ y1.sum + J'.sum ∧ y1.sum + J'.sum ≤ 2 * c + b3
++
++/-- A rough profile of a Table 3 modulus: `ys ∈ Ξ(B_{1,m}, B_{1,m′}, m, m′, δ)` for some
++`m, m′ ≤ ⌊1/δ⌋` (the single band `j = j′ = 1`). -/
++def Profile3 (ys : List Rat) : Prop :=
++  ∃ m m', m ≤ floorInv δ ∧ m' ≤ floorInv δ ∧ Xi (B m) (B m') m m' δ ys
++
++/-- Smooth prime logs: each below `δ`. -/
++def Smooth (zs : List Rat) : Prop := ∀ z ∈ zs, z < δ
++
++/-- **Type I, `γ ≤ 1/2`: `Q ⊆ D_I`.** Every Table 3 modulus above `x^{1/2 − ε₁}` has
++`r | q` with `log_x r ∈ [γ − δ*(γ) − 3ε′, γ − 3ε′]`, for every `γ ∈ [ξ₁ − ϵ, 1/2]`. -/
++def ContainIlow : Prop :=
++  ∀ γ ε' ε0 ε1 : Rat, ξ1 - εa ≤ γ → γ ≤ 1 / 2 → 0 < ε' → 3 * ε' ≤ εa → 0 < ε0 → ε0 < 1 →
++    0 ≤ ε1 → ε1 ≤ ε0 * (1 / 2 - (γ - dIlow ω11 γ εa - 3 * ε')) →
++    ∀ ys zs, Profile3 ys → Smooth zs → 1 / 2 - ε1 < (1 - ε0) * ys.sum + zs.sum →
++      HasDiv1 ε0 (γ - dIlow ω11 γ εa - 3 * ε') (γ - 3 * ε') ys zs
++
++/-- **Type I, `γ ∈ (1/2, 1/2 + 2ω + ε′]`: `Q ⊆ D_I`.** Window
++`[1 − γ − δ* − 3ε′, 1 − γ − 3ε′]` with `δ* = dIhigh`. -/
++def ContainIhigh : Prop :=
++  ∀ γ ε' ε0 ε1 : Rat, 1 / 2 < γ → γ ≤ 1 / 2 + 2 * ω11 + ε' → 0 < ε' → 3 * ε' ≤ εa →
++    0 < ε0 → ε0 < 1 → 0 ≤ ε1 → ε1 ≤ ε0 * (1 / 2 - (1 - γ - dIhigh ω11 εa - 3 * ε')) →
++    ∀ ys zs, Profile3 ys → Smooth zs → 1 / 2 - ε1 < (1 - ε0) * ys.sum + zs.sum →
++      HasDiv1 ε0 (1 - γ - dIhigh ω11 εa - 3 * ε') (1 - γ - 3 * ε') ys zs
++
++/-- **Type IIa: `Q ⊆ D_IIa`** for `γ ∈ [gIIa, 1/2]`; window `[γ − 3ε′ − δ*, γ − 3ε′]`. -/
++def ContainIIa : Prop :=
++  ∀ γ ε' ε0 ε1 : Rat, gIIa ω11 δ εa ≤ γ → γ ≤ 1 / 2 → 0 < ε' → 3 * ε' ≤ εa →
++    0 < ε0 → ε0 < 1 → 0 ≤ ε1 → ε1 ≤ ε0 * (1 / 2 - (γ - 3 * ε' - dIIa ω11 γ εa)) →
++    ∀ ys zs, Profile3 ys → Smooth zs → 1 / 2 - ε1 < (1 - ε0) * ys.sum + zs.sum →
++      HasDiv1 ε0 (γ - 3 * ε' - dIIa ω11 γ εa) (γ - 3 * ε') ys zs
++
++/-- **Type IIb: `Q ⊆ D_IIb`** for `γ ∈ (gIIc, gIIa)`; `r ∈ [γ − 3ε′ − δ*, γ − 3ε′]`,
++`u ∈ [1/2 − γ − 2ω − 6ε′ − δ*, 1/2 − γ − 2ω − 6ε′]`. -/
++def ContainIIb : Prop :=
++  ∀ γ ε' ε0 ε1 : Rat, gIIc ω11 δ εa < γ → γ < gIIa ω11 δ εa → 0 < ε' → 9 * ε' ≤ εa →
++    0 < ε0 → ε0 < 1 → 0 ≤ ε1 →
++    ε1 ≤ ε0 * (1 / 2 - (γ - 3 * ε') - (1 / 2 - γ - 2 * ω11 - 6 * ε' - dIIb ω11 γ εa)) →
++    ∀ ys zs, Profile3 ys → Smooth zs → 1 / 2 - ε1 < (1 - ε0) * ys.sum + zs.sum →
++      HasDiv2 ε0 (γ - 3 * ε' - dIIb ω11 γ εa) (γ - 3 * ε')
++        (1 / 2 - γ - 2 * ω11 - 6 * ε' - dIIb ω11 γ εa) (1 / 2 - γ - 2 * ω11 - 6 * ε') ys zs
++
++/-- **Type IIc: `Q ⊆ D_IIc`** for `γ ∈ [ξ₂ − ϵ, gIIc]`, `ω₀ ∈ [0, ω]`, `δ* = δ`, on the block
++`log_x q ≥ 1/2 + 2ω₀` (with `log_x d = 1/2 + 2ω₀` in the windows): `r ∈ [γ − 3ε′ − δ, γ − 3ε′]`,
++`u ∈ [1 − γ − 6ε′ − δ − L, 1 − γ − 6ε′ − L]`, `d₁ ∈ [2c + 2 − γ − 52ε′ − δ − 4L, 2c + 2 − γ − 52ε′ − 4L]`,
++`L = 1/2 + 2ω₀`. -/
++def ContainIIc : Prop :=
++  ∀ γ ω0 ε' : Rat, ξ2 - εa ≤ γ → γ ≤ gIIc ω11 δ εa → 0 ≤ ω0 → ω0 ≤ ω11 →
++    0 ≤ ε' → 58 * ε' ≤ εa →
++    ∀ ys zs, Profile3 ys → Smooth zs → 1 / 2 + 2 * ω0 ≤ ys.sum + zs.sum →
++      HasDiv3 (γ - 3 * ε' - δ) (γ - 3 * ε')
++        (1 - γ - 6 * ε' - δ - (1 / 2 + 2 * ω0)) (1 - γ - 6 * ε' - (1 / 2 + 2 * ω0))
++        (2 - γ - 52 * ε' - δ - 4 * (1 / 2 + 2 * ω0)) (2 - γ - 52 * ε' - 4 * (1 / 2 + 2 * ω0))
++        ys zs
++
++/-- **Type III: `Q ⊆ D_III`**; window `[1/3 + 4δ*/3 − 4ω/3 − δ*, 1/3 + 4δ*/3 − 4ω/3]`,
++`δ* = dIII`. -/
++def ContainIII : Prop :=
++  ∀ ε0 ε1 : Rat, 0 < ε0 → ε0 < 1 → 0 ≤ ε1 →
++    ε1 ≤ ε0 * (1 / 2 - (1 / 3 + 4 * dIII ω11 ξ3 εa / 3 - 4 * ω11 / 3 - dIII ω11 ξ3 εa)) →
++    ∀ ys zs, Profile3 ys → Smooth zs → 1 / 2 - ε1 < (1 - ε0) * ys.sum + zs.sum →
++      HasDiv1 ε0 (1 / 3 + 4 * dIII ω11 ξ3 εa / 3 - 4 * ω11 / 3 - dIII ω11 ξ3 εa)
++        (1 / 3 + 4 * dIII ω11 ξ3 εa / 3 - 4 * ω11 / 3) ys zs
++
++/-! ## Theorem 7.11: the analytic inputs as named hypotheses -/
++
++/-- **Named analytic inputs of Theorem 7.11.** Each field is a hypothesis, outside the proved
++scope. The `Eq*` fields are the equidistribution statements of Definition 5.2 for the
++modulus sets `D_X(x; ω, γ, δ; ε)` (opaque here); `PositiveLevel` is Proposition 7.8's
++displayed bound for every `f ∈ H(ξ₁, ξ₂, ξ₃)` over `Q*`; `HalfLevel` is Theorem 8.3's. -/
++structure AnalyticInputs where
++  EqI : Rat → Rat → Rat → Rat → Prop
++  EqIIa : Rat → Rat → Rat → Prop
++  EqIIb : Rat → Rat → Rat → Prop
++  EqIIc : Rat → Rat → Rat → Prop
++  EqIII : Rat → Rat → Rat → Prop
++  PositiveLevel : Prop
++  HalfLevel : Prop
++  /-- Lemma 5.3 (Type I; Baker–Irving). -/
++  lemma_5_3 : ∀ ω' γ δs ε, PermI 0 ω' γ δs ε → EqI ω' γ δs ε
++  /-- Lemma 5.4 (Type IIa; Polymath8a Theorem 2.8(iv)). -/
++  lemma_5_4 : ∀ ω' γ δs, PermIIa 0 ω' γ δs → EqIIa ω' γ δs
++  /-- Lemma 5.5 (Type IIb; Polymath8a Theorem 2.8(ii)). -/
++  lemma_5_5 : ∀ ω' γ δs, PermIIb 0 ω' γ δs → EqIIb ω' γ δs
++  /-- Lemma 5.6 (Type IIc; Stadlmann). -/
++  lemma_5_6 : ∀ ω' γ δs, PermIIc 0 ω' γ δs → EqIIc ω' γ δs
++  /-- Lemma 5.7 (Type III; Polymath8a Theorem 2.8(v)). -/
++  lemma_5_7 : ∀ ω' γ δs, PermIII 0 ω' γ δs → EqIII ω' γ δs
++  /-- The assembly step of Proposition 7.8 (with Remark 7.9's Lemma 8.1 for the moduli
++  below `x^{1/2 − ε₁}`, Proposition 7.2's decomposition, and `log_x` of products): the
++  estimates on the sets `D_X` at the proof's parameters, together with the containments
++  `Q ⊆ D_X`, give the bound over `Q*`. -/
++  prop_7_8_assembly :
++    (∀ γ ε, ξ1 - εa ≤ γ → γ ≤ 1 / 2 → EqI ω11 γ (dIlow ω11 γ εa) ε) →
++    (∀ γ ε, 1 / 2 < γ → γ ≤ 1 / 2 + 2 * ω11 + ε → EqI ω11 γ (dIhigh ω11 εa) ε) →
++    (∀ γ, gIIa ω11 δ εa ≤ γ → γ ≤ 1 / 2 → EqIIa ω11 γ (dIIa ω11 γ εa)) →
++    (∀ γ, gIIc ω11 δ εa < γ → γ < gIIa ω11 δ εa → EqIIb ω11 γ (dIIb ω11 γ εa)) →
++    (∀ γ, ξ2 - εa ≤ γ → γ ≤ gIIc ω11 δ εa → EqIIc ω11 γ δ) →
++    EqIII ω11 (ξ3 + εa) (dIII ω11 ξ3 εa) →
++    ContainIlow → ContainIhigh → ContainIIa → ContainIIb → ContainIIc → ContainIII →
++    PositiveLevel
++  /-- Theorem 8.3 (half-level coverage: Lemma 8.1 on `Q_BV`, Table 2 and Lemma 8.2 on
++  `Q_tr`, endpoint partitions on `Q₀`), from Proposition 7.8's packing hypotheses. -/
++  theorem_8_3 :
++    Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa → PositiveLevel → HalfLevel
++
++end BGP212.T711
+diff --git a/Challenge.lean b/Challenge.lean
+index cb8ad53..84593ef 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -6,3 +6,4 @@ import Challenge.MultiShiftB2
+ import Challenge.Packing
+ import Challenge.PackingB
+ import Challenge.PackingC
++import Challenge.Theorem711
+diff --git a/Challenge/Theorem711.lean b/Challenge/Theorem711.lean
+new file mode 100644
+index 0000000..a285f15
+--- /dev/null
++++ b/Challenge/Theorem711.lean
+@@ -0,0 +1,145 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.1, Lemmas 5.3–5.7, Definitions 7.1 and 7.4,
++Lemmas 7.5–7.7, Proposition 7.8 and its proof, Lemma 7.10, Theorem 7.11, Table 3.
++-/
++import BGP212.Theorem711
++
++/-! # A4: from Lemma 7.10 to Theorem 7.11
++
++Statements only; proofs live in `Solution/Theorem711.lean`. Objects are defined in
++`BGP212/Theorem711.lean`. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.Packing BGP212.T711
++
++/-! ## Parameter bounds at Table 3 -/
++
++/-- **Definition 4.1 at Table 3**: `n = 1`, `−εₛ = A₀ < A₁ < 1/2 − εₛ`, and
++`δ < B₁,ₘ ≤ B₁,ₘ₊₁ ≤ B₁,ₘ + δ` for `1 ≤ m < ⌊1/δ⌋ = 60`. -/
++theorem definition_4_1_table3 : SupportDatum 1 A3 B3 δ εs ∧ floorInv δ = 60 :=
++  sorry
++
++/-- `ω(1, 1) = A₁ − 1/4 = ω` (Table 3). -/
++theorem omega_11_table3 : omegaJJ A3 1 1 = ω11 ∧ ω11 = ω :=
++  sorry
++
++/-- **Proposition 7.8 (I)–(III) at Table 3.** -/
++theorem prop_7_8_I_III_table3 : Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa :=
++  sorry
++
++/-! ## The case split: Lemma 7.10 → Proposition 7.8 (A)–(E) -/
++
++/-- **The case split.** For all `m, m′ ≥ 0`, every tuple of `Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)`
++satisfies (A)–(E). -/
++theorem lemma_7_10_case_split :
++    ∀ m m' ys, Xi (B m) (B m') m m' δ ys → CondsAE ξ1 ξ2 ξ3 ω11 δ εa ys :=
++  sorry
++
++/-- **Proposition 7.8 (A)–(E) at Table 3**, quantified as printed: all `j, j′ ∈ {1}`,
++all `m, m′ ∈ {0, …, ⌊1/δ⌋}` with `m + m′ > 0`. -/
++theorem prop_7_8_A_E_table3 : Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa :=
++  sorry
++
++/-! ## Ranges and permissible triples of the proof of Proposition 7.8 -/
++
++/-- The Type II range `[ξ₂ − ϵ, 1/2]` is the union of the IIc, IIb and IIa ranges. -/
++theorem type_II_cover :
++    ξ2 - εa < gIIc ω11 δ εa ∧ gIIc ω11 δ εa < gIIa ω11 δ εa ∧ gIIa ω11 δ εa < 1 / 2 ∧
++    ∀ γ, ξ2 - εa ≤ γ → γ ≤ 1 / 2 →
++      γ ≤ gIIc ω11 δ εa ∨ (gIIc ω11 δ εa < γ ∧ γ < gIIa ω11 δ εa) ∨ gIIa ω11 δ εa ≤ γ :=
++  sorry
++
++/-- Lemma 5.3 (Type I, `γ ≤ 1/2`) at `δ*(γ) = γ − 4ω − 1/3 − ϵ`, margin `εₐ`; `δ ≤ δ*(γ)`. -/
++theorem perm_type_I_low (γ ε : Rat) (h1 : ξ1 - εa ≤ γ) (h2 : γ ≤ 1 / 2) :
++    PermI εa ω11 γ (dIlow ω11 γ εa) ε ∧ δ ≤ dIlow ω11 γ εa :=
++  sorry
++
++/-- Lemma 5.3 (Type I, `γ ∈ (1/2, 1/2 + 2ω + ε]`) at `δ* = 1/14 − 68ω/14 − ϵ`. -/
++theorem perm_type_I_high (γ ε : Rat) (h1 : 1 / 2 < γ) (_h2 : γ ≤ 1 / 2 + 2 * ω11 + ε) :
++    PermI εa ω11 γ (dIhigh ω11 εa) ε ∧ δ ≤ dIhigh ω11 εa :=
++  sorry
++
++/-- Lemma 5.4 (Type IIa) at `δ*(γ) = 5γ/7 − 2/7 − 24ω/7 − ϵ`. -/
++theorem perm_type_IIa (γ : Rat) (h1 : gIIa ω11 δ εa ≤ γ) (h2 : γ ≤ 1 / 2) :
++    PermIIa εa ω11 γ (dIIa ω11 γ εa) ∧ δ ≤ dIIa ω11 γ εa :=
++  sorry
++
++/-- Lemma 5.5 (Type IIb) at `δ*(γ) = 3γ/7 − 1/7 − 24ω/7 − ϵ`. -/
++theorem perm_type_IIb (γ : Rat) (h1 : gIIc ω11 δ εa < γ) (h2 : γ < gIIa ω11 δ εa) :
++    PermIIb εa ω11 γ (dIIb ω11 γ εa) ∧ δ ≤ dIIb ω11 γ εa :=
++  sorry
++
++/-- Lemma 5.6 (Type IIc) at `δ*(γ) = δ`, which lies in the printed admissible interval. -/
++theorem perm_type_IIc (γ : Rat) (h1 : ξ2 - εa ≤ γ) (h2 : γ ≤ gIIc ω11 δ εa) :
++    PermIIc εa ω11 γ δ ∧
++    δ ≤ 1 / 4 - 2 * ω11 - γ / 2 ∧ δ ≤ γ / 10 - 32 * ω11 / 10 ∧
++    δ ≤ γ / 4 - 1 / 16 - 3 * ω11 - εa :=
++  sorry
++
++/-- Lemma 5.7 (Type III) at `γ = ξ₃ + ϵ`, `δ* = dIII`; `δ < δ*`. -/
++theorem perm_type_III : PermIII εa ω11 (ξ3 + εa) (dIII ω11 ξ3 εa) ∧ δ < dIII ω11 ξ3 εa :=
++  sorry
++
++/-! ## Findings -/
++
++/-- **Type III width.** The printed `δ*` is permissible at `γ = ξ₃` and fails at
++`γ = ξ₃ + ϵ`, the least `γ` covering Definition 7.1 (III); the excess is exactly `ϵ`. -/
++theorem type_III_printed_gap :
++    PermIII 0 ω11 ξ3 (dIIIprinted ω11 ξ3 εa) ∧
++    ¬ PermIII 0 ω11 (ξ3 + εa) (dIIIprinted ω11 ξ3 εa) ∧
++    28 * ω11 + 9 * (ξ3 + εa) + 8 * dIIIprinted ω11 ξ3 εa = 4 + εa :=
++  sorry
++
++/-- **Type I above 1/2.** With `δ* = δ` the second part's bound `1/2 − a` falls below (7.6)'s
++capacity just above `γ = 1/2`; with `δ*` at the top of the printed interval it does not. -/
++theorem type_I_high_choice :
++    (1 / 2 + 1 / 1000) - 1 / 2 + δ + 3 * (εa / 3) < 1 / 14 - 68 / 14 * ω11 - 2 * εa ∧
++    1 / 14 - 68 / 14 * ω11 - 2 * εa ≤ (1 / 2 + 1 / 1000) - 1 / 2 + dIhigh ω11 εa + 3 * (εa / 3) :=
++  sorry
++
++/-- **Type IIc reduction.** In the four-bin criterion, the first capacity decreases and the
++third increases with the width `δ*`; replacing `δ*(γ)` by `δ` is therefore a choice
++(`δ*(γ) = δ`, inside the printed admissible interval by `perm_type_IIc`), the form used
++here, and the printed justification "a smaller `δ` makes these conditions easier" covers
++the first bin only. -/
++theorem type_IIc_mixed_monotonicity (γ ω0 d d' ϵ : Rat) (h : d ≤ d') :
++    (capsDG γ ω0 d' ϵ)[0]! ≤ (capsDG γ ω0 d ϵ)[0]! ∧
++    (capsDG γ ω0 d ϵ)[2]! ≤ (capsDG γ ω0 d' ϵ)[2]! :=
++  sorry
++
++/-- **Lemma 4.2's one-step hypothesis at `q = 0`.** Definition 4.1 imposes
++`B_{j,m+1} ≤ B_{j,m} + δ` only where both sides are defined (`m ≥ 1`); with `B_{1,0} = 0`
++the step from `0` fails at Table 3, so Lemma 4.2's iteration applies from `r ≥ 1` (the case
++`I′ = ∅` is immediate). -/
++theorem lemma_4_2_step_at_zero : ¬ (B 1 ≤ B 0 + δ) ∧ ∀ q : Nat, 1 ≤ q → B (q + 1) ≤ B q + δ :=
++  sorry
++
++/-! ## The containments `Q ⊆ D_X`: (A)–(E) composed with Lemmas 7.5–7.7 -/
++
++theorem containment_I_low : ContainIlow := sorry
++theorem containment_I_high : ContainIhigh := sorry
++theorem containment_IIa : ContainIIa := sorry
++theorem containment_IIb : ContainIIb := sorry
++theorem containment_IIc : ContainIIc := sorry
++theorem containment_III : ContainIII := sorry
++
++/-! ## Theorem 7.11 -/
++
++/-- **Theorem 7.11, combinatorial core at Table 3**: every combinatorial hypothesis its
++proof uses. -/
++theorem theorem_7_11_core :
++    SupportDatum 1 A3 B3 δ εs ∧ Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa ∧
++    Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa ∧
++    ContainIlow ∧ ContainIhigh ∧ ContainIIa ∧ ContainIIb ∧ ContainIIc ∧ ContainIII :=
++  sorry
++
++/-- **Theorem 7.11, relative to its named analytic inputs** (Lemmas 5.3–5.7, the assembly
++step of Proposition 7.8, Theorem 8.3). -/
++theorem theorem_7_11 (H : AnalyticInputs) : H.PositiveLevel ∧ H.HalfLevel :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/theorem_7_11.json b/Comparator/theorem_7_11.json
+new file mode 100644
+index 0000000..04bdbb6
+--- /dev/null
++++ b/Comparator/theorem_7_11.json
+@@ -0,0 +1,90 @@
++{
++    "challenge_module": "Challenge.Theorem711",
++    "solution_module": "Solution.Theorem711",
++    "theorem_names": [
++        "BGP212.Challenge.definition_4_1_table3",
++        "BGP212.Challenge.omega_11_table3",
++        "BGP212.Challenge.prop_7_8_I_III_table3",
++        "BGP212.Challenge.lemma_7_10_case_split",
++        "BGP212.Challenge.prop_7_8_A_E_table3",
++        "BGP212.Challenge.type_II_cover",
++        "BGP212.Challenge.perm_type_I_low",
++        "BGP212.Challenge.perm_type_I_high",
++        "BGP212.Challenge.perm_type_IIa",
++        "BGP212.Challenge.perm_type_IIb",
++        "BGP212.Challenge.perm_type_IIc",
++        "BGP212.Challenge.perm_type_III",
++        "BGP212.Challenge.type_III_printed_gap",
++        "BGP212.Challenge.type_I_high_choice",
++        "BGP212.Challenge.type_IIc_mixed_monotonicity",
++        "BGP212.Challenge.lemma_4_2_step_at_zero",
++        "BGP212.Challenge.containment_I_low",
++        "BGP212.Challenge.containment_I_high",
++        "BGP212.Challenge.containment_IIa",
++        "BGP212.Challenge.containment_IIb",
++        "BGP212.Challenge.containment_IIc",
++        "BGP212.Challenge.containment_III",
++        "BGP212.Challenge.theorem_7_11_core",
++        "BGP212.Challenge.theorem_7_11"
++    ],
++    "definition_names": [
++        "BGP212.T711.floorInv",
++        "BGP212.T711.SupportDatum",
++        "BGP212.T711.A3",
++        "BGP212.T711.B3",
++        "BGP212.T711.Xi",
++        "BGP212.T711.omegaJJ",
++        "BGP212.T711.capsA1G",
++        "BGP212.T711.capsA2G",
++        "BGP212.T711.capsBG",
++        "BGP212.T711.capsCG",
++        "BGP212.T711.capsDG",
++        "BGP212.T711.capsEG",
++        "BGP212.T711.CondsAE",
++        "BGP212.T711.Prop78Packing",
++        "BGP212.T711.Prop78Scalar",
++        "BGP212.T711.PermI",
++        "BGP212.T711.PermIIa",
++        "BGP212.T711.PermIIb",
++        "BGP212.T711.PermIIc",
++        "BGP212.T711.PermIII",
++        "BGP212.T711.dIlow",
++        "BGP212.T711.dIhigh",
++        "BGP212.T711.dIIa",
++        "BGP212.T711.dIIb",
++        "BGP212.T711.dIIIprinted",
++        "BGP212.T711.dIII",
++        "BGP212.T711.gIIc",
++        "BGP212.T711.gIIa",
++        "BGP212.T711.HasDiv1",
++        "BGP212.T711.HasDiv2",
++        "BGP212.T711.HasDiv3",
++        "BGP212.T711.Profile3",
++        "BGP212.T711.Smooth",
++        "BGP212.T711.ContainIlow",
++        "BGP212.T711.ContainIhigh",
++        "BGP212.T711.ContainIIa",
++        "BGP212.T711.ContainIIb",
++        "BGP212.T711.ContainIIc",
++        "BGP212.T711.ContainIII",
++        "BGP212.Packing.InXi",
++        "BGP212.Packing.binSum",
++        "BGP212.Packing.Packs",
++        "BGP212.Packing.ω11",
++        "BGP212.Params.A0",
++        "BGP212.Params.A1",
++        "BGP212.Params.B",
++        "BGP212.Params.δ",
++        "BGP212.Params.εa",
++        "BGP212.Params.εs",
++        "BGP212.Params.ξ1",
++        "BGP212.Params.ξ2",
++        "BGP212.Params.ξ3",
++        "BGP212.Params.ω"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index 910e9fb..a112cc9 100644
+--- a/README.md
++++ b/README.md
+@@ -84,19 +84,45 @@ coordinates, certifies empty cells by exact Farkas infeasibility (`emptyB_sound`
+ checks large trees piece by piece (`checkTree2_split_path`). `checkTree2_sound` holds for any
+ capacity data, so the framework applies to other exact rational packing problems.
+ 
++The ninth pair is A4 (`Challenge/Theorem711.lean`, `Solution/Theorem711.lean`, objects in
++`BGP212/Theorem711.lean`): the deduction from Lemma 7.10 to **Theorem 7.11**. It proves, at
++Table 3, every combinatorial hypothesis the proof of Theorem 7.11 uses:
++
++- Definition 4.1 and Proposition 7.8 (I)–(III);
++- Proposition 7.8 (A)–(E), quantified as printed (all `m, m′ ≤ ⌊1/δ⌋ = 60`, both orders,
++  `m + m′ > 0`), from the 455 roots by `lemma_7_10_case_split`;
++- the permissible triples of Lemmas 5.3–5.7 at the proof's widths `δ*(γ)` over every
++  `γ`-range, the Type II ranges covering `[ξ₂ − ϵ, 1/2]`;
++- the six containments `Q ⊆ D_X` (Type I in two ranges, IIa, IIb, IIc, III), each the
++  verified packing composed with A2's extraction Lemmas 7.5–7.7.
++
++`theorem_7_11` then holds relative to `AnalyticInputs`, whose fields name Lemmas 5.3–5.7, the
++assembly step of Proposition 7.8, and Theorem 8.3. The record
++`specs/results/A4_theorem_7_11.yaml` carries the exact signatures, the dependency graph, and
++six findings, among them a Type III width that the printed `δ*` misses by exactly `ϵ`
++(`type_III_printed_gap`, repaired within the printed conditions).
++
++```text
++lemma_7_10 (455 roots) ─► lemma_7_10_case_split ─► prop_7_8_A_E_table3
++(A)–(E) + Lemmas 7.5–7.7 (A2) + perm_type_* ─► containment_{I_low, I_high, IIa, IIb, IIc, III}
++Table 3 ─► definition_4_1_table3, prop_7_8_I_III_table3
++all of the above ─► theorem_7_11_core ─► theorem_7_11 (H : AnalyticInputs)
++```
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
+   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+-  W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c).
++  W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
++  combinatorial hypothesis of Theorem 7.11 at Table 3 (A4).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+-  (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
++  (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
++  fields of `AnalyticInputs`, together with Proposition 7.8's assembly step and Theorem 8.3.
+ - **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
+   criterion (Theorem 4.10) and the deduction of Theorem 1.1.
+-- **Open, outside the proved scope:** the exact variational certificate of Theorem 11.1,
+-  and the passage from Lemma 7.10 to Theorem 7.11.
++- **Open, outside the proved scope:** the exact variational certificate of Theorem 11.1.
+ 
+ ## Comparator Verification
+ 
+@@ -139,6 +165,13 @@ python3 -I specs/checks/packing_a3c_negative_controls.py /tmp/a3c_neg
+ for f in /tmp/a3c_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For A4's negative controls:
++
++```text
++python3 -I specs/checks/theorem_7_11_negative_controls.py /tmp/a4_neg
++for f in /tmp/a4_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index a162fef..de287f8 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -6,3 +6,4 @@ import Solution.MultiShiftB2
+ import Solution.Packing
+ import Solution.PackingB
+ import Solution.PackingC
++import Solution.Theorem711
+diff --git a/Solution/Theorem711.lean b/Solution/Theorem711.lean
+new file mode 100644
+index 0000000..2e3b4be
+--- /dev/null
++++ b/Solution/Theorem711.lean
+@@ -0,0 +1,588 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Proposition 7.8 and its proof (pp. 31–36), Lemma 7.10 and
++Theorem 7.11 (p. 36).
++-/
++import BGP212.Theorem711
++import Solution.PackingC
++import Solution.A2Combinatorial
++import Solution.AppendixB
++
++/-! # A4: from Lemma 7.10 to Theorem 7.11 (proofs)
++
++* `conds_table3`: the case split. Every tuple of `Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)`, for all
++  `m, m′ ≥ 0`, satisfies (A)–(E): `m, m′ ≤ 13` is forced by the caps; `m ≤ m′` is a root of
++  Lemma 7.10; `m > m′` is the root `(m′, m)` with the sides exchanged; a side with no
++  coordinates is the root `(1, ·)` with a part of size `δ` adjoined and then deleted (the
++  argument in the proof of Lemma 7.10); the empty tuple packs because every capacity is
++  nonnegative.
++* Parameter bounds: Definition 4.1 and (I)–(III) at Table 3; the permissible triples of
++  Lemmas 5.3–5.7 at the proof's `δ*(γ)`, with margin `εₐ`, over each full `γ`-range.
++* Containments `Q ⊆ D_X`: (A)–(E) composed with Lemmas 7.5–7.7 (A2). -/
++
++namespace BGP212.T711
++
++open BGP212.Params BGP212.Packing BGP212.Challenge
++
++/-! ## Packing helpers -/
++
++theorem packs_nil (caps : List Rat) (h : ∀ k, k < caps.length → 0 ≤ caps[k]!) :
++    Packs caps [] :=
++  ⟨[], rfl, by simp, fun k hk => by
++    show binSum [] [] k ≤ caps[k]!
++    simp only [binSum, List.zip_nil_left, List.filter_nil, List.map_nil, List.sum_nil]
++    exact h k hk⟩
++
++theorem packs_of_cons {caps : List Rat} {x : Rat} {l : List Rat} (hx : 0 ≤ x)
++    (h : Packs caps (x :: l)) : Packs caps l := by
++  obtain ⟨as, hlen, hin, hb⟩ := h
++  match as, hlen, hin, hb with
++  | a :: as', hlen', hin', hb' =>
++    refine ⟨as', by simpa using hlen', fun b hb'' => hin' b (by simp [hb'']), fun k hk => ?_⟩
++    have := hb' k hk
++    rw [binSum_cons] at this
++    by_cases hak : a = k <;> simp [hak] at this <;> grind
++
++theorem B_le (m : Nat) : B m ≤ 1081 / 5000 := by
++  by_cases h : m < 11
++  · have key : ∀ m, m < 11 → B m ≤ 1081 / 5000 := by decide +kernel
++    exact key m h
++  · simp only [B]
++    have h0 : m ≠ 0 := by omega
++    have h10 : ¬ m ≤ 10 := by omega
++    simp [h0, h10]
++
++theorem B_pos (m : Nat) (hm : 1 ≤ m) : δ ≤ B m := by
++  by_cases h : m < 11
++  · have key : ∀ m, m < 11 → 1 ≤ m → δ ≤ B m := by decide +kernel
++    exact key m h hm
++  · simp only [B]
++    have h0 : m ≠ 0 := by omega
++    have h10 : ¬ m ≤ 10 := by omega
++    simp [h0, h10, δ]
++    decide +kernel
++
++/-- A side with at least 14 coordinates, each at least `δ`, exceeds every cap. -/
++theorem side_le_13 (l : List Rat) (hδ : ∀ y ∈ l, δ ≤ y) (m : Nat) (hsum : l.sum ≤ B m) :
++    l.length ≤ 13 := by
++  have h1 := sum_ge_length_mul δ l hδ
++  have h2 := B_le m
++  rcases Nat.lt_or_ge l.length 14 with hc | hc
++  · omega
++  exfalso
++  have h3 : (14 : Rat) ≤ (l.length : Rat) := by exact_mod_cast hc
++  have h4 : (14 : Rat) * δ ≤ (l.length : Rat) * δ :=
++    Rat.mul_le_mul_of_nonneg_right h3 (by simp [δ]; decide +kernel)
++  simp [δ] at h1 h4
++  grind
++
++/-- **The case split.** A capacity list that every root of Lemma 7.10 packs, and whose
++capacities are nonnegative, packs every tuple of `Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)` for all `m, m′`. -/
++theorem packs_xi (caps : List Rat) (hcap : ∀ k, k < caps.length → 0 ≤ caps[k]!)
++    (hroot : ∀ m m', 1 ≤ m → m ≤ m' → m' ≤ 13 → ∀ s1 s2,
++      InXi (B m) (B m') m m' s1 s2 → Packs caps (s1 ++ s2)) :
++    ∀ m m' ys, Xi (B m) (B m') m m' δ ys → Packs caps ys := by
++  intro m m' ys hX
++  obtain ⟨hlen, hr, h1, h2⟩ := hX
++  have hl1 : (ys.take m).length = m := by simp [hlen]
++  have hl2 : (ys.drop m).length = m' := by simp [hlen]
++  have hr1 : ∀ y ∈ ys.take m, δ ≤ y ∧ y ≤ 1 := fun y hy => hr y (List.mem_of_mem_take hy)
++  have hr2 : ∀ y ∈ ys.drop m, δ ≤ y ∧ y ≤ 1 := fun y hy => hr y (List.mem_of_mem_drop hy)
++  have hm : m ≤ 13 := hl1 ▸ side_le_13 _ (fun y hy => (hr1 y hy).1) m h1
++  have hm' : m' ≤ 13 := hl2 ▸ side_le_13 _ (fun y hy => (hr2 y hy).1) m' h2
++  have hδ1 : δ ≤ 1 := by simp [δ]; decide +kernel
++  have hδ0 : 0 ≤ δ := by simp [δ]; decide +kernel
++  have hsplit : ys = ys.take m ++ ys.drop m := (List.take_append_drop m ys).symm
++  rcases Nat.eq_zero_or_pos m with rfl | hmpos
++  · rcases Nat.eq_zero_or_pos m' with rfl | hm'pos
++    · have : ys = [] := List.eq_nil_of_length_eq_zero (by simpa using hlen)
++      subst this; exact packs_nil caps hcap
++    · -- one side empty: adjoin a part of size δ, use the root (1, m'), delete it
++      have hX' : InXi (B 1) (B m') 1 m' [δ] ys := by
++        refine ⟨rfl, by simpa using hl2, ?_, by have := B_pos 1 (Nat.le_refl 1); simp only [List.sum_cons, List.sum_nil]; grind, by simpa using h2⟩
++        intro y hy
++        rcases List.mem_append.mp hy with h | h
++        · simp at h; subst h; exact ⟨Rat.le_refl, hδ1⟩
++        · exact hr y h
++      exact packs_of_cons hδ0 (hroot 1 m' (Nat.le_refl 1) hm'pos hm' [δ] ys hX')
++  · rcases Nat.eq_zero_or_pos m' with rfl | hm'pos
++    · have hys : ys.take m = ys := List.take_of_length_le (by omega)
++      have hX' : InXi (B 1) (B m) 1 m [δ] (ys.take m) := by
++        refine ⟨rfl, hl1, ?_, by have := B_pos 1 (Nat.le_refl 1); simp only [List.sum_cons, List.sum_nil]; grind, h1⟩
++        intro y hy
++        rcases List.mem_append.mp hy with h | h
++        · simp at h; subst h; exact ⟨Rat.le_refl, hδ1⟩
++        · exact hr1 y h
++      have := packs_of_cons hδ0 (hroot 1 m (Nat.le_refl 1) hmpos hm [δ] _ hX')
++      rwa [hys] at this
++    · by_cases hle : m ≤ m'
++      · have hX' : InXi (B m) (B m') m m' (ys.take m) (ys.drop m) :=
++          ⟨hl1, hl2, fun y hy => by rw [← hsplit] at hy; exact hr y hy, h1, h2⟩
++        rw [hsplit]; exact hroot m m' hmpos hle hm' _ _ hX'
++      · have hX' : InXi (B m') (B m) m' m (ys.drop m) (ys.take m) :=
++          ⟨hl2, hl1, fun y hy => hr y (by
++            rcases List.mem_append.mp hy with h | h
++            · exact List.mem_of_mem_drop h
++            · exact List.mem_of_mem_take h), h2, h1⟩
++        have := hroot m' m hm'pos (by omega) hm _ _ hX'
++        rw [hsplit]
++        exact packs_perm List.perm_append_comm this
++
++theorem omega_table3 : omegaJJ A3 1 1 = ω11 ∧ ω11 = ω := by
++  refine ⟨by simp [omegaJJ, A3, ω11], by simp [ω11, A1, ω]; decide +kernel⟩
++
++/-- Lemma 7.10 as a hypothesis on a capacity list, per condition. -/
++theorem root_packs (c : Cond) (P : List Rat → List Rat → Prop)
++    (hP : ∀ m m', Root c m m' → ∀ s1 s2, InXi (B m) (B m') m m' s1 s2 → P s1 s2) :
++    ∀ m m', 1 ≤ m → m ≤ m' → m' ≤ 13 → ∀ s1 s2, InXi (B m) (B m') m m' s1 s2 → P s1 s2 :=
++  fun m m' h1 h2 h3 => hP m m' (lemma_7_10 c m m' h1 h2 h3)
++
++/-- **The case split, Table 3.** Every tuple of `Ξ(B₁,ₘ, B₁,ₘ′, m, m′, δ)`, for all
++`m, m′ ≥ 0`, satisfies conditions (A)–(E) of Proposition 7.8 at `ω = ω(1,1)`. -/
++theorem conds_table3 :
++    ∀ m m' ys, Xi (B m) (B m') m m' δ ys → CondsAE ξ1 ξ2 ξ3 ω11 δ εa ys := by
++  intro m m' ys hX
++  refine ⟨⟨?_, ?_⟩, ?_, ?_, ?_, ?_⟩
++  · exact packs_xi capsA1 (by decide +kernel)
++      (root_packs .A _ fun m m' h s1 s2 hx => (h s1 s2 hx).1) m m' ys hX
++  · exact packs_xi capsA2 (by decide +kernel)
++      (root_packs .A _ fun m m' h s1 s2 hx => (h s1 s2 hx).2) m m' ys hX
++  · exact packs_xi capsB (by decide +kernel)
++      (root_packs .B _ fun m m' h s1 s2 hx => h s1 s2 hx) m m' ys hX
++  · exact packs_xi capsC (by decide +kernel)
++      (root_packs .C _ fun m m' h s1 s2 hx => h s1 s2 hx) m m' ys hX
++  · intro ω0 γ h1 h2 h3 h4
++    have h3' : 2 / 5 - εa ≤ γ := by simpa [ξ2] using h3
++    have h4' : γ ≤ 1 / 3 + 8 * ω11 + 7 * δ / 3 + 3 * εa := by grind
++    have hc : ∀ k, k < (capsD γ ω0).length → 0 ≤ (capsD γ ω0)[k]! := by
++      intro k hk
++      simp only [capsD, List.length_cons, List.length_nil] at hk
++      simp only [ω11, A1, δ, εa] at h2 h3' h4'
++      rcases (by omega : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3) with rfl | rfl | rfl | rfl <;>
++        simp [capsD, δ, εa] <;> grind
++    exact packs_xi (capsD γ ω0) hc
++      (root_packs .D _ fun m m' h s1 s2 hx => h s1 s2 hx γ ω0 h1 h2 h3' h4') m m' ys hX
++  · exact packs_xi capsE (by decide +kernel)
++      (root_packs .E _ fun m m' h s1 s2 hx => h s1 s2 hx) m m' ys hX
++
++/-- **Proposition 7.8's packing hypotheses hold at Table 3**, quantified as printed. -/
++theorem prop_7_8_packing_table3 : Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa := by
++  intro j j' hj hj1 hj' hj'1 m m' _ _ _ ys hX
++  have e1 : j = 1 := by omega
++  have e2 : j' = 1 := by omega
++  subst e1 e2
++  rw [omega_table3.1]
++  exact conds_table3 m m' ys hX
++
++/-! ## Parameter bounds -/
++
++theorem floorInv_table3 : floorInv δ = 60 := by decide +kernel
++
++/-- **Definition 4.1 at Table 3** (`n = 1`, `ε = εₛ`). -/
++theorem support_datum_table3 : SupportDatum 1 A3 B3 δ εs ∧ floorInv δ = 60 := by
++  refine ⟨⟨by decide +kernel, by decide +kernel, by decide +kernel, ?_, by decide +kernel, ?_⟩,
++    floorInv_table3⟩
++  · intro j hj
++    have : j = 0 := by omega
++    subst this; decide +kernel
++  · intro j _ _
++    refine ⟨rfl, fun m hm _ => (definition_4_1_caps m hm).1,
++      fun m hm _ => ⟨(definition_4_1_caps m hm).2.1, (definition_4_1_caps m hm).2.2⟩⟩
++
++/-- **Proposition 7.8 (I)–(III) at Table 3.** -/
++theorem prop_7_8_scalar_table3 : Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa := by
++  unfold Prop78Scalar; decide +kernel
++
++/-- The Type II range `[ξ₂ − ϵ, 1/2]` is covered by the IIc, IIb and IIa ranges, in order. -/
++theorem type_II_cover :
++    ξ2 - εa < gIIc ω11 δ εa ∧ gIIc ω11 δ εa < gIIa ω11 δ εa ∧ gIIa ω11 δ εa < 1 / 2 ∧
++    ∀ γ, ξ2 - εa ≤ γ → γ ≤ 1 / 2 →
++      γ ≤ gIIc ω11 δ εa ∨ (gIIc ω11 δ εa < γ ∧ γ < gIIa ω11 δ εa) ∨ gIIa ω11 δ εa ≤ γ := by
++  refine ⟨by decide +kernel, by decide +kernel, by decide +kernel, fun γ _ _ => ?_⟩
++  by_cases h1 : γ ≤ gIIc ω11 δ εa
++  · exact Or.inl h1
++  · by_cases h2 : γ < gIIa ω11 δ εa
++    · exact Or.inr (Or.inl ⟨by grind, h2⟩)
++    · exact Or.inr (Or.inr (by grind))
++
++theorem perm_I_low (γ ε : Rat) (h1 : ξ1 - εa ≤ γ) (h2 : γ ≤ 1 / 2) :
++    PermI εa ω11 γ (dIlow ω11 γ εa) ε ∧ δ ≤ dIlow ω11 γ εa := by
++  simp only [PermI, dIlow, ω11, A1, ξ1, εa, δ] at *
++  exact ⟨⟨fun _ => by grind, fun h => absurd h (by grind)⟩, by grind⟩
++
++theorem perm_I_high (γ ε : Rat) (h1 : 1 / 2 < γ) (_h2 : γ ≤ 1 / 2 + 2 * ω11 + ε) :
++    PermI εa ω11 γ (dIhigh ω11 εa) ε ∧ δ ≤ dIhigh ω11 εa := by
++  simp only [PermI, dIhigh, ω11, A1, εa, δ] at *
++  exact ⟨⟨fun h => absurd h (by grind), fun _ _ => by grind⟩, by grind⟩
++
++theorem perm_IIa (γ : Rat) (h1 : gIIa ω11 δ εa ≤ γ) (h2 : γ ≤ 1 / 2) :
++    PermIIa εa ω11 γ (dIIa ω11 γ εa) ∧ δ ≤ dIIa ω11 γ εa := by
++  simp only [PermIIa, dIIa, gIIa, ω11, A1, εa, δ] at *
++  exact ⟨⟨by grind, by grind⟩, by grind⟩
++
++theorem perm_IIb (γ : Rat) (h1 : gIIc ω11 δ εa < γ) (h2 : γ < gIIa ω11 δ εa) :
++    PermIIb εa ω11 γ (dIIb ω11 γ εa) ∧ δ ≤ dIIb ω11 γ εa := by
++  simp only [PermIIb, dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *
++  exact ⟨⟨by grind, by grind⟩, by grind⟩
++
++/-- Type IIc with `δ*(γ) = δ`: the printed admissible interval
++`δ ≤ δ*(γ) ≤ min{1/4 − 2ω − γ/2, γ/10 − 32ω/10, γ/4 − 1/16 − 3ω − ϵ}` contains `δ` over the
++whole range, and `(ω, γ, δ)` is permissible with margin `εₐ`. -/
++theorem perm_IIc (γ : Rat) (h1 : ξ2 - εa ≤ γ) (h2 : γ ≤ gIIc ω11 δ εa) :
++    PermIIc εa ω11 γ δ ∧
++    δ ≤ 1 / 4 - 2 * ω11 - γ / 2 ∧ δ ≤ γ / 10 - 32 * ω11 / 10 ∧
++    δ ≤ γ / 4 - 1 / 16 - 3 * ω11 - εa := by
++  simp only [PermIIc, gIIc, ω11, A1, ξ2, εa, δ] at *
++  exact ⟨⟨by grind, by grind, by grind⟩, by grind, by grind, by grind⟩
++
++/-- Type III at Lemma 5.7's `γ = ξ₃ + ϵ` (the least `γ` covering Definition 7.1 (III)'s
++`N_i ≤ x^{ξ₃+ϵ}`), with A4's width `dIII`. -/
++theorem perm_III : PermIII εa ω11 (ξ3 + εa) (dIII ω11 ξ3 εa) ∧ δ < dIII ω11 ξ3 εa := by
++  unfold PermIII; decide +kernel
++
++/-- **Finding (Type III width).** With the printed `δ* = 1/2 − 7ω/2 − 9ξ₃/8 − ϵ`, the
++triple is permissible at `γ = ξ₃` and fails at `γ = ξ₃ + ϵ`: `28ω + 9(ξ₃ + ϵ) + 8δ* = 4 + ϵ`.
++A4's `dIII` (`− 11ϵ/8`) is permissible there, and (III), (E) still suffice for it. -/
++theorem type_III_printed_gap :
++    PermIII 0 ω11 ξ3 (dIIIprinted ω11 ξ3 εa) ∧
++    ¬ PermIII 0 ω11 (ξ3 + εa) (dIIIprinted ω11 ξ3 εa) ∧
++    28 * ω11 + 9 * (ξ3 + εa) + 8 * dIIIprinted ω11 ξ3 εa = 4 + εa := by
++  unfold PermIII; decide +kernel
++
++/-- **Finding (Type I, `γ > 1/2`).** The proof allows "any `δ*(γ) ∈ [δ, 1/14 − 68ω/14 − ϵ]`";
++the partition (7.6) yields Lemma 7.5's hypothesis only for `δ*` near the top. At
++`γ = 1/2 + 1/1000`, `ε′ = ϵ/3`, the choice `δ* = δ` leaves the second part's bound
++`1/2 − a = γ − 1/2 + δ* + 3ε′` below (7.6)'s capacity `1/14 − 68ω/14 − 2ϵ`. -/
++theorem type_I_high_choice :
++    (1 / 2 + 1 / 1000) - 1 / 2 + δ + 3 * (εa / 3) < 1 / 14 - 68 / 14 * ω11 - 2 * εa ∧
++    1 / 14 - 68 / 14 * ω11 - 2 * εa ≤ (1 / 2 + 1 / 1000) - 1 / 2 + dIhigh ω11 εa + 3 * (εa / 3) := by
++  decide +kernel
++
++/-! ## From an assignment to the parts `I₁ ∪ ⋯ ∪ I_K` -/
++
++/-- Part `k` of an assignment: the items sent to bin `k`. -/
++def part (items : List Rat) (as : List Nat) (k : Nat) : List Rat :=
++  ((items.zip as).filter (fun p => p.2 == k)).map (·.1)
++
++theorem binSum_eq_part (items : List Rat) (as : List Nat) (k : Nat) :
++    binSum items as k = (part items as k).sum := rfl
++
++theorem part_cons (x : Rat) (xs : List Rat) (a : Nat) (as : List Nat) (k : Nat) :
++    part (x :: xs) (a :: as) k = if a = k then x :: part xs as k else part xs as k := by
++  unfold part
++  by_cases h : a = k
++  · subst h; simp
++  · simp [h]
++
++theorem flatMap_congr' {f g : Nat → List Rat} :
++    ∀ L : List Nat, (∀ k ∈ L, f k = g k) → L.flatMap f = L.flatMap g
++  | [], _ => rfl
++  | b :: L, h => by
++      simp only [List.flatMap_cons]
++      rw [h b (by simp), flatMap_congr' L (fun k hk => h k (by simp [hk]))]
++
++theorem flatMap_insert (x : Rat) (P : Nat → List Rat) (a : Nat) :
++    ∀ L : List Nat, a ∈ L → L.Nodup →
++      (L.flatMap fun k => if a = k then x :: P k else P k).Perm (x :: L.flatMap P)
++  | [], h, _ => by simp at h
++  | b :: L, h, hnd => by
++      have hnd' := List.nodup_cons.mp hnd
++      simp only [List.flatMap_cons]
++      by_cases hab : a = b
++      · subst hab
++        have hrest : (L.flatMap fun k => if a = k then x :: P k else P k) = L.flatMap P := by
++          apply flatMap_congr' L
++          intro k hk
++          have : a ≠ k := fun e => hnd'.1 (e ▸ hk)
++          simp [this]
++        simp [hrest]
++      · have hb : a ∈ L := by
++          rcases List.mem_cons.mp h with h1 | h1
++          · exact absurd h1 hab
++          · exact h1
++        have ih := flatMap_insert x P a L hb hnd'.2
++        simp only [hab, ite_false]
++        exact (ih.append_left (P b)).trans List.perm_middle
++
++theorem perm_parts (K : Nat) : ∀ (items : List Rat) (as : List Nat), as.length = items.length →
++    (∀ a ∈ as, a < K) → items.Perm ((List.range K).flatMap (part items as))
++  | [], [], _, _ => by simp [part]
++  | x :: xs, a :: as, hl, hin => by
++      have ih := perm_parts K xs as (by simpa using hl) (fun b hb => hin b (by simp [hb]))
++      have ha : a ∈ List.range K := List.mem_range.mpr (hin a (by simp))
++      have := flatMap_insert x (part xs as) a (List.range K) ha List.nodup_range
++      have e : part (x :: xs) (a :: as) =
++          fun k => if a = k then x :: part xs as k else part xs as k :=
++        funext (part_cons x xs a as)
++      rw [e]
++      exact (ih.cons x).trans this.symm
++  | [], _ :: _, hl, _ => by simp at hl
++  | _ :: _, [], hl, _ => by simp at hl
++
++theorem parts2 {c0 c1 : Rat} {ys : List Rat} (h : Packs [c0, c1] ys) :
++    ∃ y1 y2 : List Rat, ys.Perm (y1 ++ y2) ∧ y1.sum ≤ c0 ∧ y2.sum ≤ c1 := by
++  obtain ⟨as, hl, hin, hb⟩ := h
++  have hp := perm_parts 2 ys as hl (by simpa using hin)
++  refine ⟨part ys as 0, part ys as 1, by simpa [List.range_succ] using hp, ?_, ?_⟩
++  · simpa [← binSum_eq_part] using hb 0 (by simp)
++  · simpa [← binSum_eq_part] using hb 1 (by simp)
++
++theorem parts3 {c0 c1 c2 : Rat} {ys : List Rat} (h : Packs [c0, c1, c2] ys) :
++    ∃ y1 y2 y3 : List Rat, ys.Perm (y1 ++ y2 ++ y3) ∧ y1.sum ≤ c0 ∧ y2.sum ≤ c1 ∧
++      y3.sum ≤ c2 := by
++  obtain ⟨as, hl, hin, hb⟩ := h
++  have hp := perm_parts 3 ys as hl (by simpa using hin)
++  refine ⟨part ys as 0, part ys as 1, part ys as 2, by simpa [List.range_succ] using hp,
++    ?_, ?_, ?_⟩
++  · simpa [← binSum_eq_part] using hb 0 (by simp)
++  · simpa [← binSum_eq_part] using hb 1 (by simp)
++  · simpa [← binSum_eq_part] using hb 2 (by simp)
++
++theorem parts4 {c0 c1 c2 c3 : Rat} {ys : List Rat} (h : Packs [c0, c1, c2, c3] ys) :
++    ∃ y1 y2 y3 y4 : List Rat, ys.Perm (y1 ++ y2 ++ y3 ++ y4) ∧ y1.sum ≤ c0 ∧ y2.sum ≤ c1 ∧
++      y3.sum ≤ c2 ∧ y4.sum ≤ c3 := by
++  obtain ⟨as, hl, hin, hb⟩ := h
++  have hp := perm_parts 4 ys as hl (by simpa using hin)
++  refine ⟨part ys as 0, part ys as 1, part ys as 2, part ys as 3,
++    by simpa [List.range_succ] using hp, ?_, ?_, ?_, ?_⟩
++  · simpa [← binSum_eq_part] using hb 0 (by simp)
++  · simpa [← binSum_eq_part] using hb 1 (by simp)
++  · simpa [← binSum_eq_part] using hb 2 (by simp)
++  · simpa [← binSum_eq_part] using hb 3 (by simp)
++
++/-! ## The containments `Q ⊆ D_X` (Proposition 7.8's proof) -/
++
++/-- Linear arithmetic over the Table 3 constants. -/
++local macro "arith" : tactic => `(tactic| ((try simp only [δ] at *); grind))
++
++theorem profile_rough {ys : List Rat} (h : Profile3 ys) : ∀ y ∈ ys, δ ≤ y := by
++  obtain ⟨_, _, _, _, hX⟩ := h
++  exact fun y hy => (hX.2.1 y hy).1
++
++theorem profile_conds {ys : List Rat} (h : Profile3 ys) : CondsAE ξ1 ξ2 ξ3 ω11 δ εa ys := by
++  obtain ⟨m, m', _, _, hX⟩ := h
++  exact conds_table3 m m' ys hX
++
++theorem δ_pos : (0 : Rat) < δ := by simp [δ]; decide +kernel
++
++theorem div1 (a b ε0 ε1 : Rat) (ha : 0 < a) (hb : b < 1 / 2) (hw : δ ≤ b - a)
++    (hε0 : 0 < ε0) (hε0' : ε0 < 1) (hε1 : 0 ≤ ε1) (hε1' : ε1 ≤ ε0 * (1 / 2 - a))
++    (ys zs y1 y2 : List Rat) (hp : ys.Perm (y1 ++ y2)) (hy : ∀ y ∈ ys, δ ≤ y)
++    (hI1 : y1.sum ≤ b) (hI2 : y2.sum ≤ 1 / 2 - a) (hz : Smooth zs)
++    (hq : 1 / 2 - ε1 < (1 - ε0) * ys.sum + zs.sum) : HasDiv1 ε0 a b ys zs := by
++  have hsum : ys.sum = y1.sum + y2.sum := by rw [perm_sum hp, List.sum_append]
++  obtain ⟨J, R, h1, h2, h3⟩ := lemma_7_5 a b δ ε0 ε1 ha hb δ_pos hw hε0 hε0' hε1 hε1' y1 y2
++    (fun y hy' => hy y (hp.symm.subset hy')) hI1 hI2 zs hz (by rw [← hsum]; exact hq)
++  exact ⟨y1, y2, J, R, hp, h1, h2, h3⟩
++
++/-- **Type I, `γ ≤ 1/2`.** (A)'s first partition and Lemma 7.5. -/
++theorem contain_I_low : ContainIlow := by
++  intro γ ε' ε0 ε1 h1 h2 h3 h4 h5 h6 h7 h8 ys zs hP hS hq
++  obtain ⟨y1, y2, hp, hs1, hs2⟩ := parts2 (profile_conds hP).1.1
++  have hd := (perm_I_low γ 0 h1 h2).2
++  try simp only [capsA1G] at hs1 hs2
++  simp only [dIlow, ω11, A1, ξ1, εa, δ] at *
++  exact div1 _ _ ε0 ε1 (by arith) (by arith) (by arith) h5 h6 h7 h8 ys zs y1 y2 hp
++    (profile_rough hP) (by arith) (by arith) hS hq
++
++/-- **Type I, `γ ∈ (1/2, 1/2 + 2ω + ε′]`.** (A)'s second partition and Lemma 7.5. -/
++theorem contain_I_high : ContainIhigh := by
++  intro γ ε' ε0 ε1 h1 h2 h3 h4 h5 h6 h7 h8 ys zs hP hS hq
++  obtain ⟨y1, y2, hp, hs1, hs2⟩ := parts2 (profile_conds hP).1.2
++  have hd := (perm_I_high γ ε' h1 h2).2
++  try simp only [capsA2G] at hs1 hs2
++  simp only [dIhigh, ω11, A1, εa, δ] at *
++  exact div1 _ _ ε0 ε1 (by arith) (by arith) (by arith) h5 h6 h7 h8 ys zs y1 y2 hp
++    (profile_rough hP) (by arith) (by arith) hS hq
++
++/-- **Type IIa.** (B) and Lemma 7.5. -/
++theorem contain_IIa : ContainIIa := by
++  intro γ ε' ε0 ε1 h1 h2 h3 h4 h5 h6 h7 h8 ys zs hP hS hq
++  obtain ⟨y1, y2, hp, hs1, hs2⟩ := parts2 (profile_conds hP).2.1
++  have hd := (perm_IIa γ h1 h2).2
++  try simp only [capsBG] at hs1 hs2
++  simp only [dIIa, gIIa, ω11, A1, εa, δ] at *
++  exact div1 _ _ ε0 ε1 (by arith) (by arith) (by arith) h5 h6 h7 h8 ys zs y1 y2 hp
++    (profile_rough hP) (by arith) (by arith) hS hq
++
++/-- **Type III.** (E) and Lemma 7.5, at A4's width `dIII`. -/
++theorem contain_III : ContainIII := by
++  intro ε0 ε1 h5 h6 h7 h8 ys zs hP hS hq
++  obtain ⟨y1, y2, hp, hs1, hs2⟩ := parts2 (profile_conds hP).2.2.2.2
++  try simp only [capsEG] at hs1 hs2
++  simp only [dIII, ω11, A1, ξ3, εa] at *
++  exact div1 _ _ ε0 ε1 (by arith) (by arith) (by arith) h5 h6 h7 h8 ys zs y1 y2 hp
++    (profile_rough hP) (by arith) (by arith) hS hq
++
++/-- **Type IIb.** (C) and Lemma 7.6. -/
++theorem contain_IIb : ContainIIb := by
++  intro γ ε' ε0 ε1 h1 h2 h3 h4 h5 h6 h7 h8 ys zs hP hS hq
++  obtain ⟨y1, y2, y3, hp, hs1, hs2, hs3⟩ := parts3 (profile_conds hP).2.2.1
++  have hd := (perm_IIb γ h1 h2).2
++  have hy := profile_rough hP
++  have hsum : ys.sum = y1.sum + y2.sum + y3.sum := by
++    rw [perm_sum hp, List.sum_append, List.sum_append]
++  obtain ⟨J2, J1, R, hJ, k1, k2, k3, k4⟩ := lemma_7_6
++    (γ - 3 * ε' - dIIb ω11 γ εa) (1 / 2 - γ - 2 * ω11 - 6 * ε' - dIIb ω11 γ εa)
++    (γ - 3 * ε') (1 / 2 - γ - 2 * ω11 - 6 * ε') δ ε0 ε1
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    δ_pos
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    h5 h6 h7 h8 y1 y2 y3 (fun y hy' => hy y (hp.symm.subset hy'))
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    (by simp only [dIIb, gIIa, gIIc, ω11, A1, εa, δ] at *; grind)
++    zs hS (by rw [← hsum]; exact hq)
++  exact ⟨y1, y2, y3, J2, J1, R, hp, hJ, k1, k2, k3, k4⟩
++
++/-- **Type IIc.** (D) at `(γ, ω₀)` and Lemma 7.7, with `δ*(γ) = δ`. -/
++theorem contain_IIc : ContainIIc := by
++  intro γ ω0 ε' h1 h2 h3 h4 h5 h6 ys zs hP hS hq
++  obtain ⟨y1, y2, y3, y4, hp, hs1, hs2, hs3, hs4⟩ :=
++    parts4 ((profile_conds hP).2.2.2.1 ω0 γ h3 h4 h1 h2)
++  have hy := profile_rough hP
++  have hsum : ys.sum = y1.sum + y2.sum + y3.sum + y4.sum := by
++    rw [perm_sum hp, List.sum_append, List.sum_append, List.sum_append]
++  have hδ := δ_pos
++  obtain ⟨J2, J1, R, hJ, k1, k2, k3, k4, k5⟩ := lemma_7_7
++    (γ - 3 * ε' - δ) (1 - γ - 6 * ε' - δ - (1 / 2 + 2 * ω0))
++    (2 - γ - 52 * ε' - δ - 4 * (1 / 2 + 2 * ω0))
++    (γ - 3 * ε') (1 - γ - 6 * ε' - (1 / 2 + 2 * ω0)) (2 - γ - 52 * ε' - 4 * (1 / 2 + 2 * ω0))
++    δ ω0 0
++    (by grind) (by grind) (by grind) (by grind) (by grind) (by grind)
++    y1 y2 y3 y4
++    (by (try simp only [capsDG] at *); grind) (by (try simp only [capsDG] at *); grind)
++    (by (try simp only [capsDG] at *); grind) (by (try simp only [capsDG] at *); grind)
++    zs hS (by rw [← hsum]; exact hq)
++  exact ⟨y1, y2, y3, y4, J2, J1, R, hp, hJ, k1, k2, k3, k4, k5⟩
++
++/-! ## Theorem 7.11 relative to the named analytic inputs -/
++
++theorem εa_nonneg : (0 : Rat) ≤ εa := by simp [εa]; decide +kernel
++
++theorem permI_zero {ω' γ δs ε : Rat} (h : PermI εa ω' γ δs ε) : PermI 0 ω' γ δs ε := by
++  have := εa_nonneg
++  simp only [PermI] at *
++  exact ⟨fun h1 => by have := h.1 h1; grind, fun h1 h2 => by have := h.2 h1 h2; grind⟩
++
++theorem permIIa_zero {ω' γ δs : Rat} (h : PermIIa εa ω' γ δs) : PermIIa 0 ω' γ δs := by
++  have := εa_nonneg; simp only [PermIIa] at *; grind
++
++theorem permIIb_zero {ω' γ δs : Rat} (h : PermIIb εa ω' γ δs) : PermIIb 0 ω' γ δs := by
++  have := εa_nonneg; simp only [PermIIb] at *; grind
++
++theorem permIIc_zero {ω' γ δs : Rat} (h : PermIIc εa ω' γ δs) : PermIIc 0 ω' γ δs := by
++  have := εa_nonneg; simp only [PermIIc] at *; grind
++
++theorem permIII_zero {ω' γ δs : Rat} (h : PermIII εa ω' γ δs) : PermIII 0 ω' γ δs := by
++  have := εa_nonneg; simp only [PermIII] at *; grind
++
++/-- **Theorem 7.11, relative to its named analytic inputs.** Every combinatorial antecedent
++(Definition 4.1, Proposition 7.8 (I)–(III) and (A)–(E), the permissible triples at the
++proof's `δ*(γ)` over every `γ`-range, and the containments `Q ⊆ D_X`) is discharged here. -/
++theorem theorem_7_11 (H : AnalyticInputs) : H.PositiveLevel ∧ H.HalfLevel := by
++  have hpos : H.PositiveLevel := H.prop_7_8_assembly
++    (fun γ ε h1 h2 => H.lemma_5_3 _ _ _ _ (permI_zero (perm_I_low γ ε h1 h2).1))
++    (fun γ ε h1 h2 => H.lemma_5_3 _ _ _ _ (permI_zero (perm_I_high γ ε h1 h2).1))
++    (fun γ h1 h2 => H.lemma_5_4 _ _ _ (permIIa_zero (perm_IIa γ h1 h2).1))
++    (fun γ h1 h2 => H.lemma_5_5 _ _ _ (permIIb_zero (perm_IIb γ h1 h2).1))
++    (fun γ h1 h2 => H.lemma_5_6 _ _ _ (permIIc_zero (perm_IIc γ h1 h2).1))
++    (H.lemma_5_7 _ _ _ (permIII_zero perm_III.1))
++    contain_I_low contain_I_high contain_IIa contain_IIb contain_IIc contain_III
++  exact ⟨hpos, H.theorem_8_3 prop_7_8_packing_table3 hpos⟩
++
++end BGP212.T711
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.Packing BGP212.T711
++
++theorem definition_4_1_table3 : SupportDatum 1 A3 B3 δ εs ∧ floorInv δ = 60 :=
++  support_datum_table3
++
++theorem omega_11_table3 : omegaJJ A3 1 1 = ω11 ∧ ω11 = ω := omega_table3
++
++theorem prop_7_8_I_III_table3 : Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa := prop_7_8_scalar_table3
++
++theorem lemma_7_10_case_split :
++    ∀ m m' ys, Xi (B m) (B m') m m' δ ys → CondsAE ξ1 ξ2 ξ3 ω11 δ εa ys :=
++  conds_table3
++
++theorem prop_7_8_A_E_table3 : Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa := prop_7_8_packing_table3
++
++theorem type_II_cover :
++    ξ2 - εa < gIIc ω11 δ εa ∧ gIIc ω11 δ εa < gIIa ω11 δ εa ∧ gIIa ω11 δ εa < 1 / 2 ∧
++    ∀ γ, ξ2 - εa ≤ γ → γ ≤ 1 / 2 →
++      γ ≤ gIIc ω11 δ εa ∨ (gIIc ω11 δ εa < γ ∧ γ < gIIa ω11 δ εa) ∨ gIIa ω11 δ εa ≤ γ :=
++  BGP212.T711.type_II_cover
++
++theorem perm_type_I_low (γ ε : Rat) (h1 : ξ1 - εa ≤ γ) (h2 : γ ≤ 1 / 2) :
++    PermI εa ω11 γ (dIlow ω11 γ εa) ε ∧ δ ≤ dIlow ω11 γ εa :=
++  perm_I_low γ ε h1 h2
++
++theorem perm_type_I_high (γ ε : Rat) (h1 : 1 / 2 < γ) (_h2 : γ ≤ 1 / 2 + 2 * ω11 + ε) :
++    PermI εa ω11 γ (dIhigh ω11 εa) ε ∧ δ ≤ dIhigh ω11 εa :=
++  perm_I_high γ ε h1 _h2
++
++theorem perm_type_IIa (γ : Rat) (h1 : gIIa ω11 δ εa ≤ γ) (h2 : γ ≤ 1 / 2) :
++    PermIIa εa ω11 γ (dIIa ω11 γ εa) ∧ δ ≤ dIIa ω11 γ εa :=
++  perm_IIa γ h1 h2
++
++theorem perm_type_IIb (γ : Rat) (h1 : gIIc ω11 δ εa < γ) (h2 : γ < gIIa ω11 δ εa) :
++    PermIIb εa ω11 γ (dIIb ω11 γ εa) ∧ δ ≤ dIIb ω11 γ εa :=
++  perm_IIb γ h1 h2
++
++theorem perm_type_IIc (γ : Rat) (h1 : ξ2 - εa ≤ γ) (h2 : γ ≤ gIIc ω11 δ εa) :
++    PermIIc εa ω11 γ δ ∧
++    δ ≤ 1 / 4 - 2 * ω11 - γ / 2 ∧ δ ≤ γ / 10 - 32 * ω11 / 10 ∧
++    δ ≤ γ / 4 - 1 / 16 - 3 * ω11 - εa :=
++  perm_IIc γ h1 h2
++
++theorem perm_type_III : PermIII εa ω11 (ξ3 + εa) (dIII ω11 ξ3 εa) ∧ δ < dIII ω11 ξ3 εa :=
++  perm_III
++
++theorem type_III_printed_gap :
++    PermIII 0 ω11 ξ3 (dIIIprinted ω11 ξ3 εa) ∧
++    ¬ PermIII 0 ω11 (ξ3 + εa) (dIIIprinted ω11 ξ3 εa) ∧
++    28 * ω11 + 9 * (ξ3 + εa) + 8 * dIIIprinted ω11 ξ3 εa = 4 + εa :=
++  BGP212.T711.type_III_printed_gap
++
++theorem type_I_high_choice :
++    (1 / 2 + 1 / 1000) - 1 / 2 + δ + 3 * (εa / 3) < 1 / 14 - 68 / 14 * ω11 - 2 * εa ∧
++    1 / 14 - 68 / 14 * ω11 - 2 * εa ≤ (1 / 2 + 1 / 1000) - 1 / 2 + dIhigh ω11 εa + 3 * (εa / 3) :=
++  BGP212.T711.type_I_high_choice
++
++theorem type_IIc_mixed_monotonicity (γ ω0 d d' ϵ : Rat) (h : d ≤ d') :
++    (capsDG γ ω0 d' ϵ)[0]! ≤ (capsDG γ ω0 d ϵ)[0]! ∧
++    (capsDG γ ω0 d ϵ)[2]! ≤ (capsDG γ ω0 d' ϵ)[2]! := by
++  simp [capsDG]; constructor <;> grind
++
++theorem lemma_4_2_step_at_zero : ¬ (B 1 ≤ B 0 + δ) ∧ ∀ q : Nat, 1 ≤ q → B (q + 1) ≤ B q + δ :=
++  ⟨by decide +kernel, fun q hq => (definition_4_1_caps q hq).2.2⟩
++
++theorem containment_I_low : ContainIlow := contain_I_low
++theorem containment_I_high : ContainIhigh := contain_I_high
++theorem containment_IIa : ContainIIa := contain_IIa
++theorem containment_IIb : ContainIIb := contain_IIb
++theorem containment_IIc : ContainIIc := contain_IIc
++theorem containment_III : ContainIII := contain_III
++
++theorem theorem_7_11_core :
++    SupportDatum 1 A3 B3 δ εs ∧ Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa ∧
++    Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa ∧
++    ContainIlow ∧ ContainIhigh ∧ ContainIIa ∧ ContainIIb ∧ ContainIIc ∧ ContainIII :=
++  ⟨support_datum_table3.1, prop_7_8_scalar_table3, prop_7_8_packing_table3,
++    contain_I_low, contain_I_high, contain_IIa, contain_IIb, contain_IIc, contain_III⟩
++
++theorem theorem_7_11 (H : AnalyticInputs) : H.PositiveLevel ∧ H.HalfLevel :=
++  BGP212.T711.theorem_7_11 H
++
++end BGP212.Challenge
+diff --git a/specs/checks/theorem_7_11_negative_controls.py b/specs/checks/theorem_7_11_negative_controls.py
+new file mode 100644
+index 0000000..306a42d
+--- /dev/null
++++ b/specs/checks/theorem_7_11_negative_controls.py
+@@ -0,0 +1,35 @@
++"""A4 negative controls (outside the trusted base).
++
++Usage, from the repository root (after `lake build BGP212.Theorem711`):
++  python3 -I specs/checks/theorem_7_11_negative_controls.py OUTDIR
++  for f in OUTDIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++
++Each `ok_*.lean` file is a true statement and is accepted; each `nc_*.lean` file moves one
++parameter across a wall the A4 proofs depend on and is rejected (`decide` fails)."""
++import os, sys
++
++out = sys.argv[1]
++os.makedirs(out, exist_ok=True)
++HDR = "import BGP212.Theorem711\nopen BGP212.Params BGP212.Packing BGP212.T711\n"
++cases = {
++    "ok_scalar": ("(I)–(III) at Table 3",
++                  "example : Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa := by unfold Prop78Scalar; decide +kernel"),
++    "nc_scalar_wall": ("δ raised by 1/10000 crosses the dominant Type II wall (slack 499999/5000000000)",
++                       "example : Prop78Scalar 1 A3 (δ + 1 / 10000) ξ1 ξ2 ξ3 εa := by unfold Prop78Scalar; decide +kernel"),
++    "ok_IIc_bottom": ("Lemma 5.6 permissible at γ = ξ₂ − ϵ, δ* = δ",
++                      "example : PermIIc 0 ω11 (ξ2 - εa) δ := by unfold PermIIc; decide +kernel"),
++    "nc_IIc_below": ("γ = 2/5 − 1/1000, below the IIc range: 48ω + 16δ − 4γ < −1 fails",
++                     "example : PermIIc 0 ω11 (2 / 5 - 1 / 1000) δ := by unfold PermIIc; decide +kernel"),
++    "ok_III_A4": ("Lemma 5.7 permissible at γ = ξ₃ + ϵ with A4's width",
++                  "example : PermIII 0 ω11 (ξ3 + εa) (dIII ω11 ξ3 εa) := by unfold PermIII; decide +kernel"),
++    "nc_III_printed": ("the printed Type III width at γ = ξ₃ + ϵ",
++                       "example : PermIII 0 ω11 (ξ3 + εa) (dIIIprinted ω11 ξ3 εa) := by unfold PermIII; decide +kernel"),
++    "ok_floor": ("⌊1/δ⌋ = 60", "example : floorInv δ = 60 := by decide +kernel"),
++    "nc_floor": ("⌊1/δ⌋ = 61", "example : floorInv δ = 61 := by decide +kernel"),
++    "ok_vacuity": ("14 coordinates of size δ exceed every cap: B 14 < 14δ",
++                   "example : B 14 < 14 * δ := by decide +kernel"),
++    "nc_vacuity": ("the reverse, which would make m = 14 non-vacuous",
++                   "example : 14 * δ ≤ B 14 := by decide +kernel"),
++}
++for name, (what, body) in cases.items():
++    open(os.path.join(out, name + ".lean"), "w").write(f"{HDR}-- control: {what}\n{body}\n")
+diff --git a/specs/results/A4_theorem_7_11.yaml b/specs/results/A4_theorem_7_11.yaml
+new file mode 100644
+index 0000000..b201c13
+--- /dev/null
++++ b/specs/results/A4_theorem_7_11.yaml
+@@ -0,0 +1,166 @@
++# Result record: ninth Challenge/Solution pair (A4, Lemma 7.10 → Theorem 7.11)
++
++identity:
++  id: A4
++  statement: "Theorem 7.11: every combinatorial hypothesis of its proof discharged at Table 3; Theorem 7.11 proved relative to named analytic inputs"
++  source: "Source/bgp212.pdf: Definition 4.1 (p. 4), Lemmas 5.3–5.7 (pp. 16–17), Definition 7.1 (p. 26), Definition 7.4 (p. 28), Lemmas 7.5–7.7 (pp. 29–31), Proposition 7.8 and proof (pp. 31–36), Lemma 7.10 and Theorem 7.11 (p. 36), Theorem 8.3 (p. 39), Table 3 (p. 39)"
++  specification: specs/A0_parameters.yaml
++  builds_on: "A1 (Params, Appendix B), A2 (Lemmas 7.5–7.7), A3a–A3c (lemma_7_10), all unchanged"
++
++state:
++  mathematical: proved          # combinatorial core; Theorem 7.11 relative to AnalyticInputs
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++verification:
++  definitions: BGP212/Theorem711.lean
++  challenge: Challenge/Theorem711.lean
++  solution: Solution/Theorem711.lean
++  comparator_config: Comparator/theorem_7_11.json
++  negative_controls_script: specs/checks/theorem_7_11_negative_controls.py
++  signatures:
++    definition_4_1_table3: "SupportDatum 1 A3 B3 δ εs ∧ floorInv δ = 60"
++    omega_11_table3: "omegaJJ A3 1 1 = ω11 ∧ ω11 = ω"
++    prop_7_8_I_III_table3: "Prop78Scalar 1 A3 δ ξ1 ξ2 ξ3 εa"
++    lemma_7_10_case_split: "∀ m m' ys, Xi (B m) (B m') m m' δ ys → CondsAE ξ1 ξ2 ξ3 ω11 δ εa ys"
++    prop_7_8_A_E_table3: "Prop78Packing 1 A3 B3 δ ξ1 ξ2 ξ3 εa"
++    type_II_cover: "ξ2 − εa < gIIc < gIIa < 1/2 ∧ ∀ γ ∈ [ξ2 − εa, 1/2], γ ≤ gIIc ∨ gIIc < γ < gIIa ∨ gIIa ≤ γ"
++    perm_type_I_low: "(γ ε) ξ1 − εa ≤ γ → γ ≤ 1/2 → PermI εa ω11 γ (dIlow ω11 γ εa) ε ∧ δ ≤ dIlow ω11 γ εa"
++    perm_type_I_high: "(γ ε) 1/2 < γ → γ ≤ 1/2 + 2ω11 + ε → PermI εa ω11 γ (dIhigh ω11 εa) ε ∧ δ ≤ dIhigh ω11 εa"
++    perm_type_IIa: "(γ) gIIa ≤ γ → γ ≤ 1/2 → PermIIa εa ω11 γ (dIIa ω11 γ εa) ∧ δ ≤ dIIa ω11 γ εa"
++    perm_type_IIb: "(γ) gIIc < γ → γ < gIIa → PermIIb εa ω11 γ (dIIb ω11 γ εa) ∧ δ ≤ dIIb ω11 γ εa"
++    perm_type_IIc: "(γ) ξ2 − εa ≤ γ → γ ≤ gIIc → PermIIc εa ω11 γ δ ∧ δ ≤ min{1/4 − 2ω − γ/2, γ/10 − 32ω/10, γ/4 − 1/16 − 3ω − ϵ}"
++    perm_type_III: "PermIII εa ω11 (ξ3 + εa) (dIII ω11 ξ3 εa) ∧ δ < dIII ω11 ξ3 εa"
++    type_III_printed_gap: "PermIII 0 ω11 ξ3 dIIIprinted ∧ ¬ PermIII 0 ω11 (ξ3 + εa) dIIIprinted ∧ 28ω11 + 9(ξ3 + εa) + 8·dIIIprinted = 4 + εa"
++    type_I_high_choice: "at γ = 1/2 + 1/1000, ε′ = εa/3: δ* = δ falls short of (7.6)'s second capacity; δ* = dIhigh meets it"
++    type_IIc_mixed_monotonicity: "d ≤ d′ → capsDG[0] at d′ ≤ capsDG[0] at d ∧ capsDG[2] at d ≤ capsDG[2] at d′"
++    lemma_4_2_step_at_zero: "¬ (B 1 ≤ B 0 + δ) ∧ ∀ q ≥ 1, B (q + 1) ≤ B q + δ"
++    containment_I_low: ContainIlow
++    containment_I_high: ContainIhigh
++    containment_IIa: ContainIIa
++    containment_IIb: ContainIIb
++    containment_IIc: ContainIIc
++    containment_III: ContainIII
++    theorem_7_11_core: "SupportDatum ∧ Prop78Scalar ∧ Prop78Packing ∧ ContainIlow ∧ ContainIhigh ∧ ContainIIa ∧ ContainIIb ∧ ContainIIc ∧ ContainIII"
++    theorem_7_11: "∀ H : AnalyticInputs, H.PositiveLevel ∧ H.HalfLevel"
++  named_hypotheses:          # fields of AnalyticInputs; outside the proved scope
++    lemma_5_3: "Type I (Baker–Irving Lemma 5): PermI 0 ω γ δ ε → EqI ω γ δ ε"
++    lemma_5_4: "Type IIa (Polymath8a Thm 2.8(iv)): PermIIa 0 → EqIIa"
++    lemma_5_5: "Type IIb (Polymath8a Thm 2.8(ii)): PermIIb 0 → EqIIb"
++    lemma_5_6: "Type IIc (Stadlmann, Thm 1 of [Sta25]): PermIIc 0 → EqIIc"
++    lemma_5_7: "Type III (Polymath8a Thm 2.8(v)): PermIII 0 → EqIII"
++    prop_7_8_assembly: "estimates on D_X at the proof's parameters + containments Q ⊆ D_X → PositiveLevel (with Remark 7.9 / Lemma 8.1 below x^{1/2 − ε₁}, Proposition 7.2, log_x of products)"
++    theorem_8_3: "Prop78Packing at Table 3 + PositiveLevel → HalfLevel (Lemma 8.1, Table 2, Lemma 8.2, endpoint partitions)"
++  dependency_graph: |
++    Table 3 (A1 Params) ──► definition_4_1_table3, prop_7_8_I_III_table3, omega_11_table3
++    lemma_7_10 (A3a+A3b+A3c, 455 roots)
++        └─► lemma_7_10_case_split   [m,m′ ≤ 13 forced by caps; swap m > m′; empty side via (1,·) + part δ; empty tuple]
++              └─► prop_7_8_A_E_table3   [all j,j′ ≤ n = 1; m,m′ ≤ ⌊1/δ⌋ = 60; m + m′ > 0]
++    (A)–(E) per profile ──┬─► (A)₁ + Lemma 7.5 (A2) ──► containment_I_low   ◄── perm_type_I_low
++                          ├─► (A)₂ + Lemma 7.5 ──────► containment_I_high  ◄── perm_type_I_high
++                          ├─► (B)  + Lemma 7.5 ──────► containment_IIa     ◄── perm_type_IIa
++                          ├─► (C)  + Lemma 7.6 ──────► containment_IIb     ◄── perm_type_IIb
++                          ├─► (D)  + Lemma 7.7 ──────► containment_IIc     ◄── perm_type_IIc
++                          └─► (E)  + Lemma 7.5 ──────► containment_III     ◄── perm_type_III
++    type_II_cover: [ξ₂ − ϵ, 1/2] = IIc ∪ IIb ∪ IIa
++    theorem_7_11_core = Def 4.1 ∧ (I)–(III) ∧ (A)–(E) ∧ six containments
++    theorem_7_11 (H) = H.prop_7_8_assembly (H.lemma_5_3 … H.lemma_5_7 at perm_type_*, containments)
++                       ∧ H.theorem_8_3 (prop_7_8_A_E_table3)
++  log_size_conventions: >
++    Containments are stated in logarithmic size with closed windows, the form Lemmas 7.5–7.7
++    deliver (A2). For Lemmas 7.5 and 7.6 the profile y is the rough logs scaled by 1/(1 − ε₀)
++    (Definition 4.3 (iii)); for Lemma 7.7 it is the rough logs; Lemma 7.7's block
++    q ≍ x^{1/2+2ω₀} enters as log_x q ≥ 1/2 + 2ω₀ with log_x d = 1/2 + 2ω₀ in the windows of
++    D_IIc. The passage from closed log-windows to the open windows of D_X, and from log-sizes
++    to divisors of q, belongs to the assembly hypothesis.
++  local_retreat: >
++    The local retreat ε′ of D_X enters with explicit bounds: 3ε′ ≤ ϵ (Types I, IIa), 9ε′ ≤ ϵ
++    (IIb), 58ε′ ≤ ϵ (IIc); Type III needs none. Each is the inequality the corresponding
++    containment uses.
++  findings:
++    F1_type_III_width: >
++      Definition 7.1 (III) allows N_i ≤ x^{ξ₃+ϵ}, so Lemma 5.7 is applied at γ = ξ₃ + ϵ. At that
++      γ the printed δ* = 1/2 − 7ω/2 − 9ξ₃/8 − ϵ gives 28ω + 9γ + 8δ* = 4 + ϵ, outside the
++      permissible set (type_III_printed_gap). The width δ* = 1/2 − 7ω/2 − 9ξ₃/8 − 11ϵ/8 is
++      permissible with margin ϵ, satisfies δ* > δ under the printed (III), and the printed (E)
++      still yields the containment (perm_type_III, containment_III). Any δ* in
++      [1/2 − 7ω/2 − 9ξ₃/8 − 3ϵ/2, 1/2 − 7ω/2 − 9ξ₃/8 − 9ϵ/8) works.
++    F2_type_I_high_width: >
++      For γ ∈ (1/2, 1/2 + 2ω + ε], the proof allows "any δ*(γ) ∈ [δ, 1/14 − 68ω/14 − ϵ]". The
++      equidistribution step accepts any such δ*; the containment from (7.6) needs δ* near the
++      top of that interval (type_I_high_choice). A4 uses the top, δ* = 1/14 − 68ω/14 − ϵ.
++    F3_type_IIc_reduction: >
++      The proof replaces δ*(γ) by δ in the four-bin criterion "since a smaller δ makes these
++      conditions easier to satisfy". The first capacity improves and the third worsens as δ*
++      decreases (type_IIc_mixed_monotonicity). The criterion is exact for the choice
++      δ*(γ) = δ, which the printed admissible interval contains over the whole IIc range under
++      condition (II) (perm_type_IIc); A4 uses that choice.
++    F4_lemma_4_2_step: >
++      Definition 4.1 requires B_{j,m+1} ≤ B_{j,m} + δ where both sides are defined (m ≥ 1);
++      with B_{j,0} = 0 the step from 0 fails at Table 3 (lemma_4_2_step_at_zero). Lemma 4.2's
++      iteration B_{j,m} ≤ B_{j,r} + (m − r)δ therefore runs from r ≥ 1, and I′ = ∅ is immediate.
++      A2's lemma_4_2 assumes the step for every q including 0; a variant with q ≥ 1 is the
++      one Table 3 instantiates.
++    F5_closed_windows: >
++      Lemmas 7.5–7.7 produce r ∈ [x^a, x^b] while D_I … D_III use open windows; the proof of
++      Proposition 7.8 applies the lemmas with a, b set to the open endpoints. The containments
++      here are stated with the closed windows the lemmas produce.
++    F6_empty_profiles: >
++      Lemma 7.10 is stated for 1 ≤ m ≤ m′ ≤ 13; Proposition 7.8 needs all m, m′ ≤ ⌊1/δ⌋ = 60
++      with m + m′ > 0, in both orders. lemma_7_10_case_split supplies them from the 455 roots
++      exactly as Lemma 7.10's proof sketches (adjoin and delete a part of size δ; vacuity for
++      m ≥ 14 since 14δ > 1081/5000), and also covers m = m′ = 0 (every capacity is
++      nonnegative at Table 3).
++  exploratory_vs_proved: >
++    Proved: every theorem listed under signatures. Named hypotheses: the AnalyticInputs
++    fields. No external certificates enter A4; it reuses the kernel-checked lemma_7_10.
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: Lean 4 kernel + core library (Mathlib absent from this pair)
++  negative_controls:
++    - change: "δ raised by 1/10000 in Prop78Scalar"
++      result: "kernel rejects (decide fails): crosses the dominant Type II wall"
++    - change: "PermIIc at γ = 2/5 − 1/1000 (below the IIc range)"
++      result: "kernel rejects"
++    - change: "PermIII at γ = ξ₃ + ϵ with the printed Type III width"
++      result: "kernel rejects"
++    - change: "floorInv δ = 61"
++      result: "kernel rejects"
++    - change: "14δ ≤ B 14 (would make m = 14 non-vacuous)"
++      result: "kernel rejects"
++    - change: "the five matching true statements (positive controls)"
++      result: "kernel accepts"
++    - change: "perm_type_III claimed with the printed width dIIIprinted in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.perm_type_III'"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run
++    with the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 11.5 minutes for the A4 comparator suite in the build container (it replays the A3c certificates it imports)"
++  run_date: 2026-10-17
++  commit_hash: PENDING_VPS
++
++next_development:
++  B3: >
++    dhl_45_implies_gap: DHL[45, 2] ⇒ H₁ ≤ 212 from H₄₅'s diameter (combinatorial, core Lean),
++    and wtrick_coprime: Lemma 4.9's W-trick step, building on B2's W-trick residue
++    b = 74549147 and admissible_iff_local_factors. Then state the sieve criterion
++    (Theorem 4.10) as an interface whose arithmetic hypothesis is exactly
++    AnalyticInputs.PositiveLevel ∧ HalfLevel, so A4's theorem_7_11 plugs in.
++  variational: >
++    V0 (846-dimensional basis count) and V1 (simplex moment formula (10.1)) in exact
++    arithmetic; V2/V3 need Axiom's P⋆ certificate.
++  analytic_interface: >
++    Refine AnalyticInputs field by field toward Definition 5.2 (moduli sets D_X as sets of
++    integers, log-size to divisor transfer), so that each named hypothesis states exactly
++    one cited theorem.
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 4eee7f2..5f52a64 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
