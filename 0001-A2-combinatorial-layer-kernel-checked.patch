@@ -1,0 +1,604 @@
+From 8d21d2bec7c143e8cb83b26c26927977582b73a4 Mon Sep 17 00:00:00 2001
+From: Dan Hawkley <dan@triplettrustprotocol.net>
+Date: Fri, 16 Oct 2026 20:26:26 -0600
+Subject: [PATCH 1/2] A2: combinatorial layer, kernel-checked
+
+Adds the Challenge/Solution pair A2Combinatorial with eight statements:
+Lemma 4.2, the section 7.2 smooth-insertion mechanism, Lemmas 7.5-7.7 in
+log-size form, Table 2, Lemma 8.2 and Lemma 9.2. Core Lean only. The
+result record lists scope notes, the source hypotheses the proofs leave
+unused, and two negative comparator controls. README now separates
+proved results, imported analytic hypotheses, and external certificates.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ Challenge.lean                      |   1 +
+ Challenge/A2Combinatorial.lean      | 146 ++++++++++++++++
+ Comparator/a2_combinatorial.json    |  19 +++
+ README.md                           |  21 ++-
+ Solution.lean                       |   1 +
+ Solution/A2Combinatorial.lean       | 251 ++++++++++++++++++++++++++++
+ specs/results/A2_combinatorial.yaml |  65 +++++++
+ verify.sh                           |   2 +-
+ 8 files changed, 503 insertions(+), 3 deletions(-)
+ create mode 100644 Challenge/A2Combinatorial.lean
+ create mode 100644 Comparator/a2_combinatorial.json
+ create mode 100644 Solution/A2Combinatorial.lean
+ create mode 100644 specs/results/A2_combinatorial.yaml
+
+diff --git a/Challenge.lean b/Challenge.lean
+index d42ad54..1c4cd26 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -1,2 +1,3 @@
+ import Challenge.Lemma12_1
+ import Challenge.AppendixB
++import Challenge.A2Combinatorial
+diff --git a/Challenge/A2Combinatorial.lean b/Challenge/A2Combinatorial.lean
+new file mode 100644
+index 0000000..52e9ce0
+--- /dev/null
++++ b/Challenge/A2Combinatorial.lean
+@@ -0,0 +1,146 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Lemma 4.2 (p. 4), §7.2 and Lemmas 7.5–7.7 (pp. 28–31),
++§8.2, Table 2 and Lemma 8.2 (p. 38), Lemma 9.2 (p. 41).
++-/
++
++/-! # A2: the combinatorial layer
++
++Statements only; proofs live in `Solution/A2Combinatorial.lean`.
++
++**Log-size form.** Lemmas 7.5–7.7 concern a modulus `q = e e′ ∏ fᵢ ∏ f′ᵢ`. Their proofs
++work entirely with logarithmic sizes: rough-factor logs `yᵢ ≥ δ` and smooth prime-factor
++logs `zᵢ < δ`, a divisor being a choice of factors and its log-size the sum. These
++statements are exactly that log-size content. A selection of smooth primes is a list `J`
++with `zs.Perm (J ++ R)`, so disjoint selections are disjoint sublists of the multiset
++`zs`. The translation `log_x (∏ factors) = Σ log_x (factor)` is the standard
++multiplicativity of `log` and stays outside this file.
++
++**Explicit smallness.** Where a source proof says "provided ϵ is sufficiently small
++compared to ε₀", the statement carries the exact inequality that proof uses. -/
++
++namespace BGP212.Challenge
++
++/-- **Lemma 4.2 (hereditary rough-mass bound).** `ys` lists the coordinates of `t`
++exceeding `δ` (the set `I`); `B q` is the band's cap `B_{j,q}`, with the one-step bound
++`B_{j,q+1} ≤ B_{j,q} + δ` of Definition 4.1. Every sub-collection `zs` of `I` (a subset
++`I′ ⊆ I`) satisfies `Σ_{I′} tᵢ ≤ B_{j,|I′|}`. -/
++theorem lemma_4_2 (δ : Rat) (B : Nat → Rat) (hB : ∀ q : Nat, B (q + 1) ≤ B q + δ)
++    (ys : List Rat) (hrough : ∀ y ∈ ys, δ < y) (hcap : ys.sum ≤ B ys.length)
++    (zs : List Rat) (hsub : zs.Sublist ys) :
++    zs.sum ≤ B zs.length :=
++  sorry
++
++/-- **§7.2, the smooth-insertion mechanism** ("inserting its prime factors one at a time
++moves a partial product by at most x^δ, so any target interval of logarithmic width at
++least δ can be hit exactly"). From a start `s ≤ b` whose total reach `s + Σ zs` is at
++least `a`, with every step `z < δ ≤ b − a`, some selection `J` of the steps lands
++`s + Σ J` in `[a, b]`. -/
++theorem smooth_insertion (a b δ : Rat) (hw : δ ≤ b - a) (zs : List Rat)
++    (hz : ∀ z ∈ zs, z < δ) (s : Rat) (hs : s ≤ b) (hreach : a ≤ s + zs.sum) :
++    ∃ J R : List Rat, zs.Perm (J ++ R) ∧ a ≤ s + J.sum ∧ s + J.sum ≤ b :=
++  sorry
++
++/-- **Lemma 7.5 (two-factor extraction), log-size form.** `y1`, `y2` are the parts
++`I₁`, `I₂` of the rough profile (each `yᵢ ≥ δ`, scaled by `1/(1 − ε₀)` as in the source
++proof); `zs` are the smooth prime logs; `q > x^{1/2 − ϵ}` reads as the strict lower bound
++on the total log-size. Conclusion: a divisor `r` with `log_x r ∈ [a, b]`, built from the
++`I₁` factors and a selection `J` of smooth primes. -/
++theorem lemma_7_5 (a b δ ε0 ϵ : Rat)
++    (ha : 0 < a) (hb : b < 1 / 2) (hδ0 : 0 < δ) (hδ : δ ≤ b - a)
++    (hε0 : 0 < ε0) (hε1 : ε0 < 1) (hϵ0 : 0 ≤ ϵ) (hϵ : ϵ ≤ ε0 * (1 / 2 - a))
++    (y1 y2 : List Rat) (hy : ∀ y ∈ y1 ++ y2, δ ≤ y)
++    (hI1 : y1.sum ≤ b) (hI2 : y2.sum ≤ 1 / 2 - a)
++    (zs : List Rat) (hz : ∀ z ∈ zs, z < δ)
++    (hq : 1 / 2 - ϵ < (1 - ε0) * (y1.sum + y2.sum) + zs.sum) :
++    ∃ J R : List Rat, zs.Perm (J ++ R) ∧
++      a ≤ (1 - ε0) * y1.sum + J.sum ∧ (1 - ε0) * y1.sum + J.sum ≤ b :=
++  sorry
++
++/-- **Lemma 7.6 (three-factor extraction), log-size form.** Parts `I₁, I₂, I₃` with the
++source's capacities `b₁`, `b₂`, `1/2 − b₁ − a₂`. Conclusion: disjoint smooth selections
++`J₂` (for `u`) and `J₁` (for `r`) with `log_x u ∈ [a₂, b₂]` and `log_x r ∈ [a₁, b₁]`. -/
++theorem lemma_7_6 (a1 a2 b1 b2 δ ε0 ϵ : Rat)
++    (ha1 : 0 < a1) (ha2 : 0 < a2) (hb1 : b1 < 1 / 2) (hb2 : b2 < 1 / 2) (hδ0 : 0 < δ)
++    (h12 : a1 - a2 ≤ b1 - b2) (hsum : b1 + b2 < 1 / 2)
++    (hw1 : δ ≤ b1 - a1) (hw2 : δ ≤ b2 - a2)
++    (hε0 : 0 < ε0) (hε1 : ε0 < 1) (hϵ0 : 0 ≤ ϵ) (hϵ : ϵ ≤ ε0 * (1 / 2 - b1 - a2))
++    (y1 y2 y3 : List Rat) (hy : ∀ y ∈ y1 ++ y2 ++ y3, δ ≤ y)
++    (hI1 : y1.sum ≤ b1) (hI2 : y2.sum ≤ b2) (hI3 : y3.sum ≤ 1 / 2 - b1 - a2)
++    (zs : List Rat) (hz : ∀ z ∈ zs, z < δ)
++    (hq : 1 / 2 - ϵ < (1 - ε0) * (y1.sum + y2.sum + y3.sum) + zs.sum) :
++    ∃ J2 J1 R : List Rat, zs.Perm (J2 ++ J1 ++ R) ∧
++      a2 ≤ (1 - ε0) * y2.sum + J2.sum ∧ (1 - ε0) * y2.sum + J2.sum ≤ b2 ∧
++      a1 ≤ (1 - ε0) * y1.sum + J1.sum ∧ (1 - ε0) * y1.sum + J1.sum ≤ b1 :=
++  sorry
++
++/-- **Lemma 7.7 (four-factor extraction), log-size form.** Parts `I₁, …, I₄` with the
++source's four capacities; `q ≍ x^{1/2 + 2ω₀}` enters as the lower bound
++`1/2 + 2ω₀ ≤ log_x q`, the form its proof uses. Conclusion: disjoint selections giving
++`u` (from `I₂, J₂`) and `r` (from `I₁, I₄, J₁`) in their windows, and for every
++`c ∈ [a₁, b₁]` a sub-selection `J′` of `J₁` giving `d₁ | r` (from `I₁, J′`) with
++`log_x d₁ ∈ [2c + a₃, 2c + b₃]`; taking `c = log_x r` gives `d₁ ∈ [r² x^{a₃}, r² x^{b₃}]`. -/
++theorem lemma_7_7 (a1 a2 a3 b1 b2 b3 δ ω0 ε0 : Rat)
++    (hc3 : 0 ≤ 3 * (b1 - a1) + (a3 - b3)) (h12 : a1 - a2 ≤ b1 - b2)
++    (hw1 : δ ≤ b1 - a1) (hw2 : δ ≤ b2 - a2) (hw3 : δ ≤ b3 - a3) (hω0 : -ε0 ≤ ω0)
++    (y1 y2 y3 y4 : List Rat)
++    (hI1 : y1.sum ≤ 2 * a1 + b3) (hI2 : y2.sum ≤ b2)
++    (hI3 : y3.sum ≤ 1 / 2 + 2 * ω0 - b1 - a2) (hI4 : y4.sum ≤ a1 - 2 * b1 - a3)
++    (zs : List Rat) (hz : ∀ z ∈ zs, z < δ)
++    (hq : 1 / 2 + 2 * ω0 ≤ y1.sum + y2.sum + y3.sum + y4.sum + zs.sum) :
++    ∃ J2 J1 R : List Rat, zs.Perm (J2 ++ J1 ++ R) ∧
++      a2 ≤ y2.sum + J2.sum ∧ y2.sum + J2.sum ≤ b2 ∧
++      a1 ≤ y1.sum + y4.sum + J1.sum ∧ y1.sum + y4.sum + J1.sum ≤ b1 ∧
++      ∀ c : Rat, a1 ≤ c → c ≤ b1 →
++        ∃ J' R' : List Rat, J1.Perm (J' ++ R') ∧
++          2 * c + a3 ≤ y1.sum + J'.sum ∧ y1.sum + J'.sum ≤ 2 * c + b3 :=
++  sorry
++
++/-- **Table 2 (§8.2).** With `θ = 1/2 − κ`, `εₜ = εₐ/100` and the unsimplified Type-IIc
++intervals `a₁ … b₃` of §8.2, the four bin capacities `2a₁ + b₃`, `b₂`, `θ − b₁ − a₂`,
++`a₁ − 2b₁ − a₃` equal the table's raw capacities; their differences from the endpoint
++capacities are the table's last column; and all four differences are nonnegative for
++`0 ≤ κ ≤ (11/80) εₐ`. -/
++theorem table_2_transport (γ d κ εa : Rat) :
++    (2 * (γ - 3 * (εa / 100) - d) + (2 - γ - 52 * (εa / 100) - 4 * (1 / 2 - κ))
++        = γ - 2 * d + 4 * κ - 58 * (εa / 100)) ∧
++    (1 - γ - 6 * (εa / 100) - (1 / 2 - κ) = 1 / 2 - γ + κ - 6 * (εa / 100)) ∧
++    ((1 / 2 - κ) - (γ - 3 * (εa / 100)) - (1 - γ - 6 * (εa / 100) - (1 / 2 - κ) - d)
++        = d - 2 * κ + 9 * (εa / 100)) ∧
++    ((γ - 3 * (εa / 100) - d) - 2 * (γ - 3 * (εa / 100))
++        - (2 - γ - 52 * (εa / 100) - d - 4 * (1 / 2 - κ)) = -4 * κ + 55 * (εa / 100)) ∧
++    ((γ - 2 * d + 4 * κ - 58 * (εa / 100)) - (γ - 2 * d - εa) = 4 * κ + 42 * εa / 100) ∧
++    ((1 / 2 - γ + κ - 6 * (εa / 100)) - (1 / 2 - γ - εa) = κ + 94 * εa / 100) ∧
++    ((d - 2 * κ + 9 * (εa / 100)) - (d - εa) = 109 * εa / 100 - 2 * κ) ∧
++    ((-4 * κ + 55 * (εa / 100)) - 0 = 55 * εa / 100 - 4 * κ) ∧
++    (0 ≤ εa → 0 ≤ κ → κ ≤ 11 / 80 * εa →
++      0 ≤ 4 * κ + 42 * εa / 100 ∧ 0 ≤ κ + 94 * εa / 100 ∧
++      0 ≤ 109 * εa / 100 - 2 * κ ∧ 0 ≤ 55 * εa / 100 - 4 * κ) :=
++  sorry
++
++/-- **Lemma 8.2 (monotone endpoint transport).** Each bin is `(c, s, w)`: endpoint
++capacity `c` at `θ = 1/2`, affine slope `s` (capacity `c + s (θ − 1/2)`), and partition
++load `w`. If every slope satisfies `|s| ≤ L_leaf` and the endpoint partition has reserve
++`η` in every bin (`w + η ≤ c`), then the partition stays valid for
++`|θ − 1/2| < η / L_leaf`. -/
++theorem lemma_8_2 (bins : List (Rat × Rat × Rat)) (Lleaf η θ : Rat) (hL : 0 < Lleaf)
++    (hslope : ∀ b ∈ bins, -Lleaf ≤ b.2.1 ∧ b.2.1 ≤ Lleaf)
++    (hres : ∀ b ∈ bins, b.2.2 + η ≤ b.1)
++    (hθ1 : θ - 1 / 2 < η / Lleaf) (hθ2 : 1 / 2 - θ < η / Lleaf) :
++    ∀ b ∈ bins, b.2.2 ≤ b.1 + b.2.1 * (θ - 1 / 2) :=
++  sorry
++
++/-- **Lemma 9.2 (moving marginal endpoint).** For `x̂ ∈ T̂` (total `S ≤ τ`, rough count
++`s`, rough mass `ρ₁ ≤ C(s)`), the point `(x̂, u)` with `u ≥ 0` lies in the rescaled
++support `T̃` (total `S + u ≤ L`; rough mass at most the cap of the new rough count, where
++`u` is rough exactly when `u > g`) if and only if
++`u ≤ U(x̂) = min{L − S, max{g, C(s + 1) − ρ₁}}`. -/
++theorem lemma_9_2 (L τ g S ρ1 : Rat) (C : Nat → Rat) (s : Nat)
++    (hS : S ≤ τ) (hρ : ρ1 ≤ C s) (u : Rat) (hu : 0 ≤ u) :
++    (S + u ≤ L ∧ (if g < u then ρ1 + u ≤ C (s + 1) else ρ1 ≤ C s)) ↔
++      u ≤ min (L - S) (max g (C (s + 1) - ρ1)) :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/a2_combinatorial.json b/Comparator/a2_combinatorial.json
+new file mode 100644
+index 0000000..c46ee86
+--- /dev/null
++++ b/Comparator/a2_combinatorial.json
+@@ -0,0 +1,19 @@
++{
++    "challenge_module": "Challenge.A2Combinatorial",
++    "solution_module": "Solution.A2Combinatorial",
++    "theorem_names": [
++        "BGP212.Challenge.lemma_4_2",
++        "BGP212.Challenge.smooth_insertion",
++        "BGP212.Challenge.lemma_7_5",
++        "BGP212.Challenge.lemma_7_6",
++        "BGP212.Challenge.lemma_7_7",
++        "BGP212.Challenge.table_2_transport",
++        "BGP212.Challenge.lemma_8_2",
++        "BGP212.Challenge.lemma_9_2"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index 202c926..c5a3306 100644
+--- a/README.md
++++ b/README.md
+@@ -41,14 +41,31 @@ Table 6 with its formula in the Table 3 parameters. That check found a third sou
+ inconsistency (SI-3, Proposition 7.8 (II) versus Table 6 row 14), recorded in
+ `specs/A0_parameters.yaml`.
+ 
++The third pair is A2, the combinatorial layer (`Challenge/A2Combinatorial.lean`,
++`Solution/A2Combinatorial.lean`): Lemma 4.2, the §7.2 smooth-insertion mechanism,
++the factor-extraction Lemmas 7.5–7.7 in log-size form, Table 2, Lemma 8.2 and
++Lemma 9.2. Scope notes and the source hypotheses the proofs leave unused are in
++`specs/results/A2_combinatorial.yaml`.
++
++## What is proved, imported, and external
++
++- **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
++  Appendix B row as a formula in those parameters; the A2 combinatorial lemmas.
++- **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
++  Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
++  (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
++- **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
++  criterion (Theorem 4.10) and the deduction of Theorem 1.1.
++- **External certificates:** the 455 polytope packing certificates of Lemma 7.10 (their
++  count is checked here) and the exact variational certificate of Theorem 11.1.
++
+ ## Comparator Verification
+ 
+ ```text
+ ./verify.sh
+ ```
+ 
+-builds the project and runs Lean Comparator on `Comparator/lemma_12_1.json` and
+-`Comparator/appendix_b.json`.
++builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+ ```text
+diff --git a/Solution.lean b/Solution.lean
+index 242aae8..ec7c870 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -1,2 +1,3 @@
+ import Solution.Lemma12_1
+ import Solution.AppendixB
++import Solution.A2Combinatorial
+diff --git a/Solution/A2Combinatorial.lean b/Solution/A2Combinatorial.lean
+new file mode 100644
+index 0000000..984c4f2
+--- /dev/null
++++ b/Solution/A2Combinatorial.lean
+@@ -0,0 +1,251 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Lemma 4.2 (p. 4), §7.2 and Lemmas 7.5–7.7 (pp. 28–31),
++§8.2, Table 2 and Lemma 8.2 (p. 38), Lemma 9.2 (p. 41).
++-/
++
++/-! # A2: the combinatorial layer — proofs
++
++Core Lean only. Linear arithmetic over `Rat` is closed by `grind`; each product of two
++variables enters as an explicit fact from `Rat.mul_nonneg` or
++`Rat.mul_le_mul_of_nonneg_left`. Every extraction lemma reuses `smooth_insertion`, the
++source's own mechanism, once per target interval. -/
++
++namespace BGP212.Challenge
++
++/-! ## Helpers -/
++
++theorem perm_sum {l1 l2 : List Rat} (h : l1.Perm l2) : l1.sum = l2.sum := by
++  induction h with
++  | nil => rfl
++  | cons x _ ih => simp [List.sum_cons, ih]
++  | swap x y l => simp [List.sum_cons]; grind
++  | trans _ _ ih1 ih2 => rw [ih1, ih2]
++
++theorem sum_nonneg_of_ge {δ : Rat} (hδ : 0 < δ) :
++    ∀ ys : List Rat, (∀ y ∈ ys, δ ≤ y) → 0 ≤ ys.sum
++  | [], _ => by simp
++  | y :: ys, h => by
++      have h1 := h y (by simp)
++      have h2 := sum_nonneg_of_ge hδ ys (fun z hz => h z (by simp [hz]))
++      simp [List.sum_cons]; grind
++
++/-- Removing `k` coordinates, each above `δ`, lowers the sum by at least `k δ`. -/
++theorem sublist_sum_gap {δ : Rat} {zs ys : List Rat} (h : zs.Sublist ys)
++    (hr : ∀ y ∈ ys, δ < y) :
++    zs.sum + δ * ((ys.length - zs.length : Nat) : Rat) ≤ ys.sum := by
++  induction h with
++  | slnil => simp; grind
++  | @cons l1 l2 a hs ih =>
++      have hle := hs.length_le
++      have ha := hr a (by simp)
++      have ih' := ih (fun y hy => hr y (by simp [hy]))
++      have hk : (l2.length + 1 - l1.length : Nat) = (l2.length - l1.length) + 1 := by omega
++      simp only [List.length_cons, List.sum_cons, hk]
++      have hc : (((l2.length - l1.length) + 1 : Nat) : Rat)
++          = ((l2.length - l1.length : Nat) : Rat) + 1 := by grind
++      rw [hc]
++      grind
++  | @cons_cons l1 l2 a hs ih =>
++      have ih' := ih (fun y hy => hr y (by simp [hy]))
++      have hk : (l2.length + 1 - (l1.length + 1) : Nat) = l2.length - l1.length := by omega
++      simp only [List.length_cons, List.sum_cons, hk]
++      grind
++
++/-- Iterating `B (q + 1) ≤ B q + δ`. -/
++theorem cap_iterate {δ : Rat} {B : Nat → Rat} (hB : ∀ q : Nat, B (q + 1) ≤ B q + δ) (r : Nat) :
++    ∀ k : Nat, B (r + k) ≤ B r + δ * (k : Rat)
++  | 0 => by simp; grind
++  | k + 1 => by
++      have ih := cap_iterate hB r k
++      have h1 := hB (r + k)
++      have hc : ((k + 1 : Nat) : Rat) = (k : Rat) + 1 := by grind
++      rw [show r + (k + 1) = r + k + 1 by omega, hc]
++      grind
++
++/-! ## Lemma 4.2 -/
++
++theorem lemma_4_2 (δ : Rat) (B : Nat → Rat) (hB : ∀ q : Nat, B (q + 1) ≤ B q + δ)
++    (ys : List Rat) (hrough : ∀ y ∈ ys, δ < y) (hcap : ys.sum ≤ B ys.length)
++    (zs : List Rat) (hsub : zs.Sublist ys) :
++    zs.sum ≤ B zs.length := by
++  have hgap := sublist_sum_gap hsub hrough
++  have hle := hsub.length_le
++  have hit := cap_iterate hB zs.length (ys.length - zs.length)
++  rw [show zs.length + (ys.length - zs.length) = ys.length by omega] at hit
++  grind
++
++/-! ## §7.2 smooth insertion -/
++
++theorem smooth_insertion (a b δ : Rat) (hw : δ ≤ b - a) (zs : List Rat)
++    (hz : ∀ z ∈ zs, z < δ) (s : Rat) (hs : s ≤ b) (hreach : a ≤ s + zs.sum) :
++    ∃ J R : List Rat, zs.Perm (J ++ R) ∧ a ≤ s + J.sum ∧ s + J.sum ≤ b := by
++  induction zs generalizing s with
++  | nil => exact ⟨[], [], List.Perm.refl _, by simp at hreach ⊢; grind, by simp; grind⟩
++  | cons z zs ih =>
++      by_cases h : a ≤ s
++      · exact ⟨[], z :: zs, List.Perm.refl _, by simp; grind, by simp; grind⟩
++      · have hzδ := hz z (by simp)
++        have hreach' : a ≤ (s + z) + zs.sum := by simp [List.sum_cons] at hreach; grind
++        obtain ⟨J, R, hp, h1, h2⟩ :=
++          ih (fun x hx => hz x (by simp [hx])) (s + z) (by grind) hreach'
++        refine ⟨z :: J, R, ?_, ?_, ?_⟩
++        · exact hp.cons z
++        · simp [List.sum_cons]; grind
++        · simp [List.sum_cons]; grind
++
++/-! ## Lemma 7.5 -/
++
++theorem lemma_7_5 (a b δ ε0 ϵ : Rat)
++    (_ha : 0 < a) (_hb : b < 1 / 2) (hδ0 : 0 < δ) (hδ : δ ≤ b - a)
++    (hε0 : 0 < ε0) (hε1 : ε0 < 1) (_hϵ0 : 0 ≤ ϵ) (hϵ : ϵ ≤ ε0 * (1 / 2 - a))
++    (y1 y2 : List Rat) (hy : ∀ y ∈ y1 ++ y2, δ ≤ y)
++    (hI1 : y1.sum ≤ b) (hI2 : y2.sum ≤ 1 / 2 - a)
++    (zs : List Rat) (hz : ∀ z ∈ zs, z < δ)
++    (hq : 1 / 2 - ϵ < (1 - ε0) * (y1.sum + y2.sum) + zs.sum) :
++    ∃ J R : List Rat, zs.Perm (J ++ R) ∧
++      a ≤ (1 - ε0) * y1.sum + J.sum ∧ (1 - ε0) * y1.sum + J.sum ≤ b := by
++  have hY1 := sum_nonneg_of_ge hδ0 y1 (fun y h => hy y (by simp [h]))
++  -- (1 − ε₀) Y₁ ≤ Y₁ and (1 − ε₀) Y₂ ≤ (1 − ε₀)(1/2 − a)
++  have p1 : 0 ≤ ε0 * y1.sum := Rat.mul_nonneg (by grind) hY1
++  have p2 : (1 - ε0) * y2.sum ≤ (1 - ε0) * (1 / 2 - a) :=
++    Rat.mul_le_mul_of_nonneg_left hI2 (by grind)
++  have e1 : (1 - ε0) * y1.sum = y1.sum - ε0 * y1.sum := by grind
++  have e2 : (1 - ε0) * (y1.sum + y2.sum) = (1 - ε0) * y1.sum + (1 - ε0) * y2.sum := by grind
++  have e3 : (1 - ε0) * (1 / 2 - a) = (1 / 2 - a) - ε0 * (1 / 2 - a) := by grind
++  exact smooth_insertion a b δ hδ zs hz ((1 - ε0) * y1.sum) (by grind) (by grind)
++
++/-! ## Lemma 7.6 -/
++
++theorem lemma_7_6 (a1 a2 b1 b2 δ ε0 ϵ : Rat)
++    (_ha1 : 0 < a1) (_ha2 : 0 < a2) (_hb1 : b1 < 1 / 2) (_hb2 : b2 < 1 / 2) (hδ0 : 0 < δ)
++    (h12 : a1 - a2 ≤ b1 - b2) (_hsum : b1 + b2 < 1 / 2)
++    (hw1 : δ ≤ b1 - a1) (hw2 : δ ≤ b2 - a2)
++    (hε0 : 0 < ε0) (hε1 : ε0 < 1) (_hϵ0 : 0 ≤ ϵ) (hϵ : ϵ ≤ ε0 * (1 / 2 - b1 - a2))
++    (y1 y2 y3 : List Rat) (hy : ∀ y ∈ y1 ++ y2 ++ y3, δ ≤ y)
++    (hI1 : y1.sum ≤ b1) (hI2 : y2.sum ≤ b2) (hI3 : y3.sum ≤ 1 / 2 - b1 - a2)
++    (zs : List Rat) (hz : ∀ z ∈ zs, z < δ)
++    (hq : 1 / 2 - ϵ < (1 - ε0) * (y1.sum + y2.sum + y3.sum) + zs.sum) :
++    ∃ J2 J1 R : List Rat, zs.Perm (J2 ++ J1 ++ R) ∧
++      a2 ≤ (1 - ε0) * y2.sum + J2.sum ∧ (1 - ε0) * y2.sum + J2.sum ≤ b2 ∧
++      a1 ≤ (1 - ε0) * y1.sum + J1.sum ∧ (1 - ε0) * y1.sum + J1.sum ≤ b1 := by
++  have hY1 := sum_nonneg_of_ge hδ0 y1 (fun y h => hy y (by simp [h]))
++  have hY2 := sum_nonneg_of_ge hδ0 y2 (fun y h => hy y (by simp [h]))
++  have p1 : 0 ≤ ε0 * y1.sum := Rat.mul_nonneg (by grind) hY1
++  have p2 : 0 ≤ ε0 * y2.sum := Rat.mul_nonneg (by grind) hY2
++  have p3 : (1 - ε0) * y3.sum ≤ (1 - ε0) * (1 / 2 - b1 - a2) :=
++    Rat.mul_le_mul_of_nonneg_left hI3 (by grind)
++  have e1 : (1 - ε0) * y1.sum = y1.sum - ε0 * y1.sum := by grind
++  have e2 : (1 - ε0) * y2.sum = y2.sum - ε0 * y2.sum := by grind
++  have e3 : (1 - ε0) * (y1.sum + y2.sum + y3.sum)
++      = (1 - ε0) * y1.sum + (1 - ε0) * y2.sum + (1 - ε0) * y3.sum := by grind
++  have e4 : (1 - ε0) * (1 / 2 - b1 - a2) = (1 / 2 - b1 - a2) - ε0 * (1 / 2 - b1 - a2) := by
++    grind
++  -- first insertion: the divisor u
++  obtain ⟨J2, R2, hp2, hu1, hu2⟩ :=
++    smooth_insertion a2 b2 δ hw2 zs hz ((1 - ε0) * y2.sum) (by grind) (by grind)
++  have hs2 : zs.sum = J2.sum + R2.sum := by rw [perm_sum hp2, List.sum_append]
++  -- second insertion, from the remaining smooth primes: the divisor r
++  have hzR : ∀ z ∈ R2, z < δ := fun z hz' => hz z (hp2.symm.subset (by simp [hz']))
++  obtain ⟨J1, R, hp1, hr1, hr2⟩ :=
++    smooth_insertion a1 b1 δ hw1 R2 hzR ((1 - ε0) * y1.sum) (by grind) (by grind)
++  refine ⟨J2, J1, R, ?_, hu1, hu2, hr1, hr2⟩
++  rw [List.append_assoc]
++  exact hp2.trans (List.Perm.append_left J2 hp1)
++
++/-! ## Lemma 7.7 -/
++
++theorem lemma_7_7 (a1 a2 a3 b1 b2 b3 δ ω0 ε0 : Rat)
++    (hc3 : 0 ≤ 3 * (b1 - a1) + (a3 - b3)) (h12 : a1 - a2 ≤ b1 - b2)
++    (hw1 : δ ≤ b1 - a1) (hw2 : δ ≤ b2 - a2) (hw3 : δ ≤ b3 - a3) (_hω0 : -ε0 ≤ ω0)
++    (y1 y2 y3 y4 : List Rat)
++    (hI1 : y1.sum ≤ 2 * a1 + b3) (hI2 : y2.sum ≤ b2)
++    (hI3 : y3.sum ≤ 1 / 2 + 2 * ω0 - b1 - a2) (hI4 : y4.sum ≤ a1 - 2 * b1 - a3)
++    (zs : List Rat) (hz : ∀ z ∈ zs, z < δ)
++    (hq : 1 / 2 + 2 * ω0 ≤ y1.sum + y2.sum + y3.sum + y4.sum + zs.sum) :
++    ∃ J2 J1 R : List Rat, zs.Perm (J2 ++ J1 ++ R) ∧
++      a2 ≤ y2.sum + J2.sum ∧ y2.sum + J2.sum ≤ b2 ∧
++      a1 ≤ y1.sum + y4.sum + J1.sum ∧ y1.sum + y4.sum + J1.sum ≤ b1 ∧
++      ∀ c : Rat, a1 ≤ c → c ≤ b1 →
++        ∃ J' R' : List Rat, J1.Perm (J' ++ R') ∧
++          2 * c + a3 ≤ y1.sum + J'.sum ∧ y1.sum + J'.sum ≤ 2 * c + b3 := by
++  -- the divisor u
++  obtain ⟨J2, R2, hp2, hu1, hu2⟩ :=
++    smooth_insertion a2 b2 δ hw2 zs hz y2.sum hI2 (by grind)
++  have hs2 : zs.sum = J2.sum + R2.sum := by rw [perm_sum hp2, List.sum_append]
++  have hzR : ∀ z ∈ R2, z < δ := fun z hz' => hz z (hp2.symm.subset (by simp [hz']))
++  -- the divisor r
++  obtain ⟨J1, R, hp1, hr1, hr2⟩ :=
++    smooth_insertion a1 b1 δ hw1 R2 hzR (y1.sum + y4.sum) (by grind) (by grind)
++  have hzJ1 : ∀ z ∈ J1, z < δ := fun z hz' => hzR z (hp1.symm.subset (by simp [hz']))
++  refine ⟨J2, J1, R, ?_, hu1, hu2, hr1, hr2, ?_⟩
++  · rw [List.append_assoc]
++    exact hp2.trans (List.Perm.append_left J2 hp1)
++  · -- the divisor d₁ of r, for every c ∈ [a₁, b₁]
++    intro c hc1 hc2
++    exact smooth_insertion (2 * c + a3) (2 * c + b3) δ (by grind) J1 hzJ1 y1.sum
++      (by grind) (by grind)
++
++/-! ## Table 2 and Lemma 8.2 -/
++
++theorem table_2_transport (γ d κ εa : Rat) :
++    (2 * (γ - 3 * (εa / 100) - d) + (2 - γ - 52 * (εa / 100) - 4 * (1 / 2 - κ))
++        = γ - 2 * d + 4 * κ - 58 * (εa / 100)) ∧
++    (1 - γ - 6 * (εa / 100) - (1 / 2 - κ) = 1 / 2 - γ + κ - 6 * (εa / 100)) ∧
++    ((1 / 2 - κ) - (γ - 3 * (εa / 100)) - (1 - γ - 6 * (εa / 100) - (1 / 2 - κ) - d)
++        = d - 2 * κ + 9 * (εa / 100)) ∧
++    ((γ - 3 * (εa / 100) - d) - 2 * (γ - 3 * (εa / 100))
++        - (2 - γ - 52 * (εa / 100) - d - 4 * (1 / 2 - κ)) = -4 * κ + 55 * (εa / 100)) ∧
++    ((γ - 2 * d + 4 * κ - 58 * (εa / 100)) - (γ - 2 * d - εa) = 4 * κ + 42 * εa / 100) ∧
++    ((1 / 2 - γ + κ - 6 * (εa / 100)) - (1 / 2 - γ - εa) = κ + 94 * εa / 100) ∧
++    ((d - 2 * κ + 9 * (εa / 100)) - (d - εa) = 109 * εa / 100 - 2 * κ) ∧
++    ((-4 * κ + 55 * (εa / 100)) - 0 = 55 * εa / 100 - 4 * κ) ∧
++    (0 ≤ εa → 0 ≤ κ → κ ≤ 11 / 80 * εa →
++      0 ≤ 4 * κ + 42 * εa / 100 ∧ 0 ≤ κ + 94 * εa / 100 ∧
++      0 ≤ 109 * εa / 100 - 2 * κ ∧ 0 ≤ 55 * εa / 100 - 4 * κ) := by
++  refine ⟨by grind, by grind, by grind, by grind, by grind, by grind, by grind, by grind, ?_⟩
++  intro h1 h2 h3
++  exact ⟨by grind, by grind, by grind, by grind⟩
++
++theorem lemma_8_2 (bins : List (Rat × Rat × Rat)) (Lleaf η θ : Rat) (hL : 0 < Lleaf)
++    (hslope : ∀ b ∈ bins, -Lleaf ≤ b.2.1 ∧ b.2.1 ≤ Lleaf)
++    (hres : ∀ b ∈ bins, b.2.2 + η ≤ b.1)
++    (hθ1 : θ - 1 / 2 < η / Lleaf) (hθ2 : 1 / 2 - θ < η / Lleaf) :
++    ∀ b ∈ bins, b.2.2 ≤ b.1 + b.2.1 * (θ - 1 / 2) := by
++  intro b hb
++  obtain ⟨hs1, hs2⟩ := hslope b hb
++  have hr := hres b hb
++  -- `Lleaf · |θ − 1/2| < η`, from the two one-sided bounds
++  have hLne : Lleaf ≠ 0 := by grind
++  have k1 : Lleaf * (θ - 1 / 2) < Lleaf * (η / Lleaf) := by
++    have := Rat.mul_lt_mul_of_pos_left hθ1 hL
++    exact this
++  have k2 : Lleaf * (1 / 2 - θ) < Lleaf * (η / Lleaf) := by
++    have := Rat.mul_lt_mul_of_pos_left hθ2 hL
++    exact this
++  have hcancel : Lleaf * (η / Lleaf) = η := by
++    rw [Rat.mul_comm, Rat.div_mul_cancel hLne]
++  -- slope · offset ≥ −Lleaf · |offset|, by the sign of the offset
++  by_cases hu : 0 ≤ θ - 1 / 2
++  · have m : 0 ≤ (b.2.1 + Lleaf) * (θ - 1 / 2) := Rat.mul_nonneg (by grind) hu
++    have e : (b.2.1 + Lleaf) * (θ - 1 / 2) = b.2.1 * (θ - 1 / 2) + Lleaf * (θ - 1 / 2) := by
++      grind
++    grind
++  · have m : 0 ≤ (Lleaf - b.2.1) * (1 / 2 - θ) := Rat.mul_nonneg (by grind) (by grind)
++    have e : (Lleaf - b.2.1) * (1 / 2 - θ) = Lleaf * (1 / 2 - θ) + b.2.1 * (θ - 1 / 2) := by
++      grind
++    grind
++
++/-! ## Lemma 9.2 -/
++
++theorem lemma_9_2 (L τ g S ρ1 : Rat) (C : Nat → Rat) (s : Nat)
++    (_hS : S ≤ τ) (hρ : ρ1 ≤ C s) (u : Rat) (_hu : 0 ≤ u) :
++    (S + u ≤ L ∧ (if g < u then ρ1 + u ≤ C (s + 1) else ρ1 ≤ C s)) ↔
++      u ≤ min (L - S) (max g (C (s + 1) - ρ1)) := by
++  by_cases h : g < u
++  · simp only [h, if_true]; grind
++  · simp only [h, if_false]; grind
++
++end BGP212.Challenge
+diff --git a/specs/results/A2_combinatorial.yaml b/specs/results/A2_combinatorial.yaml
+new file mode 100644
+index 0000000..68d9ff1
+--- /dev/null
++++ b/specs/results/A2_combinatorial.yaml
+@@ -0,0 +1,65 @@
++# Result record: third Challenge/Solution pair (A2, the combinatorial layer)
++
++identity:
++  id: A2
++  statement: "Lemma 4.2, §7.2 smooth insertion, Lemmas 7.5–7.7, Table 2, Lemma 8.2, Lemma 9.2"
++  source: "Source/bgp212.pdf: Lemma 4.2 (p. 4), §7.2 (p. 28), Lemmas 7.5–7.7 (pp. 29–31), Table 2 and Lemma 8.2 (p. 38), Lemma 9.2 (p. 41)"
++  specification: specs/A0_parameters.yaml   # parameter-free: every statement is generic in δ, B, C, ε₀, ϵ
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++verification:
++  challenge: Challenge/A2Combinatorial.lean
++  solution: Solution/A2Combinatorial.lean
++  comparator_config: Comparator/a2_combinatorial.json
++  theorems:
++    lemma_4_2: "every sub-collection I′ ⊆ I of rough coordinates has Σ_{I′} t ≤ B_{|I′|}"
++    smooth_insertion: "§7.2 mechanism: steps < δ ≤ b − a reach a selection landing in [a, b]"
++    lemma_7_5: "two-factor extraction, log-size form"
++    lemma_7_6: "three-factor extraction, log-size form, disjoint selections J₂, J₁"
++    lemma_7_7: "four-factor extraction, log-size form, d₁ | r for every c ∈ [a₁, b₁]"
++    table_2_transport: "raw capacities, difference column, and nonnegativity on 0 ≤ κ ≤ (11/80)εₐ, generic in γ, d, εₐ"
++    lemma_8_2: "affine capacities with |slope| ≤ L_leaf and reserve η stay valid for |θ − 1/2| < η/L_leaf"
++    lemma_9_2: "(x̂, u) ∈ T̃ ⟺ u ≤ min{L − S, max{g, C(s+1) − ρ₁}}, for u ≥ 0"
++  proof_method: >
++    Core Lean. `grind` closes linear arithmetic over Rat; each product of two variables
++    enters as an explicit fact from Rat.mul_nonneg or Rat.mul_le_mul_of_nonneg_left.
++    Lemmas 7.5–7.7 each apply smooth_insertion once per target interval, the source's
++    own mechanism.
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: Lean 4 kernel + core library (Mathlib absent)
++  scope_boundary:
++    - "Lemmas 7.5–7.7 are proved in log-size form: rough logs y ≥ δ, smooth prime logs z < δ, divisors as selections. The step log_x(∏ factors) = Σ log_x(factor) is standard multiplicativity of log and stays outside this pair."
++    - "Where a source proof says 'ϵ sufficiently small compared to ε₀', the statement carries the exact inequality the proof uses: ϵ ≤ ε₀(1/2 − a) in 7.5, ϵ ≤ ε₀(1/2 − b₁ − a₂) in 7.6."
++    - "Lemma 7.7's 'q ≍ x^{1/2+2ω₀}' enters as the lower bound 1/2 + 2ω₀ ≤ log_x q, the form its proof uses."
++    - "Lemma 4.2's caps B are a total function ℕ → ℚ; the source defines B_{j,m} for m ≤ ⌊1/δ⌋."
++  hypotheses_unused_by_proofs: >
++    The Challenge states every source hypothesis; these turned out unnecessary and are
++    marked `_` in the Solution: 7.5 — a > 0, b < 1/2, ϵ ≥ 0; 7.6 — a₁, a₂ > 0,
++    b₁, b₂ < 1/2, b₁ + b₂ < 1/2, ϵ ≥ 0; 7.7 — ω₀ ≥ −ε₀; 9.2 — S ≤ τ, u ≥ 0.
++  negative_controls:
++    - change: "Lemma 7.5 window widened from [a, b] to [a, b + δ] in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_7_5'"
++    - change: "Lemma 4.2 one-step bound weakened to B(q+1) ≤ B(q) + 2δ in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_4_2'"
++      note: "The weakened statement is false: δ = 1, B = (0, 1, 3), ys = [3/2, 3/2], zs = [3/2] gives 3/2 > B(1) = 1."
++  sandbox: >
++    Comparator ran with the pass-through landrun stand-in in the authoring environment.
++    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  run_date: 2026-10-16
++  commit_hash: null   # set to the verified commit after the VPS run
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 922a858..00fdc96 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
