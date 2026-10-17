@@ -150,6 +150,18 @@ in `BGP212/Variational.lean`): **the variational space `B₂₁` of §11 has dim
 - For V1: `simplexMoment` (the right side of (10.1)) with its `m = 0`, `m = 1` and Fubini-step
   identities.
 
+The twelfth pair is V1 (`Challenge/SimplexMoment.lean`, `Solution/SimplexMoment.lean`, objects
+in `BGP212/SimplexMoment.lean`): **the simplex moment identity (10.1) as a Lebesgue integral**.
+
+- `beta_integral : ∫₀^R x^u (R − x)^v dx = R^{u+v+1} u! v! / (u+v+1)!` for every real `R`.
+- `simplex_integral : ∫_{z ≥ 0, Σ zᵢ ≤ R} ∏ zᵢ^{eᵢ} dz = R^{m+Σeᵢ} ∏ eᵢ! / (m+Σeᵢ)!` for `R ≥ 0`,
+  by Fubini and induction on the dimension; boundary cases `m = 0`, `R = 0`, `R < 0`, and the
+  volume `R^m/m!`.
+- `simplex_integral_rat`: at rational `R` the integral is V0's rational `simplexMoment`; V0
+  proved the algebra of that formula, V1 proves it is the integral.
+- `poly_integral` (Lemma 10.1 on the simplex): a rational polynomial integrates to the explicit
+  rational `polyIntegralQ R G`, the step Proposition 10.2's Gram matrices build on (V2).
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -157,7 +169,7 @@ in `BGP212/Variational.lean`): **the variational space `B₂₁` of §11 has dim
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
-  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0).
+  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -226,6 +238,13 @@ For V0's negative controls:
 ```text
 python3 -I specs/checks/variational_v0_negative_controls.py /tmp/v0_neg
 for f in /tmp/v0_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V1's controls:
+
+```text
+python3 -I specs/checks/simplex_moment_v1_controls.py /tmp/v1_ctl
+for f in /tmp/v1_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

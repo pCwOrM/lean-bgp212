@@ -9,3 +9,4 @@ import Challenge.PackingC
 import Challenge.Theorem711
 import Challenge.Gap
 import Challenge.Variational
+import Challenge.SimplexMoment

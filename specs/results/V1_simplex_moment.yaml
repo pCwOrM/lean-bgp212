@@ -1,0 +1,104 @@
+# Result record: twelfth Challenge/Solution pair (V1, the simplex moment identity (10.1))
+
+identity:
+  id: V1
+  statement: "(10.1) as a Lebesgue integral identity on the closed simplex, with the Beta moment, boundary cases, the rational link to V0, and exact integration of rational polynomials (Lemma 10.1 on the simplex)"
+  source: "Source/bgp212.pdf: (10.1) and Lemma 10.1 (pp. 41–42); Proposition 10.2 (p. 42) as the next use"
+  builds_on: "V0 (simplexMoment, betaMoment, simplexMoment_snoc), unchanged; A0–V0 unchanged"
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+scope:
+  proved: "the integral identity (10.1) for every m, every exponent vector e and every real R ≥ 0 (R < 0 separately); the Beta moment for every real R; exact rational values for rational R; rational polynomials integrate to the explicit rational polyIntegralQ"
+  distinct_from_V0: >
+    V0 proved algebraic identities of the rational right-hand sides (simplexMoment,
+    betaMoment, simplexMoment_snoc). V1 proves that those right-hand sides are the values of
+    the integrals (simplex_integral, beta_integral) and connects them at rational radii
+    (simplex_integral_rat, betaR_eq_betaMoment).
+  outside_V1: "the 846 × 846 Gram matrices of I_T and J_T (V2), the stratification of Proposition 10.2, and the variational inequality of Theorem 11.1 (V3)"
+
+verification:
+  definitions: BGP212/SimplexMoment.lean
+  challenge: Challenge/SimplexMoment.lean
+  solution: Solution/SimplexMoment.lean
+  comparator_config: Comparator/simplex_moment_v1.json
+  controls_script: specs/checks/simplex_moment_v1_controls.py
+  transcription:
+    simplex: "{z : Fin m → ℝ | (∀ i, 0 ≤ z i) ∧ Σ i, z i ≤ R}, integrated against volume (Lebesgue measure, Measure.pi)"
+    momentR: "R^(m + Σ eᵢ) · ∏ eᵢ! / (m + Σ eᵢ)! over ℝ"
+    betaR: "R^(u + v + 1) · u! · v! / (u + v + 1)! over ℝ"
+    polyIntegralQ: "Σ_{d ∈ supp G} G_d · simplexMoment R (List.ofFn d)"
+  signatures:
+    simplex_isCompact: "IsCompact (simplex m R)"
+    simplex_empty: "R < 0 → simplex m R = ∅"
+    cons_mem_simplex: "Fin.cons x w ∈ simplex (m+1) R ↔ 0 ≤ x ∧ w ∈ simplex m (R − x)"
+    beta_integral: "∫ x in 0..R, x^u (R − x)^v = betaR R u v (every real R)"
+    simplex_integral: "0 ≤ R → ∫ z in simplex m R, ∏ zᵢ^{eᵢ} = momentR m R e"
+    simplex_integral_zero_dim: "0 ≤ R → ∫ z in simplex 0 R, ∏ (empty) = 1"
+    simplex_integral_neg: "R < 0 → ∫ z in simplex m R, ∏ zᵢ^{eᵢ} = 0"
+    simplex_integral_radius_zero: "∫ z in simplex (m+1) 0, ∏ zᵢ^{eᵢ} = 0"
+    simplex_volume: "0 ≤ R → ∫ _ in simplex m R, 1 = R^m / m!"
+    betaR_eq_betaMoment: "betaR (R : ℝ) u v = (betaMoment R u v : ℝ) for R : ℚ"
+    momentR_eq_simplexMoment: "momentR m (R : ℝ) e = (simplexMoment R (List.ofFn e) : ℝ) for R : ℚ"
+    simplex_integral_rat: "0 ≤ R : ℚ → ∫ z in simplex m R, ∏ zᵢ^{eᵢ} = (simplexMoment R (List.ofFn e) : ℝ)"
+    poly_integral: "0 ≤ R : ℚ → ∫ z in simplex m R, G(z) = (polyIntegralQ R G : ℝ) for G ∈ ℚ[z₁, …, z_m]"
+  proof_outline: >
+    Beta: d/dz [z^{u+1}(R − z)^{v+1}] = (u+1) z^u (R − z)^{v+1} − (v+1) z^{u+1}(R − z)^v integrates
+    to 0 over [0, R] (fundamental theorem of calculus), so (u+1)·B(u, v+1) = (v+1)·B(u+1, v);
+    induction on v from B(u, 0) = R^{u+1}/(u+1). (10.1): induction on m. The simplex in ℝ^{m+1}
+    is split along its first coordinate by the measure-preserving equivalence
+    ℝ^{m+1} ≃ ℝ × ℝ^m (measurePreserving_piFinSuccAbove); Fubini (integral_prod, with
+    integrability from the compactness of the simplex) reduces the inner integral to the
+    m-dimensional simplex of radius R − x (cons_mem_simplex), equal by induction to
+    c·(R − x)^{m+s}; the outer integral is c·B(e₀, m + s); and momentR (m+1) R e = c·betaR R e₀ (m+s)
+    (moment_cons, the real form of V0's simplexMoment_snoc with the coordinate split at the
+    front). m = 0: the simplex in ℝ⁰ is the whole one-point space, of measure 1.
+  build_cost:
+    mathlib_modules_added: 1055
+    mathlib_build_storage_added: "1.4 GB (build container)"
+    one_time_compilation: "about 74 minutes on 2 cores (build container)"
+    vps: "Mathlib cache from `lake exe cache get` covers these modules; check disk before verification"
+  exploratory_vs_proved: >
+    Proved: every theorem listed under signatures. The controls evaluate concrete integrals
+    through the proved identities; no numerical integration enters.
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
+  controls:
+    - change: "area of the unit triangle 1/2; ∫ z₁z₂ over it 1/24; ∫₀¹ x²(1 − x)³ dx = 1/60; volume of the radius-2 simplex in ℝ³ 4/3"
+      result: "accepted (positive controls)"
+    - change: "area 1 (formula without m); 1/12 for ∫ z₁z₂ ((Σe)! in place of (m + Σe)!); 1/72 for the Beta moment; 8 for the volume (the cube)"
+      result: "rejected: norm_num reduces each to False after rewriting with the proved identity"
+    - change: "simplex_volume claimed with (m + 1)! in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.simplex_volume'"
+  sandbox: >
+    Comparator ran in the build container with the landrun pass-through shim; the VPS run
+    with the real landrun sandbox is recorded below.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  verify_time: "about 1 minute 40 seconds for the V1 comparator suite in the build container"
+  run_date: 2026-10-17
+  commit_hash: PENDING_VPS
+
+next_development:
+  V2: >
+    Proposition 10.2 on B₂₁: for each rough set R ⊆ {1, …, 45} the stratum is a rational polytope;
+    translate by g, triangulate (or use inclusion–exclusion on the upper bounds) into scaled
+    and translated simplices, and integrate with poly_integral. Generate the 846 × 846 Gram
+    entries of I_T and J_T outside the kernel as exact rationals with a certificate of each
+    reduction, and check them in the kernel. Symmetry of the integrand under S₄₅ reduces the
+    work to orbit representatives of the strata.
+  V3: "With Axiom's P⋆: I_T(P⋆) > 0 and J_T(P⋆) − 4 I_T(P⋆) > 0 exactly; SieveInputs.theorem_11_1 becomes a theorem."
+
+footer: Admissible generalizations trail leading specifications.

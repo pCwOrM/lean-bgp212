@@ -1,0 +1,33 @@
+{
+    "challenge_module": "Challenge.SimplexMoment",
+    "solution_module": "Solution.SimplexMoment",
+    "theorem_names": [
+        "BGP212.Challenge.simplex_isCompact",
+        "BGP212.Challenge.simplex_empty",
+        "BGP212.Challenge.cons_mem_simplex",
+        "BGP212.Challenge.beta_integral",
+        "BGP212.Challenge.simplex_integral",
+        "BGP212.Challenge.simplex_integral_zero_dim",
+        "BGP212.Challenge.simplex_integral_neg",
+        "BGP212.Challenge.simplex_integral_radius_zero",
+        "BGP212.Challenge.simplex_volume",
+        "BGP212.Challenge.betaR_eq_betaMoment",
+        "BGP212.Challenge.momentR_eq_simplexMoment",
+        "BGP212.Challenge.simplex_integral_rat",
+        "BGP212.Challenge.poly_integral"
+    ],
+    "definition_names": [
+        "BGP212.Var.simplex",
+        "BGP212.Var.momentR",
+        "BGP212.Var.betaR",
+        "BGP212.Var.expList",
+        "BGP212.Var.polyIntegralQ",
+        "BGP212.Var.simplexMoment",
+        "BGP212.Var.betaMoment"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}
