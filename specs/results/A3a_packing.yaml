@@ -65,8 +65,9 @@ verification:
     - change: "capacity of (A) first bin lowered from ξ₁ − 2ϵ to ξ₁ − 1/10"
       result: "Solution fails to build: 'Tactic decide failed' at certTable_valid"
   sandbox: >
-    Comparator ran with the pass-through landrun stand-in in the authoring environment.
-    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All six Challenge/Solution suites passed Lean kernel verification.
+    Certificate matching passed: 296 settled, 159 open, 295 certificates.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -78,6 +79,6 @@ result:
     - "Your solution is okay!"
   solution_build_time: "about 20 s"
   run_date: 2026-10-16
-  commit_hash: null   # set to the verified commit after the VPS run
+  commit_hash: 74c6616a5aa63919443c93d363106076453e86d2
 
 footer: Admissible generalizations trail leading specifications.
