@@ -74,21 +74,29 @@ The seventh pair is A3b (`Challenge/PackingB.lean`, `Solution/PackingB.lean`), a
 certificate checker for Lemma 7.10 (Farkas certificates over subdivision trees of sorted
 cells, `Solution/PackingCert.lean`) and 116 further roots: all remaining (A), (C), (E) roots
 and 47 of the 90 (D) roots, uniformly over the (γ, ω₀) box. With A3a, **412 of the 455
-roots** are proved. The 43 remaining (D) roots are listed in `openRootsB`.
+roots** are proved; the 43 (D) roots left after A3b are listed in `openRootsB`.
+
+The eighth pair is A3c (`Challenge/PackingC.lean`, `Solution/PackingC.lean`), which proves
+those 43 roots and closes the ledger: **Lemma 7.10 holds for all 455 roots**, stated as
+`lemma_7_10 : ∀ c m m', 1 ≤ m → m ≤ m' → m' ≤ 13 → Root c m m'`. The checker extension
+(`Solution/PackingCertC.lean`) cuts along any integer hyperplane in profile and box
+coordinates, certifies empty cells by exact Farkas infeasibility (`emptyB_sound`), and
+checks large trees piece by piece (`checkTree2_split_path`). `checkTree2_sound` holds for any
+capacity data, so the framework applies to other exact rational packing problems.
 
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
-  W-trick for H₄₅ (B2); 412 of the 455 packing roots of Lemma 7.10 (A3a, A3b).
+  W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
 - **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
   criterion (Theorem 4.10) and the deduction of Theorem 1.1.
-- **Open, outside the proved scope:** the 43 condition-(D) packing roots of Lemma 7.10
-  listed in `openRootsB`, and the exact variational certificate of Theorem 11.1.
+- **Open, outside the proved scope:** the exact variational certificate of Theorem 11.1,
+  and the passage from Lemma 7.10 to Theorem 7.11.
 
 ## Comparator Verification
 
@@ -103,6 +111,8 @@ Then
 ```text
 ./verify.sh
 ```
+
+The A3c kernel checks need about 2.6 GB of memory at peak.
 
 To regenerate and cross-check the A3a certificate data (exploratory, outside the kernel):
 
@@ -119,7 +129,17 @@ cmp /tmp/a3b.json specs/certificates/packing_a3b.json
 python3 -I specs/checks/packing_a3b_emit.py specs/certificates/packing_a3b.json . --check
 ```
 
-builds the project and runs Lean Comparator on each config in `Comparator/`.
+For A3c (the generator needs SciPy; it proposes cuts, assignments and dual supports only):
+
+```text
+python3 -I specs/checks/packing_a3c_generate.py /tmp/a3c.json --jobs 2
+cmp /tmp/a3c.json specs/certificates/packing_a3c.json
+python3 -I specs/checks/packing_a3c_emit.py specs/certificates/packing_a3c.json . --check
+python3 -I specs/checks/packing_a3c_negative_controls.py /tmp/a3c_neg
+for f in /tmp/a3c_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+`./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
 A successful run ends with:
 
 ```text

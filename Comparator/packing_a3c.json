@@ -1,0 +1,33 @@
+{
+    "challenge_module": "Challenge.PackingC",
+    "solution_module": "Solution.PackingC",
+    "theorem_names": [
+        "BGP212.Challenge.lemma_7_10_a3c",
+        "BGP212.Challenge.lemma_7_10_all",
+        "BGP212.Challenge.lemma_7_10"
+    ],
+    "definition_names": [
+        "BGP212.Packing.InXi",
+        "BGP212.Packing.binSum",
+        "BGP212.Packing.Packs",
+        "BGP212.Packing.ω11",
+        "BGP212.Packing.capsA1",
+        "BGP212.Packing.capsA2",
+        "BGP212.Packing.capsB",
+        "BGP212.Packing.capsC",
+        "BGP212.Packing.capsD",
+        "BGP212.Packing.capsE",
+        "BGP212.Packing.Root",
+        "BGP212.Packing.allRoots",
+        "BGP212.Packing.openRootsB",
+        "BGP212.Params.B",
+        "BGP212.Params.δ",
+        "BGP212.Params.εa",
+        "BGP212.Ledger.packingPairs"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

@@ -1,0 +1,116 @@
+# Result record: eighth Challenge/Solution pair (A3c, Lemma 7.10 packing, closing part)
+
+identity:
+  id: A3c
+  statement: "Lemma 7.10: the 43 remaining condition-(D) roots by kernel-checked certificates with load-hyperplane cuts; all 455 roots proved"
+  source: "Source/bgp212.pdf: Definition 7.4 (p. 28), Proposition 7.8 (A)–(E) (pp. 31–32), Lemma 7.10 (p. 36)"
+  specification: specs/A0_parameters.yaml
+  builds_on: "A3a and A3b (BGP212/Packing.lean, BGP212/PackingLedgerB.lean, Solution/Packing.lean, Solution/PackingCert.lean, Solution/PackingB.lean), unchanged"
+
+state:
+  mathematical: proved          # all 455 roots of Lemma 7.10
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  challenge: Challenge/PackingC.lean
+  solution: Solution/PackingC.lean
+  checker: Solution/PackingCertC.lean          # extends Solution/PackingCert.lean
+  certificate_data: [Solution/PackingCData.lean, Solution/PackingCCheck.lean]
+  comparator_config: Comparator/packing_a3c.json
+  theorems:
+    lemma_7_10_a3c: "openRootsB has 43 roots, and each holds for every profile in its domain, uniformly over the full (γ, ω₀) box"
+    lemma_7_10_all: "allRoots has 455 roots, and each holds"
+    lemma_7_10: "for every condition (A)–(E) and all 1 ≤ m ≤ m′ ≤ 13, Root c m m′"
+  framework_theorems:              # proved in Solution/PackingCertC.lean, used by the proofs above
+    emptyB_sound: "a cell with a checked Farkas infeasibility certificate (λ ≥ 0, Σλa = 0, Σλb < 0) contains no point"
+    checkTree2_sound: "for any capacity data, a checked tree (leaf | split | empty) yields a valid assignment at every point of its cell"
+    checkTree2_toTree2: "every A3b tree is an A3c tree with the same verdict"
+    checkTree2_split_path: "assembly: a split node checks on the cell base ++ path when its two children check on base ++ path ++ [each side]"
+    rowC_sound: "a checked (D) row proves its root"
+    empty_cell_example: "a kernel-checked empty cell: the cut y₁ ≥ 1/2 on the (D, 1, 3) base cell"
+  checker_design: >
+    A3c's tree has three node kinds. leaf and split are A3b's; empty carries exact Farkas
+    infeasibility multipliers. Every cut is an integer vector over all coordinates (both
+    sorted sides and γ, ω₀). A large tree is stored node by node: each subtree with at most 8
+    leaves is one definition checked by one kernel `decide` on its own cell (the base cell
+    plus the cuts on its path, `pathCell`), and the nodes above are assembled by
+    checkTree2_split_path. This bounds kernel memory per decision.
+  method: >
+    Lazy point generation with load-hyperplane cuts. At a cell a MILP finds an assignment
+    that fits every sample point so far; an LP maximises each bin's load minus capacity over
+    the whole cell; a bin that cannot overflow gets exact Farkas multipliers (LP dual support
+    re-solved in exact rational arithmetic); an overflowing bin adds the LP maximiser to the
+    samples. When the samples admit no common assignment, the cell is cut along the load
+    hyperplane load_k(a)(v) = cap_k(γ, ω₀) of an assignment a that failed on bin k: on one
+    side bin k fits, on the other a is ruled out. Each cut vector is 0/1 on the coordinates and
+    small integers on (γ, ω₀).
+  simplification: >
+    Load-hyperplane cuts replace coordinate bisection. On the pilot roots, coordinate bisection
+    in profile space needed 89 leaves for (D, 2, 2), 173 for (D, 3, 3), and did not terminate
+    for (D, 4, 4) within depth 40 (a diagonal boundary approached by axis cuts); load-hyperplane
+    cuts need 3, 9 and 7 leaves. Over all 43 roots: 1601 leaves, 1558 cuts, maximum depth 31.
+  certificates:
+    file: specs/certificates/packing_a3c.json
+    sha256: d6c5ba25567b4711b863bf5b83b1d4cc777659405df12de93ed33384e8bcfba1
+    generator: specs/checks/packing_a3c_generate.py   # exploratory; SciPy proposes, Fractions re-verify every tree
+    emitter: specs/checks/packing_a3c_emit.py         # JSON → Lean data; --check diffs against the repo
+    negative_controls: specs/checks/packing_a3c_negative_controls.py
+    regeneration: "byte-identical on rerun (about 4 minutes single-process, 2 minutes with --jobs 2); emitter --check reports match for both Lean data files"
+    sizes: { roots: 43, leaves: 1601, cuts: 1558, empty_cells: 0, kernel_pieces: 454, max_leaves_per_root: 183, max_depth: 31 }
+  exploratory_vs_proved: >
+    Exploratory: the generator (scipy.optimize.linprog and milp proposals; exact Fraction
+    re-solve and re-check of every multiplier and every tree), the emitter, and the
+    negative-control script. Proved: the theorems above. The Lean kernel re-checks all 454
+    certificate pieces (about 9.5 minutes, peak about 2.6 GB across Lean processes, measured
+    in the build container).
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: Lean 4 kernel + core library (Mathlib absent from this pair)
+  ledger:
+    A3a: 296
+    A3b: 116
+    A3c: 43
+    total: "455 of 455"
+  negative_controls:
+    - change: "one Farkas multiplier of the first leaf of (D, 3, 3) scaled by 101/100"
+      result: "kernel rejects: 'Tactic decide failed' for rowC"
+    - change: "one coordinate of that leaf moved from bin 0 to bin 2"
+      result: "kernel rejects: 'Tactic decide failed' for rowC"
+    - change: "a feasible leaf replaced by an empty-cell claim with that leaf's multipliers"
+      result: "kernel rejects: 'Tactic decide failed' for rowC"
+    - change: "the two sides of the root cut swapped"
+      result: "kernel rejects: 'Tactic decide failed' for rowC"
+    - change: "the root cut threshold shifted by 1/1000"
+      result: "kernel rejects: 'Tactic decide failed' for rowC"
+    - change: "the unmodified (D, 3, 3) certificate (positive control)"
+      result: "kernel accepts"
+    - change: "lemma_7_10 claimed for m′ ≤ 14 in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_7_10'"
+  sandbox: >
+    Comparator ran in the build container with the landrun pass-through shim (Go proxy
+    blocked there); the VPS run with the real landrun sandbox is recorded below.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  verify_time: "about 10.5 minutes for the A3c comparator suite in the build container"
+  run_date: 2026-10-17
+  commit_hash: PENDING_VPS
+
+next_development:
+  lemma_7_10_to_theorem_7_11: >
+    Lemma 7.10 now holds as a kernel-checked statement over every (A)–(E) condition and
+    every 1 ≤ m ≤ m′ ≤ 13. Next: state Theorem 7.11's combinatorial core as a Challenge:
+    the Harman-decomposition case split of Proposition 7.8 indexed by the factor profile,
+    with each case discharged by lemma_7_10 plus Proposition 7.8's capacity inequalities
+    (already exact in BGP212/Packing.lean), and the analytic Type I/II/III estimates as
+    named hypotheses. Then connect to B3 (dhl_45_implies_gap: DHL[45,2] ⇒ H₁ ≤ 212) through
+    the W-trick of B2.
+
+footer: Admissible generalizations trail leading specifications.

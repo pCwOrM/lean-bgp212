@@ -5,3 +5,4 @@ import Challenge.MultiShift
 import Challenge.MultiShiftB2
 import Challenge.Packing
 import Challenge.PackingB
+import Challenge.PackingC
