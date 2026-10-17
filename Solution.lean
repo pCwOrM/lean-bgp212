@@ -6,3 +6,4 @@ import Solution.MultiShiftB2
 import Solution.Packing
 import Solution.PackingB
 import Solution.PackingC
+import Solution.Theorem711

@@ -84,19 +84,45 @@ coordinates, certifies empty cells by exact Farkas infeasibility (`emptyB_sound`
 checks large trees piece by piece (`checkTree2_split_path`). `checkTree2_sound` holds for any
 capacity data, so the framework applies to other exact rational packing problems.
 
+The ninth pair is A4 (`Challenge/Theorem711.lean`, `Solution/Theorem711.lean`, objects in
+`BGP212/Theorem711.lean`): the deduction from Lemma 7.10 to **Theorem 7.11**. It proves, at
+Table 3, every combinatorial hypothesis the proof of Theorem 7.11 uses:
+
+- Definition 4.1 and Proposition 7.8 (I)–(III);
+- Proposition 7.8 (A)–(E), quantified as printed (all `m, m′ ≤ ⌊1/δ⌋ = 60`, both orders,
+  `m + m′ > 0`), from the 455 roots by `lemma_7_10_case_split`;
+- the permissible triples of Lemmas 5.3–5.7 at the proof's widths `δ*(γ)` over every
+  `γ`-range, the Type II ranges covering `[ξ₂ − ϵ, 1/2]`;
+- the six containments `Q ⊆ D_X` (Type I in two ranges, IIa, IIb, IIc, III), each the
+  verified packing composed with A2's extraction Lemmas 7.5–7.7.
+
+`theorem_7_11` then holds relative to `AnalyticInputs`, whose fields name Lemmas 5.3–5.7, the
+assembly step of Proposition 7.8, and Theorem 8.3. The record
+`specs/results/A4_theorem_7_11.yaml` carries the exact signatures, the dependency graph, and
+six findings, among them a Type III width that the printed `δ*` misses by exactly `ϵ`
+(`type_III_printed_gap`, repaired within the printed conditions).
+
+```text
+lemma_7_10 (455 roots) ─► lemma_7_10_case_split ─► prop_7_8_A_E_table3
+(A)–(E) + Lemmas 7.5–7.7 (A2) + perm_type_* ─► containment_{I_low, I_high, IIa, IIb, IIc, III}
+Table 3 ─► definition_4_1_table3, prop_7_8_I_III_table3
+all of the above ─► theorem_7_11_core ─► theorem_7_11 (H : AnalyticInputs)
+```
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
-  W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c).
+  W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
+  combinatorial hypothesis of Theorem 7.11 at Table 3 (A4).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
-  (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
+  (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+  fields of `AnalyticInputs`, together with Proposition 7.8's assembly step and Theorem 8.3.
 - **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
   criterion (Theorem 4.10) and the deduction of Theorem 1.1.
-- **Open, outside the proved scope:** the exact variational certificate of Theorem 11.1,
-  and the passage from Lemma 7.10 to Theorem 7.11.
+- **Open, outside the proved scope:** the exact variational certificate of Theorem 11.1.
 
 ## Comparator Verification
 
@@ -137,6 +163,13 @@ cmp /tmp/a3c.json specs/certificates/packing_a3c.json
 python3 -I specs/checks/packing_a3c_emit.py specs/certificates/packing_a3c.json . --check
 python3 -I specs/checks/packing_a3c_negative_controls.py /tmp/a3c_neg
 for f in /tmp/a3c_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For A4's negative controls:
+
+```text
+python3 -I specs/checks/theorem_7_11_negative_controls.py /tmp/a4_neg
+for f in /tmp/a4_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

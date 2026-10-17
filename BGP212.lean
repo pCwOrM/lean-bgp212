@@ -7,3 +7,4 @@ import BGP212.GDTv1
 import BGP212.WTrick
 import BGP212.Packing
 import BGP212.PackingLedgerB
+import BGP212.Theorem711
