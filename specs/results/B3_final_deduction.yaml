@@ -109,8 +109,9 @@ verification:
     - change: "dhl_45_implies_gap claimed with H1Le 211 in the Challenge"
       result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.dhl_45_implies_gap'"
   sandbox: >
-    Comparator ran in the build container with the landrun pass-through shim; the VPS run
-    with the real landrun sandbox is recorded below.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All ten Challenge/Solution suites passed Lean kernel verification.
+    Five negative boundary controls were rejected; five positive controls passed.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -123,7 +124,7 @@ result:
     - "Your solution is okay!"
   verify_time: "about 12 minutes for the B3 comparator suite in the build container (it replays the A3c certificates through A4)"
   run_date: 2026-10-17
-  commit_hash: PENDING_VPS
+  commit_hash: 091688ebced492606c3b5117893914a9b92c4779
 
 next_development:
   variational: >
