@@ -90,8 +90,10 @@ verification:
     - change: "finrank_B21 claimed as 845 in the Challenge"
       result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.finrank_B21'"
   sandbox: >
-    Comparator ran in the build container with the landrun pass-through shim; the VPS run
-    with the real landrun sandbox is recorded below.
+    Comparator ran on the VPS with the real landrun sandbox via ./verify.sh.
+    All eleven Challenge/Solution suites passed Lean kernel verification.
+    Four negative controls were rejected and four positive controls passed.
+    nc_all_parts was rejected by a type error, rather than a direct false-proposition proof.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -104,7 +106,7 @@ result:
     - "Your solution is okay!"
   verify_time: "about 40 seconds for the V0 comparator suite in the build container"
   run_date: 2026-10-17
-  commit_hash: PENDING_VPS
+  commit_hash: 1121b997e1f8f4050bbefbed1d2a1a43cc2facb8
 
 next_development:
   V1: >
