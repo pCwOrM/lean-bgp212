@@ -1,0 +1,629 @@
+From 0cf9394564a0075dfe06c8f7c4189b6c0cc956bb Mon Sep 17 00:00:00 2001
+From: Dan Hawkley <dan@triplettrustprotocol.net>
+Date: Fri, 16 Oct 2026 19:55:22 -0600
+Subject: [PATCH] A1: Table 3 parameters and Appendix B ledger, kernel-checked
+
+Adds BGP212/Params.lean and BGP212/Ledger.lean (Table 3 and Table 6 as
+exact rationals) and the Challenge/Solution pair AppendixB with eight
+statements. table6_derivation ties every printed ledger entry to its
+formula in the Table 3 parameters; it surfaced SI-3 (Proposition 7.8 (II)
+states 9 epsilon, Table 6 row 14 prints the 15 epsilon value), recorded
+in specs/A0_parameters.yaml.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                      |   6 +-
+ BGP212/Ledger.lean               |  56 +++++++++++++++
+ BGP212/Params.lean               |  58 +++++++++++++++
+ Challenge.lean                   |   5 +-
+ Challenge/AppendixB.lean         | 118 +++++++++++++++++++++++++++++++
+ Comparator/appendix_b.json       |  39 ++++++++++
+ README.md                        |  12 +++-
+ Solution.lean                    |   5 +-
+ Solution/AppendixB.lean          | 102 ++++++++++++++++++++++++++
+ specs/A0_parameters.yaml         |  15 +++-
+ specs/results/A1_appendix_b.yaml |  65 +++++++++++++++++
+ verify.sh                        |   9 ++-
+ 12 files changed, 475 insertions(+), 15 deletions(-)
+ create mode 100644 BGP212/Ledger.lean
+ create mode 100644 BGP212/Params.lean
+ create mode 100644 Challenge/AppendixB.lean
+ create mode 100644 Comparator/appendix_b.json
+ create mode 100644 Solution/AppendixB.lean
+ create mode 100644 specs/results/A1_appendix_b.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 3b6abc3..cce7b4e 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -1,3 +1,3 @@
+-module -- shake: keep-all --deprecated_module: ignore
+-
+-public import BGP212.Basic
++import BGP212.Basic
++import BGP212.Params
++import BGP212.Ledger
+diff --git a/BGP212/Ledger.lean b/BGP212/Ledger.lean
+new file mode 100644
+index 0000000..3fb5e54
+--- /dev/null
++++ b/BGP212/Ledger.lean
+@@ -0,0 +1,56 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026), Appendix B, Table 6 "Exact analytic and combinatorial slack
++ledger" (pp. 44–45).
++-/
++
++
++/-! # Appendix B, Table 6, as printed
++
++Each row is transcribed with its printed `left`, `right` and `slack` columns, exactly
++as fractions. The source convention (Appendix B, paragraph 2): rows are "oriented so
++that the required comparison is left ≤ right, and the slack is right − left". The
++decimal column is a display aid and stays out of the record. -/
++
++
++
++namespace BGP212.Ledger
++
++/-- One printed row of Table 6. -/
++structure Row where
++  condition : String
++  left : Rat
++  right : Rat
++  slack : Rat
++
++/-- Table 6, all 21 rows in printed order. -/
++def table6 : List Row :=
++  [ ⟨"Support: δ > 0", 0, 41/2500, 41/2500⟩,
++    ⟨"Support: B1 > δ", 41/2500, 777/5000, 139/1000⟩,
++    ⟨"Support: Bm ≤ Bm+1", 0, 17/5000, 17/5000⟩,
++    ⟨"Support: Bm+1 ≤ Bm + δ", 81/5000, 82/5000, 1/5000⟩,
++    ⟨"First-rung cap wall", 777/5000, 778/5000, 1/5000⟩,
++    ⟨"Prime decomposition: ξ2 ≤ 2/5", 2/5, 2/5, 0⟩,
++    ⟨"Prime decomposition: ξ3 ≥ ξ2", 2/5, 2/5, 0⟩,
++    ⟨"Prime decomposition: 2ξ1 + 3ξ2 < 2", 49/25, 2, 1/25⟩,
++    ⟨"Prime decomposition: ξ1 + 9ξ2 < 4", 199/50, 4, 1/50⟩,
++    ⟨"Prime decomposition: 2ξ1 + ξ2 > 1", 1, 29/25, 4/25⟩,
++    ⟨"Prime decomposition: 17ξ2 < 7", 34/5, 7, 1/5⟩,
++    ⟨"Type I admissibility, first wall", 41/2500, 279999997/15000000000, 33999997/15000000000⟩,
++    ⟨"Type I admissibility, second wall", 41/2500, 1309999993/35000000000, 735999993/35000000000⟩,
++    ⟨"Type II admissibility, first wall", 0, 69599997/2000000000, 69599997/2000000000⟩,
++    ⟨"Type II admissibility, first cap wall", 41/2500, 87999999/5000000000, 5999999/5000000000⟩,
++    ⟨"Type II admissibility, second cap wall", 41/2500, 82499999/5000000000, 499999/5000000000⟩,
++    ⟨"Type III admissibility", 41/2500, 127499999/5000000000, 45499999/5000000000⟩,
++    ⟨"Dominant Type II wall", 3937000001/5000000000, 63/80, 499999/5000000000⟩,
++    ⟨"Exact packing roots A–E", 455, 455, 0⟩,
++    ⟨"Half-level transition, third bin", 11/400000000000, 109/1000000000000, 163/2000000000000⟩,
++    ⟨"Half-level transition, fourth bin", 11/200000000000, 11/200000000000, 0⟩ ]
++
++/-- Lemma 7.10: the rough-count pairs `1 ≤ m ≤ m′ ≤ 13`. -/
++def packingPairs : List (Nat × Nat) :=
++  (List.range' 1 13).flatMap fun m => (List.range' m (14 - m)).map fun m' => (m, m')
++
++end BGP212.Ledger
+diff --git a/BGP212/Params.lean b/BGP212/Params.lean
+new file mode 100644
+index 0000000..2b40163
+--- /dev/null
++++ b/BGP212/Params.lean
+@@ -0,0 +1,58 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026), Table 3 (§9.1, p. 39) and the §9.3 dictionary (p. 40).
++Specification of record: specs/A0_parameters.yaml.
++-/
++
++
++/-! # The parameter datum P (Table 3)
++
++Every constant is transcribed from Table 3, the source's "single parameter point used
++in both halves of the proof", as an exact rational in core Lean's `Rat`.
++Physical normalization first, then the rescaled-by-4 column. -/
++
++
++
++namespace BGP212.Params
++
++/-- Table 3: number of shifts. -/
++def k : Nat := 45
++/-- Table 3: ω. -/
++def ω : Rat := 7 / 1000
++/-- Table 3: A₀. -/
++def A0 : Rat := -1 / 125
++/-- Table 3: A₁ (the single band, n = 1). -/
++def A1 : Rat := 257 / 1000
++/-- Table 3: εₛ. -/
++def εs : Rat := 1 / 125
++/-- Table 3: δ, the roughness threshold. -/
++def δ : Rat := 41 / 2500
++/-- Table 3: ξ₁, ξ₂, ξ₃. -/
++def ξ1 : Rat := 19 / 50
++def ξ2 : Rat := 2 / 5
++def ξ3 : Rat := 2 / 5
++/-- Table 3: εₐ = 10⁻¹⁰ (the ϵ of Proposition 7.8). -/
++def εa : Rat := 1 / 10000000000
++
++/-- Table 3: the cap numerators B₁,ₘ · 5000 for m = 1, …, 10. -/
++def Bnum : List Nat := [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
++
++/-- Table 3 with Definition 4.1's convention B₁,₀ = 0:
++`B m` = B₁,ₘ for `1 ≤ m ≤ 10`, and 1081/5000 for `m ≥ 11`. -/
++def B (m : Nat) : Rat :=
++  if m = 0 then 0
++  else if m ≤ 10 then ((Bnum[m - 1]! : Nat) : Rat) / 5000
++  else 1081 / 5000
++
++/-- Table 3, rescaled column: g = 4δ. -/
++def g : Rat := 41 / 625
++/-- Table 3, rescaled column: C(m) = 4·B₁,ₘ. -/
++def C (m : Nat) : Rat := 4 * B m
++/-- §9.3 dictionary: L (rescaled A₁ + εₛ). -/
++def L : Rat := 53 / 50
++/-- §9.3 dictionary: τ (rescaled A₁ − εₛ). -/
++def τ : Rat := 249 / 250
++
++end BGP212.Params
+diff --git a/Challenge.lean b/Challenge.lean
+index 6b22e43..d42ad54 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -1,3 +1,2 @@
+-module -- shake: keep-all --deprecated_module: ignore
+-
+-public import Challenge.Lemma12_1
++import Challenge.Lemma12_1
++import Challenge.AppendixB
+diff --git a/Challenge/AppendixB.lean b/Challenge/AppendixB.lean
+new file mode 100644
+index 0000000..4b7a55d
+--- /dev/null
++++ b/Challenge/AppendixB.lean
+@@ -0,0 +1,118 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026), Table 3 (p. 39), §9.2–9.3 (p. 40), Lemma 9.1 (p. 41),
++Proposition 7.8, Table 2, Lemma 7.10, Appendix B Table 6 (pp. 44–45).
++Specification of record: specs/A0_parameters.yaml.
++-/
++
++
++import BGP212.Params
++import BGP212.Ledger
++
++/-! # Appendix B and the Table 3 parameter layer
++
++Statements only; the proofs live in `Solution/AppendixB.lean`. -/
++
++
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.Ledger
++
++/-- §9.1 support, §9.3 dictionary and Lemma 7.10's range: the rescaled column of
++Table 3 and the derived readings follow from the physical column. -/
++theorem table3_rescaled :
++    4 * δ = g ∧ 4 * (A1 + εs) = L ∧ 4 * (A1 - εs) = τ ∧
++    A1 + εs = 53 / 200 ∧ A1 - εs = 249 / 1000 ∧
++    13 * δ ≤ B 10 ∧ B 10 < 14 * δ :=
++  sorry
++
++/-- **Appendix B, Table 6, columns `left` and `right`.** Every printed entry equals its
++formula in the Table 3 parameters: Definition 4.1 (rows 1–4), the first-rung wall
++(row 5, right side as printed), Proposition 7.2 (rows 6–11), Proposition 7.8 (I)–(III)
++with Aₙ = A₁ and ϵ = εₐ (rows 12–17; row 14 carries 15ϵ as printed, see SI-3), §9.2 (row 18), Lemma 7.10's 91 pairs × 5
++conditions (row 19), and Table 2 at κ = (11/80)εₐ (rows 20–21). -/
++theorem table6_derivation :
++    table6.map (fun r => (r.left, r.right)) =
++      [ (0, δ),
++        (δ, B 1),
++        (0, B 2 - B 1),
++        (B 3 - B 2, δ),
++        (B 1, 778 / 5000),
++        (ξ2, 2 / 5),
++        (ξ2, ξ3),
++        (2 * ξ1 + 3 * ξ2, 2),
++        (ξ1 + 9 * ξ2, 4),
++        (1, 2 * ξ1 + ξ2),
++        (17 * ξ2, 7),
++        (δ, ξ1 - 4 * A1 + 2 / 3 - 2 * εa),
++        (δ, 9 / 7 - 34 / 7 * A1 - 2 * εa),
++        (0, 19 / 2 - 36 * A1 - 13 * δ - 15 * εa),
++        (δ, ξ2 / 10 - 32 * A1 / 10 + 8 / 10 - 2 * εa),
++        (δ, ξ2 / 4 + 11 / 16 - 3 * A1 - 2 * εa),
++        (δ, 11 / 8 - 7 / 2 * A1 - 9 / 8 * ξ3 - 2 * εa),
++        (3 * A1 + δ + 2 * εa, ξ2 / 4 + 11 / 16),
++        (5 * (packingPairs.length : Rat), 455),
++        (2 * (11 / 80 * εa), 109 / 100 * εa),
++        (4 * (11 / 80 * εa), 55 / 100 * εa) ] :=
++  sorry
++
++/-- **Appendix B, Table 6, column `slack` and orientation.** All 21 rows: the printed
++slack is `right − left` and is nonnegative, so `left ≤ right` holds row by row, strictly
++exactly where the slack is positive (the source's stated convention). -/
++theorem table6_slack :
++    table6.length = 21 ∧ ∀ r ∈ table6, r.left + r.slack = r.right ∧ 0 ≤ r.slack :=
++  sorry
++
++/-- **Definition 4.1** for the Table 3 caps, at every rough count m ≥ 1:
++`δ < B₁,ₘ ≤ B₁,ₘ₊₁ ≤ B₁,ₘ + δ`. -/
++theorem definition_4_1_caps :
++    ∀ m : Nat, 1 ≤ m → δ < B m ∧ B m ≤ B (m + 1) ∧ B (m + 1) ≤ B m + δ :=
++  sorry
++
++/-- Rows 3–4 read the printed rungs m = 1, …, 10: the smallest rung step is 17/5000
++(at m = 1) and the largest is 81/5000 (at m = 2). -/
++theorem cap_step_extremes :
++    (∀ m : Nat, m < 10 → 1 ≤ m →
++      17 / 5000 ≤ B (m + 1) - B m ∧ B (m + 1) - B m ≤ 81 / 5000) ∧
++    B 2 - B 1 = 17 / 5000 ∧ B 3 - B 2 = 81 / 5000 :=
++  sorry
++
++/-- Lemma 7.10: the pairs `1 ≤ m ≤ m′ ≤ 13` number 91; with conditions (A)–(E) this
++gives the 455 root certificates. The certificates themselves are external to this file;
++this statement fixes their count. -/
++theorem packing_pairs :
++    packingPairs.length = 91 ∧
++    ∀ p ∈ packingPairs, 1 ≤ p.1 ∧ p.1 ≤ p.2 ∧ p.2 ≤ 13 :=
++  sorry
++
++/-- **§9.2**: the active Type-II wall. The Table 3 point lies 10⁻⁴ inside the
++zero-loss frontier 63/80, and inside the retreated frontier by 499999/5000000000. -/
++theorem dominant_wall :
++    ξ2 / 4 + 11 / 16 = 63 / 80 ∧
++    3 * A1 + δ = 63 / 80 - 1 / 10000 ∧
++    3 * A1 + δ + 2 * εa < 63 / 80 :=
++  sorry
++
++/-- **A0, SI-1 and SI-2**, recorded as exact facts.
++SI-1 (§9.2, p. 40): the printed pair (513/2000, 179/10000) differs from Table 3's
++(A₁, δ) and gives the same value of 3A₁ + δ.
++SI-2 (Lemma 9.1, p. 41): Table 3 gives C(1) = 777/1250 and C(3) = 7/10, where the
++printed proof states 31/50 and 17/25.
++SI-3 (Proposition 7.8 (II), p. 31; derivation, p. 35; Table 6 row 14, p. 45): the
++proposition states 19/2 − 36Aₙ − 13δ − 9ϵ ≥ 0; the printed ledger value equals the
++same expression with 15ϵ, the reading that carries the −ϵ of the δ*(γ) bound (p. 34).
++The two differ by 6εₐ, and the 15ϵ form, the stronger one, holds. -/
++theorem source_inconsistencies :
++    (3 * (513 / 2000) + 179 / 10000 : Rat) = 3 * A1 + δ ∧
++    (513 / 2000 : Rat) ≠ A1 ∧ (179 / 10000 : Rat) ≠ δ ∧
++    C 1 = 777 / 1250 ∧ C 1 ≠ 31 / 50 ∧
++    C 3 = 7 / 10 ∧ C 3 ≠ 17 / 25 ∧
++    (19 / 2 - 36 * A1 - 13 * δ - 15 * εa = 69599997 / 2000000000) ∧
++    (19 / 2 - 36 * A1 - 13 * δ - 9 * εa) - (19 / 2 - 36 * A1 - 13 * δ - 15 * εa) = 6 * εa ∧
++    0 ≤ 19 / 2 - 36 * A1 - 13 * δ - 15 * εa :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/appendix_b.json b/Comparator/appendix_b.json
+new file mode 100644
+index 0000000..e5b64e3
+--- /dev/null
++++ b/Comparator/appendix_b.json
+@@ -0,0 +1,39 @@
++{
++    "challenge_module": "Challenge.AppendixB",
++    "solution_module": "Solution.AppendixB",
++    "theorem_names": [
++        "BGP212.Challenge.table3_rescaled",
++        "BGP212.Challenge.table6_derivation",
++        "BGP212.Challenge.table6_slack",
++        "BGP212.Challenge.definition_4_1_caps",
++        "BGP212.Challenge.cap_step_extremes",
++        "BGP212.Challenge.packing_pairs",
++        "BGP212.Challenge.dominant_wall",
++        "BGP212.Challenge.source_inconsistencies"
++    ],
++    "definition_names": [
++        "BGP212.Params.k",
++        "BGP212.Params.ω",
++        "BGP212.Params.A0",
++        "BGP212.Params.A1",
++        "BGP212.Params.εs",
++        "BGP212.Params.δ",
++        "BGP212.Params.ξ1",
++        "BGP212.Params.ξ2",
++        "BGP212.Params.ξ3",
++        "BGP212.Params.εa",
++        "BGP212.Params.Bnum",
++        "BGP212.Params.B",
++        "BGP212.Params.g",
++        "BGP212.Params.C",
++        "BGP212.Params.L",
++        "BGP212.Params.τ",
++        "BGP212.Ledger.table6",
++        "BGP212.Ledger.packingPairs"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index d617020..202c926 100644
+--- a/README.md
++++ b/README.md
+@@ -15,7 +15,7 @@ theorem-to-source correspondence.
+ ## Two tracks
+ 
+ - **Track A — specification audit.** `specs/A0_parameters.yaml` fixes Table 3 as the
+-  specification of record and records two source inconsistencies verbatim (SI-1, SI-2)
++  specification of record and records three source inconsistencies verbatim (SI-1, SI-2, SI-3)
+   plus one editorial note (ED-1). Lean statements are formalized against A0.
+ - **Track B — multi-shift GDT.** `specs/B0_multishift_gdt.yaml` extends the General
+   Divisor Theorem (github.com/thinkthoughts/general-divisor-theorem, v1.0.0) from one
+@@ -34,13 +34,21 @@ The first Challenge/Solution pair is Lemma 12.1 (`Challenge/Lemma12_1.lean`,
+ 4. `h45_admissible` — an omitted class modulo every prime
+ 5. `lemma_12_1` — the packaged lemma
+ 
++The second pair is the Table 3 parameter layer and Appendix B (`Challenge/AppendixB.lean`,
++`Solution/AppendixB.lean`, data in `BGP212/Params.lean` and `BGP212/Ledger.lean`). Its
++central statement, `table6_derivation`, equates every printed left and right entry of
++Table 6 with its formula in the Table 3 parameters. That check found a third source
++inconsistency (SI-3, Proposition 7.8 (II) versus Table 6 row 14), recorded in
++`specs/A0_parameters.yaml`.
++
+ ## Comparator Verification
+ 
+ ```text
+ ./verify.sh
+ ```
+ 
+-builds the project and runs Lean Comparator on `Comparator/lemma_12_1.json`.
++builds the project and runs Lean Comparator on `Comparator/lemma_12_1.json` and
++`Comparator/appendix_b.json`.
+ A successful run ends with:
+ 
+ ```text
+diff --git a/Solution.lean b/Solution.lean
+index e676e6c..242aae8 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -1,3 +1,2 @@
+-module -- shake: keep-all --deprecated_module: ignore
+-
+-public import Solution.Lemma12_1
++import Solution.Lemma12_1
++import Solution.AppendixB
+diff --git a/Solution/AppendixB.lean b/Solution/AppendixB.lean
+new file mode 100644
+index 0000000..716991b
+--- /dev/null
++++ b/Solution/AppendixB.lean
+@@ -0,0 +1,102 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026), Table 3 (p. 39), §9.2–9.3 (p. 40), Lemma 9.1 (p. 41),
++Proposition 7.8, Table 2, Lemma 7.10, Appendix B Table 6 (pp. 44–45).
++Specification of record: specs/A0_parameters.yaml.
++-/
++
++
++import BGP212.Params
++import BGP212.Ledger
++
++/-! # Appendix B and the Table 3 parameter layer
++
++Every statement is a finite exact-rational claim closed by `decide +kernel`, except
++`definition_4_1_caps`, which adds a two-line argument for the constant tail m ≥ 11. -/
++
++
++
++namespace BGP212.Challenge
++
++open BGP212.Params BGP212.Ledger
++
++theorem B_tail {m : Nat} (h : 11 ≤ m) : B m = 1081 / 5000 := by
++  have h0 : m ≠ 0 := by omega
++  have h10 : ¬ m ≤ 10 := by omega
++  simp only [B, h0, h10, ↓reduceIte]
++
++theorem table3_rescaled :
++    4 * δ = g ∧ 4 * (A1 + εs) = L ∧ 4 * (A1 - εs) = τ ∧
++    A1 + εs = 53 / 200 ∧ A1 - εs = 249 / 1000 ∧
++    13 * δ ≤ B 10 ∧ B 10 < 14 * δ := by
++  decide +kernel
++
++theorem table6_derivation :
++    table6.map (fun r => (r.left, r.right)) =
++      [ (0, δ),
++        (δ, B 1),
++        (0, B 2 - B 1),
++        (B 3 - B 2, δ),
++        (B 1, 778 / 5000),
++        (ξ2, 2 / 5),
++        (ξ2, ξ3),
++        (2 * ξ1 + 3 * ξ2, 2),
++        (ξ1 + 9 * ξ2, 4),
++        (1, 2 * ξ1 + ξ2),
++        (17 * ξ2, 7),
++        (δ, ξ1 - 4 * A1 + 2 / 3 - 2 * εa),
++        (δ, 9 / 7 - 34 / 7 * A1 - 2 * εa),
++        (0, 19 / 2 - 36 * A1 - 13 * δ - 15 * εa),
++        (δ, ξ2 / 10 - 32 * A1 / 10 + 8 / 10 - 2 * εa),
++        (δ, ξ2 / 4 + 11 / 16 - 3 * A1 - 2 * εa),
++        (δ, 11 / 8 - 7 / 2 * A1 - 9 / 8 * ξ3 - 2 * εa),
++        (3 * A1 + δ + 2 * εa, ξ2 / 4 + 11 / 16),
++        (5 * (packingPairs.length : Rat), 455),
++        (2 * (11 / 80 * εa), 109 / 100 * εa),
++        (4 * (11 / 80 * εa), 55 / 100 * εa) ] := by
++  decide +kernel
++
++theorem table6_slack :
++    table6.length = 21 ∧ ∀ r ∈ table6, r.left + r.slack = r.right ∧ 0 ≤ r.slack := by
++  decide +kernel
++
++theorem definition_4_1_caps :
++    ∀ m : Nat, 1 ≤ m → δ < B m ∧ B m ≤ B (m + 1) ∧ B (m + 1) ≤ B m + δ := by
++  intro m hm
++  by_cases h : m < 11
++  · revert hm
++    revert m
++    decide +kernel
++  · rw [B_tail (by omega), B_tail (by omega)]
++    decide +kernel
++
++theorem cap_step_extremes :
++    (∀ m : Nat, m < 10 → 1 ≤ m →
++      17 / 5000 ≤ B (m + 1) - B m ∧ B (m + 1) - B m ≤ 81 / 5000) ∧
++    B 2 - B 1 = 17 / 5000 ∧ B 3 - B 2 = 81 / 5000 := by
++  decide +kernel
++
++theorem packing_pairs :
++    packingPairs.length = 91 ∧
++    ∀ p ∈ packingPairs, 1 ≤ p.1 ∧ p.1 ≤ p.2 ∧ p.2 ≤ 13 := by
++  decide +kernel
++
++theorem dominant_wall :
++    ξ2 / 4 + 11 / 16 = 63 / 80 ∧
++    3 * A1 + δ = 63 / 80 - 1 / 10000 ∧
++    3 * A1 + δ + 2 * εa < 63 / 80 := by
++  decide +kernel
++
++theorem source_inconsistencies :
++    (3 * (513 / 2000) + 179 / 10000 : Rat) = 3 * A1 + δ ∧
++    (513 / 2000 : Rat) ≠ A1 ∧ (179 / 10000 : Rat) ≠ δ ∧
++    C 1 = 777 / 1250 ∧ C 1 ≠ 31 / 50 ∧
++    C 3 = 7 / 10 ∧ C 3 ≠ 17 / 25 ∧
++    (19 / 2 - 36 * A1 - 13 * δ - 15 * εa = 69599997 / 2000000000) ∧
++    (19 / 2 - 36 * A1 - 13 * δ - 9 * εa) - (19 / 2 - 36 * A1 - 13 * δ - 15 * εa) = 6 * εa ∧
++    0 ≤ 19 / 2 - 36 * A1 - 13 * δ - 15 * εa := by
++  decide +kernel
++
++end BGP212.Challenge
+diff --git a/specs/A0_parameters.yaml b/specs/A0_parameters.yaml
+index 7211d62..6da663e 100644
+--- a/specs/A0_parameters.yaml
++++ b/specs/A0_parameters.yaml
+@@ -81,6 +81,19 @@ specification:
+         The printed caps differ from 4·B_{1,m} at every rung. §9.3 (L, τ, g) agrees with
+         Table 3, so the divergence is confined to this proof sentence.
+       status: unresolved
++    - id: SI-3
++      location: "Proposition 7.8 (II), p. 31; its derivation, p. 35; Appendix B Table 6 row 'Type II admissibility, first wall', p. 45"
++      source_text_proposition: "19/2 − 36An − 13δ − 9ϵ ≥ 0"
++      source_text_ledger: "Type II admissibility, first wall | left 0 | right 69599997/2000000000"
++      readings:
++        proposition_9_epsilon: "19/2 − 36A1 − 13δ − 9εa = 347999991/10000000000"
++        ledger_value: "69599997/2000000000 = 19/2 − 36A1 − 13δ − 15εa"
++      agreement: >
++        The ledger value equals the 15ϵ form, which is what the derivation on p. 35 gives
++        when it carries the trailing −ϵ of the δ*(γ) bound stated on p. 34
++        (6 × (−3ϵ/2 − ϵ) = −15ϵ). The 15ϵ form is the stronger statement and holds
++        with margin 0.0348 − 1.5·10⁻⁹. Found by the Lean derivation check in A1.
++      status: unresolved
+ 
+   editorial_notes:
+     - id: ED-1
+@@ -100,7 +113,7 @@ verification:
+     - "floor(1081/5000 ÷ 41/2500) = 13"
+ 
+ result:
+-  outcome: all derived readings match Table 3; SI-1 and SI-2 recorded
++  outcome: all derived readings match Table 3; SI-1, SI-2 and SI-3 recorded
+   run_date: 2026-10-16
+   commit_hash: null   # repository has no commits yet; filled at first commit
+ 
+diff --git a/specs/results/A1_appendix_b.yaml b/specs/results/A1_appendix_b.yaml
+new file mode 100644
+index 0000000..71e7928
+--- /dev/null
++++ b/specs/results/A1_appendix_b.yaml
+@@ -0,0 +1,65 @@
++# Result record: second Challenge/Solution pair (Table 3 parameters and Appendix B)
++
++identity:
++  id: A1-AppB
++  statement: "Table 3 parameter layer and Appendix B, Table 6 (exact slack ledger)"
++  source: "Source/bgp212.pdf: Table 3 (p. 39), §9.2–9.3 (p. 40), Lemma 9.1 (p. 41), Proposition 7.8 (p. 31), Table 2 (p. 38), Lemma 7.10 (p. 36), Table 6 (pp. 44–45)"
++  specification: specs/A0_parameters.yaml
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++verification:
++  challenge: Challenge/AppendixB.lean
++  solution: Solution/AppendixB.lean
++  data_modules: [BGP212/Params.lean, BGP212/Ledger.lean]
++  comparator_config: Comparator/appendix_b.json
++  theorems:
++    table3_rescaled: "g = 4δ, L = 4(A1+εs), τ = 4(A1−εs), A1±εs readings, 13δ ≤ B_{1,10} < 14δ"
++    table6_derivation: "all 21 rows: printed left/right = their formulas in the Table 3 parameters"
++    table6_slack: "all 21 rows: printed slack = right − left ≥ 0"
++    definition_4_1_caps: "δ < B_{1,m} ≤ B_{1,m+1} ≤ B_{1,m} + δ for every m ≥ 1"
++    cap_step_extremes: "rung steps over m = 1..10 lie in [17/5000, 81/5000], both attained"
++    packing_pairs: "91 pairs 1 ≤ m ≤ m′ ≤ 13 (× 5 conditions = 455 roots)"
++    dominant_wall: "ξ2/4 + 11/16 = 63/80; 3A1 + δ = 63/80 − 10⁻⁴; 3A1 + δ + 2εa < 63/80"
++    source_inconsistencies: "SI-1, SI-2, SI-3 as exact facts"
++  definitions_compared: "all Params constants, B, C, Ledger.table6, Ledger.packingPairs"
++  proof_method: >
++    `decide +kernel` on exact core-Lean rationals for every finite claim;
++    definition_4_1_caps adds a short argument for the constant tail m ≥ 11.
++  axioms_used: [propext, Quot.sound, Classical.choice]   # Classical.choice enters via core Rat order; all permitted
++  trusted_base: Lean 4 kernel + core library (Mathlib absent)
++  module_note: >
++    Params, Ledger and the AppendixB pair are plain Lean files, because core Rat
++    operations are private to their module and decide needs them to reduce.
++  scope_boundary:
++    - "Row 5 (first-rung cap wall): right side 778/5000 taken as printed; its formula is an open provenance item."
++    - "Row 19 (455 packing roots): this pair fixes the count 91 × 5; the 455 rational polytope certificates themselves are external."
++    - "Rows 20–21: Table 2 comparisons at the endpoint κ = (11/80)εa, as Table 6 prints them."
++  finding: >
++    The derivation check exposed SI-3: Table 6 row 14 equals the 15ϵ form, while
++    Proposition 7.8 (II) states 9ϵ. Recorded in A0 and in source_inconsistencies.
++  sandbox: >
++    Comparator ran with the pass-through landrun stand-in in the authoring
++    environment. Rerun ./verify.sh on the VPS with the real landrun to record a
++    sandboxed result here.
++  negative_control: >
++    Replacing row 14's 15εa with the proposition's 9εa in the Challenge made comparator
++    reject with "Challenge and solution theorem statement do not match:
++    'BGP212.Challenge.table6_derivation'".
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  run_date: 2026-10-16
++  commit_hash: null   # set to the verified commit after the VPS run
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 851dedc..922a858 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,6 +9,9 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+-COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-lake env "$COMPARATOR_BIN" Comparator/lemma_12_1.json
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json; do
++  echo "== $config"
++  COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
++  COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
++  lake env "$COMPARATOR_BIN" "$config"
++done
+-- 
+2.43.0
+
