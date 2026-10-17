@@ -1,0 +1,19 @@
+{
+    "challenge_module": "Challenge.A2Combinatorial",
+    "solution_module": "Solution.A2Combinatorial",
+    "theorem_names": [
+        "BGP212.Challenge.lemma_4_2",
+        "BGP212.Challenge.smooth_insertion",
+        "BGP212.Challenge.lemma_7_5",
+        "BGP212.Challenge.lemma_7_6",
+        "BGP212.Challenge.lemma_7_7",
+        "BGP212.Challenge.table_2_transport",
+        "BGP212.Challenge.lemma_8_2",
+        "BGP212.Challenge.lemma_9_2"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

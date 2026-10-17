@@ -1,0 +1,65 @@
+# Result record: third Challenge/Solution pair (A2, the combinatorial layer)
+
+identity:
+  id: A2
+  statement: "Lemma 4.2, §7.2 smooth insertion, Lemmas 7.5–7.7, Table 2, Lemma 8.2, Lemma 9.2"
+  source: "Source/bgp212.pdf: Lemma 4.2 (p. 4), §7.2 (p. 28), Lemmas 7.5–7.7 (pp. 29–31), Table 2 and Lemma 8.2 (p. 38), Lemma 9.2 (p. 41)"
+  specification: specs/A0_parameters.yaml   # parameter-free: every statement is generic in δ, B, C, ε₀, ϵ
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  challenge: Challenge/A2Combinatorial.lean
+  solution: Solution/A2Combinatorial.lean
+  comparator_config: Comparator/a2_combinatorial.json
+  theorems:
+    lemma_4_2: "every sub-collection I′ ⊆ I of rough coordinates has Σ_{I′} t ≤ B_{|I′|}"
+    smooth_insertion: "§7.2 mechanism: steps < δ ≤ b − a reach a selection landing in [a, b]"
+    lemma_7_5: "two-factor extraction, log-size form"
+    lemma_7_6: "three-factor extraction, log-size form, disjoint selections J₂, J₁"
+    lemma_7_7: "four-factor extraction, log-size form, d₁ | r for every c ∈ [a₁, b₁]"
+    table_2_transport: "raw capacities, difference column, and nonnegativity on 0 ≤ κ ≤ (11/80)εₐ, generic in γ, d, εₐ"
+    lemma_8_2: "affine capacities with |slope| ≤ L_leaf and reserve η stay valid for |θ − 1/2| < η/L_leaf"
+    lemma_9_2: "(x̂, u) ∈ T̃ ⟺ u ≤ min{L − S, max{g, C(s+1) − ρ₁}}, for u ≥ 0"
+  proof_method: >
+    Core Lean. `grind` closes linear arithmetic over Rat; each product of two variables
+    enters as an explicit fact from Rat.mul_nonneg or Rat.mul_le_mul_of_nonneg_left.
+    Lemmas 7.5–7.7 each apply smooth_insertion once per target interval, the source's
+    own mechanism.
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: Lean 4 kernel + core library (Mathlib absent)
+  scope_boundary:
+    - "Lemmas 7.5–7.7 are proved in log-size form: rough logs y ≥ δ, smooth prime logs z < δ, divisors as selections. The step log_x(∏ factors) = Σ log_x(factor) is standard multiplicativity of log and stays outside this pair."
+    - "Where a source proof says 'ϵ sufficiently small compared to ε₀', the statement carries the exact inequality the proof uses: ϵ ≤ ε₀(1/2 − a) in 7.5, ϵ ≤ ε₀(1/2 − b₁ − a₂) in 7.6."
+    - "Lemma 7.7's 'q ≍ x^{1/2+2ω₀}' enters as the lower bound 1/2 + 2ω₀ ≤ log_x q, the form its proof uses."
+    - "Lemma 4.2's caps B are a total function ℕ → ℚ; the source defines B_{j,m} for m ≤ ⌊1/δ⌋."
+  hypotheses_unused_by_proofs: >
+    The Challenge states every source hypothesis; these turned out unnecessary and are
+    marked `_` in the Solution: 7.5 — a > 0, b < 1/2, ϵ ≥ 0; 7.6 — a₁, a₂ > 0,
+    b₁, b₂ < 1/2, b₁ + b₂ < 1/2, ϵ ≥ 0; 7.7 — ω₀ ≥ −ε₀; 9.2 — S ≤ τ, u ≥ 0.
+  negative_controls:
+    - change: "Lemma 7.5 window widened from [a, b] to [a, b + δ] in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_7_5'"
+    - change: "Lemma 4.2 one-step bound weakened to B(q+1) ≤ B(q) + 2δ in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.lemma_4_2'"
+      note: "The weakened statement is false: δ = 1, B = (0, 1, 3), ys = [3/2, 3/2], zs = [3/2] gives 3/2 > B(1) = 1."
+  sandbox: >
+    Comparator ran with the pass-through landrun stand-in in the authoring environment.
+    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  run_date: 2026-10-16
+  commit_hash: null   # set to the verified commit after the VPS run
+
+footer: Admissible generalizations trail leading specifications.

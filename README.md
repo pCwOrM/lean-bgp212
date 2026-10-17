@@ -41,14 +41,31 @@ Table 6 with its formula in the Table 3 parameters. That check found a third sou
 inconsistency (SI-3, Proposition 7.8 (II) versus Table 6 row 14), recorded in
 `specs/A0_parameters.yaml`.
 
+The third pair is A2, the combinatorial layer (`Challenge/A2Combinatorial.lean`,
+`Solution/A2Combinatorial.lean`): Lemma 4.2, the §7.2 smooth-insertion mechanism,
+the factor-extraction Lemmas 7.5–7.7 in log-size form, Table 2, Lemma 8.2 and
+Lemma 9.2. Scope notes and the source hypotheses the proofs leave unused are in
+`specs/results/A2_combinatorial.yaml`.
+
+## What is proved, imported, and external
+
+- **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+  Appendix B row as a formula in those parameters; the A2 combinatorial lemmas.
+- **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+  Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+  (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
+- **Covered by Axiom's own Lean certificate, outside this repository:** the sieve
+  criterion (Theorem 4.10) and the deduction of Theorem 1.1.
+- **External certificates:** the 455 polytope packing certificates of Lemma 7.10 (their
+  count is checked here) and the exact variational certificate of Theorem 11.1.
+
 ## Comparator Verification
 
 ```text
 ./verify.sh
 ```
 
-builds the project and runs Lean Comparator on `Comparator/lemma_12_1.json` and
-`Comparator/appendix_b.json`.
+builds the project and runs Lean Comparator on each config in `Comparator/`.
 A successful run ends with:
 
 ```text
