@@ -1,0 +1,1049 @@
+From 4ec2898744d8af5b445acad7b2dd4e705d940f5a Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 14:41:37 -0600
+Subject: [PATCH] V0: the variational space B21 has dimension exactly 846
+
+Transcribes B21 = span_Q{(L - P1)^a P_lambda : lambda even parts,
+a + |lambda| <= 21} over the 45 rescaled coordinates, proves the
+partition identity sum_j p(j)(22 - 2j) = 846 (p = Mathlib's Nat.Partition
+count via a verified enumeration), an explicit 846-element index type
+with no duplicates and exact coverage, algebraic independence of the
+power sums P1..P45 over Q, and finrank B21 = 846. Prepares V1 with the
+algebraic identities of the simplex moment formula (10.1).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                                   |   1 +
+ BGP212/Variational.lean                       |  90 ++++
+ Challenge.lean                                |   1 +
+ Challenge/Variational.lean                    |  93 ++++
+ Comparator/variational_v0.json                |  44 ++
+ README.md                                     |  24 +-
+ Solution.lean                                 |   1 +
+ Solution/Variational.lean                     | 505 ++++++++++++++++++
+ .../variational_v0_negative_controls.py       |  32 ++
+ specs/results/V0_variational_basis.yaml       | 122 +++++
+ verify.sh                                     |   2 +-
+ 11 files changed, 913 insertions(+), 2 deletions(-)
+ create mode 100644 BGP212/Variational.lean
+ create mode 100644 Challenge/Variational.lean
+ create mode 100644 Comparator/variational_v0.json
+ create mode 100644 Solution/Variational.lean
+ create mode 100644 specs/checks/variational_v0_negative_controls.py
+ create mode 100644 specs/results/V0_variational_basis.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 3bb32a2..9ec47a7 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -9,3 +9,4 @@ import BGP212.Packing
+ import BGP212.PackingLedgerB
+ import BGP212.Theorem711
+ import BGP212.Gap
++import BGP212.Variational
+diff --git a/BGP212/Variational.lean b/BGP212/Variational.lean
+new file mode 100644
+index 0000000..120b9f5
+--- /dev/null
++++ b/BGP212/Variational.lean
+@@ -0,0 +1,90 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §9.3 (L = 53/50), (10.1) (p. 41), §11 (the space B₂₁, p. 42).
++-/
++import BGP212.Params
++import Mathlib.RingTheory.MvPolynomial.Symmetric.Defs
++import Mathlib.Combinatorics.Enumerative.Partition.Basic
++import Mathlib.LinearAlgebra.Span.Defs
++
++/-! # V0: the variational space `B₂₁`
++
++Track B (Mathlib). §11: "if `λ = (λ₁, …, λ_r)` is a partition all of whose parts are positive
++and even, write `|λ| = λ₁ + ⋯ + λ_r` and `P_λ = ∏ⱼ P_{λⱼ}`, with `P_∅ = 1`. We use the space
++
++  `B₂₁ = span_ℚ {(L − P₁)^a P_λ : a ≥ 0, λⱼ ∈ 2ℤ_{>0}, a + |λ| ≤ 21}`.
++
++After repeated monomials are identified, the displayed family has dimension 846."
++
++* `P j` is the power sum `Σᵢ xᵢ^j` in the 45 rescaled coordinates (§9.4), over `ℚ`.
++* A partition is a multiset of positive parts (`Multiset ℕ`), so reorderings of `λ` are the
++  same index; `IsB21Index a λ` is the printed side condition.
++* `B21Idx` is an explicit finite index type: `j ≤ 10`, a partition `μ ⊢ j` (with `λ = 2μ`), and
++  `a < 22 − 2j`.
++* `simplexMoment` is the right side of (10.1), prepared for V1. -/
++
++namespace BGP212.Var
++
++open MvPolynomial
++
++/-- The 45 rescaled coordinates `x₁, …, x₄₅`. -/
++abbrev Poly := MvPolynomial (Fin 45) ℚ
++
++/-- The power sum `P_j = Σᵢ xᵢ^j`. -/
++noncomputable def P (j : ℕ) : Poly := psum (Fin 45) ℚ j
++
++/-- `P_λ = ∏ⱼ P_{λⱼ}` for a partition given by its multiset of parts; `P_∅ = 1`. -/
++noncomputable def Plam (lam : Multiset ℕ) : Poly := (lam.map P).prod
++
++/-- The parts of `λ` lie in `2ℤ_{>0}`. -/
++def EvenParts (lam : Multiset ℕ) : Prop := ∀ x ∈ lam, 0 < x ∧ Even x
++
++/-- The printed index condition: `λⱼ ∈ 2ℤ_{>0}` and `a + |λ| ≤ 21` (`a ≥ 0` as `a : ℕ`). -/
++def IsB21Index (a : ℕ) (lam : Multiset ℕ) : Prop := EvenParts lam ∧ a + lam.sum ≤ 21
++
++/-- The spanning element `(L − P₁)^a P_λ`, with `L = 53/50` (§9.3). -/
++noncomputable def gen (a : ℕ) (lam : Multiset ℕ) : Poly := (C BGP212.Params.L - P 1) ^ a * Plam lam
++
++/-- **The space `B₂₁`** (§11). -/
++noncomputable def B21 : Submodule ℚ Poly :=
++  Submodule.span ℚ {f | ∃ a lam, IsB21Index a lam ∧ f = gen a lam}
++
++/-- The explicit index type: `j ∈ {0, …, 10}`, a partition `μ ⊢ j` (`λ = 2μ`, so `|λ| = 2j`),
++and `a ∈ {0, …, 21 − 2j}`. -/
++abbrev B21Idx := Σ j : Fin 11, Nat.Partition j × Fin (22 - 2 * j)
++
++/-- The exponent `a` of an index. -/
++def B21Idx.a (i : B21Idx) : ℕ := i.2.2
++
++/-- The partition `λ = 2μ` of an index. -/
++def B21Idx.lam (i : B21Idx) : Multiset ℕ := i.2.1.parts.map (2 * ·)
++
++/-- The index as a printed pair `(a, λ)`. -/
++def B21Idx.toPair (i : B21Idx) : ℕ × Multiset ℕ := (i.a, i.lam)
++
++/-- The basis family indexed by `B21Idx`. -/
++noncomputable def genIdx (i : B21Idx) : Poly := gen i.a i.lam
++
++/-- The number of partitions of `j`. -/
++def p (j : ℕ) : ℕ := Fintype.card (Nat.Partition j)
++
++/-- An explicit enumeration of the partitions of `j` with every part at most `k`, as multisets
++of parts: `c` copies of the part `k + 1` and a partition of the rest into parts at most `k`. -/
++def partsLE : ℕ → ℕ → List (Multiset ℕ)
++  | j, 0 => if j = 0 then [0] else []
++  | j, k + 1 => (List.range (j / (k + 1) + 1)).flatMap fun c =>
++      (partsLE (j - c * (k + 1)) k).map fun s => Multiset.replicate c (k + 1) + s
++
++/-- The right side of (10.1): `R^{m + Σ eᵢ} ∏ eᵢ! / (m + Σ eᵢ)!`, for exponents `e` (a list of
++length `m`). -/
++def simplexMoment (R : ℚ) (e : List ℕ) : ℚ :=
++  R ^ (e.length + e.sum) * ((e.map Nat.factorial).prod : ℚ) / ((e.length + e.sum).factorial : ℚ)
++
++/-- The one-variable Beta moment `∫₀^R z^u (R − z)^v dz = R^{u+v+1} u! v! / (u + v + 1)!`
++(right side; the integral itself is V1's subject). -/
++def betaMoment (R : ℚ) (u v : ℕ) : ℚ :=
++  R ^ (u + v + 1) * (u.factorial : ℚ) * (v.factorial : ℚ) / ((u + v + 1).factorial : ℚ)
++
++end BGP212.Var
+diff --git a/Challenge.lean b/Challenge.lean
+index 094e18b..93fa5e9 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -8,3 +8,4 @@ import Challenge.PackingB
+ import Challenge.PackingC
+ import Challenge.Theorem711
+ import Challenge.Gap
++import Challenge.Variational
+diff --git a/Challenge/Variational.lean b/Challenge/Variational.lean
+new file mode 100644
+index 0000000..b59b9c1
+--- /dev/null
++++ b/Challenge/Variational.lean
+@@ -0,0 +1,93 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): (10.1) and §11 (the space B₂₁).
++-/
++import BGP212.Variational
++import Mathlib.LinearAlgebra.Dimension.Finrank
++import Mathlib.LinearAlgebra.LinearIndependent.Defs
++import Mathlib.Combinatorics.Enumerative.Composition
++
++/-! # V0: the variational space `B₂₁` has dimension 846
++
++Statements only; proofs live in `Solution/Variational.lean`. Objects are defined in
++`BGP212/Variational.lean`. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Var
++
++/-- The enumeration `partsLE j k` lists exactly the partitions of `j` into parts at most `k`. -/
++theorem mem_partsLE (k j : ℕ) (s : Multiset ℕ) :
++    s ∈ partsLE j k ↔ (∀ x ∈ s, 0 < x ∧ x ≤ k) ∧ s.sum = j :=
++  sorry
++
++/-- The enumeration has no duplicates. -/
++theorem nodup_partsLE (k j : ℕ) : (partsLE j k).Nodup :=
++  sorry
++
++/-- `p(j)`, the number of partitions of `j` (`Nat.Partition`), equals the enumeration's length. -/
++theorem p_eq_enumeration (j : ℕ) : p j = (partsLE j j).length :=
++  sorry
++
++/-- `p(0), …, p(10) = 1, 1, 2, 3, 5, 7, 11, 15, 22, 30, 42`. -/
++theorem partition_counts :
++    (List.range 11).map p = [1, 1, 2, 3, 5, 7, 11, 15, 22, 30, 42] :=
++  sorry
++
++/-- **`Σ_{j ≤ 10} p(j)(22 − 2j) = 846`.** -/
++theorem dimension_identity : ∑ j ∈ Finset.range 11, p j * (22 - 2 * j) = 846 :=
++  sorry
++
++/-- The explicit index type has 846 elements. -/
++theorem card_B21Idx : Fintype.card B21Idx = 846 :=
++  sorry
++
++/-- Reading `λ` as an ordered tuple of positive even parts gives 4094 index pairs. -/
++theorem ordered_family_count :
++    ∑ j ∈ Finset.range 11, Fintype.card (Composition j) * (22 - 2 * j) = 4094 :=
++  sorry
++
++/-- **No duplicates**: distinct indices give distinct printed pairs `(a, λ)`. -/
++theorem toPair_injective : Function.Injective B21Idx.toPair :=
++  sorry
++
++/-- **Coverage**: the indices realize exactly the printed pairs `(a, λ)`. -/
++theorem toPair_range (a : ℕ) (lam : Multiset ℕ) :
++    (∃ i : B21Idx, i.toPair = (a, lam)) ↔ IsB21Index a lam :=
++  sorry
++
++/-- `B₂₁` is the span of the indexed family. -/
++theorem B21_eq_span : B21 = Submodule.span ℚ (Set.range genIdx) :=
++  sorry
++
++/-- **`P₁, …, P₄₅` are algebraically independent over `ℚ`** in 45 variables. -/
++theorem power_sums_algebraically_independent :
++    Function.Injective (MvPolynomial.aeval (R := ℚ) fun k : Fin 45 => P (k + 1)) :=
++  sorry
++
++/-- **The 846 spanning elements are linearly independent.** -/
++theorem genIdx_linearIndependent : LinearIndependent ℚ genIdx :=
++  sorry
++
++/-- **`dim_ℚ B₂₁ = 846`** (§11). -/
++theorem finrank_B21 : Module.finrank ℚ B21 = 846 :=
++  sorry
++
++/-- (10.1) with `m = 0`. -/
++theorem simplexMoment_nil (R : ℚ) : simplexMoment R [] = 1 :=
++  sorry
++
++/-- (10.1) with `m = 1`: `R^{e+1}/(e+1)`. -/
++theorem simplexMoment_single (R : ℚ) (e : ℕ) : simplexMoment R [e] = R ^ (e + 1) / (e + 1) :=
++  sorry
++
++/-- The Fubini step of (10.1): one more coordinate multiplies by a Beta moment. -/
++theorem simplexMoment_snoc (R : ℚ) (e : List ℕ) (u : ℕ) :
++    simplexMoment R (e ++ [u]) =
++      ((e.map Nat.factorial).prod : ℚ) / ((e.length + e.sum).factorial : ℚ) *
++        betaMoment R u (e.length + e.sum) :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/variational_v0.json b/Comparator/variational_v0.json
+new file mode 100644
+index 0000000..3cb4b62
+--- /dev/null
++++ b/Comparator/variational_v0.json
+@@ -0,0 +1,44 @@
++{
++    "challenge_module": "Challenge.Variational",
++    "solution_module": "Solution.Variational",
++    "theorem_names": [
++        "BGP212.Challenge.mem_partsLE",
++        "BGP212.Challenge.nodup_partsLE",
++        "BGP212.Challenge.p_eq_enumeration",
++        "BGP212.Challenge.partition_counts",
++        "BGP212.Challenge.dimension_identity",
++        "BGP212.Challenge.card_B21Idx",
++        "BGP212.Challenge.ordered_family_count",
++        "BGP212.Challenge.toPair_injective",
++        "BGP212.Challenge.toPair_range",
++        "BGP212.Challenge.B21_eq_span",
++        "BGP212.Challenge.power_sums_algebraically_independent",
++        "BGP212.Challenge.genIdx_linearIndependent",
++        "BGP212.Challenge.finrank_B21",
++        "BGP212.Challenge.simplexMoment_nil",
++        "BGP212.Challenge.simplexMoment_single",
++        "BGP212.Challenge.simplexMoment_snoc"
++    ],
++    "definition_names": [
++        "BGP212.Var.P",
++        "BGP212.Var.Plam",
++        "BGP212.Var.EvenParts",
++        "BGP212.Var.IsB21Index",
++        "BGP212.Var.gen",
++        "BGP212.Var.B21",
++        "BGP212.Var.B21Idx.a",
++        "BGP212.Var.B21Idx.lam",
++        "BGP212.Var.B21Idx.toPair",
++        "BGP212.Var.genIdx",
++        "BGP212.Var.p",
++        "BGP212.Var.partsLE",
++        "BGP212.Var.simplexMoment",
++        "BGP212.Var.betaMoment",
++        "BGP212.Params.L"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index 75fe00a..dc583f2 100644
+--- a/README.md
++++ b/README.md
+@@ -135,6 +135,21 @@ table3_valid ──────────────────────
+ combinatorial ingredient are proved outright; `H₁ ≤ 212` itself is proved relative to the
+ named fields of `AnalyticInputs` and `SieveInputs` (`specs/results/B3_final_deduction.yaml`).
+ 
++The eleventh pair is V0 (`Challenge/Variational.lean`, `Solution/Variational.lean`, objects
++in `BGP212/Variational.lean`): **the variational space `B₂₁` of §11 has dimension exactly 846**.
++
++- `B21 = span_ℚ {(L − P₁)^a P_λ : λⱼ ∈ 2ℤ_{>0}, a + |λ| ≤ 21}` over the 45 rescaled coordinates,
++  with `P_j` Mathlib's power sums and `λ` a multiset of parts.
++- `dimension_identity : Σ_{j ≤ 10} p(j)(22 − 2j) = 846`, with `p` Mathlib's partition count
++  (computed through a verified enumeration `partsLE`).
++- `B21Idx`, an explicit index type of 846 elements; `toPair_injective` and `toPair_range` show
++  it lists each printed pair `(a, λ)` exactly once.
++- `power_sums_algebraically_independent` (Newton's identities, the fundamental theorem of
++  symmetric polynomials, and Noetherianity) gives `genIdx_linearIndependent` and
++  `finrank_B21 : Module.finrank ℚ B21 = 846`.
++- For V1: `simplexMoment` (the right side of (10.1)) with its `m = 0`, `m = 1` and Fubini-step
++  identities.
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+@@ -142,7 +157,7 @@ named fields of `AnalyticInputs` and `SieveInputs` (`specs/results/B3_final_dedu
+   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
+   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
+-  W-trick step of Lemma 4.9 (B3).
++  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -206,6 +221,13 @@ python3 -I specs/checks/final_deduction_negative_controls.py /tmp/b3_neg
+ for f in /tmp/b3_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For V0's negative controls:
++
++```text
++python3 -I specs/checks/variational_v0_negative_controls.py /tmp/v0_neg
++for f in /tmp/v0_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 546ce54..54a7af9 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -8,3 +8,4 @@ import Solution.PackingB
+ import Solution.PackingC
+ import Solution.Theorem711
+ import Solution.Gap
++import Solution.Variational
+diff --git a/Solution/Variational.lean b/Solution/Variational.lean
+new file mode 100644
+index 0000000..72d0d39
+--- /dev/null
++++ b/Solution/Variational.lean
+@@ -0,0 +1,505 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): (10.1) and §11 (the space B₂₁).
++-/
++import BGP212.Variational
++import Mathlib.RingTheory.MvPolynomial.Symmetric.FundamentalTheorem
++import Mathlib.RingTheory.MvPolynomial.Symmetric.NewtonIdentities
++import Mathlib.RingTheory.Polynomial.Basic
++import Mathlib.LinearAlgebra.Dimension.Constructions
++import Mathlib.Combinatorics.Enumerative.Composition
++import Mathlib.RingTheory.MvPolynomial.Basic
++import Mathlib.Tactic.FieldSimp
++
++/-! # V0: `dim B₂₁ = 846` (proofs) -/
++
++namespace BGP212.Var
++
++open MvPolynomial
++
++/-! ## Partitions: the enumeration `partsLE` -/
++
++theorem mem_partsLE : ∀ (k j : ℕ) (s : Multiset ℕ),
++    s ∈ partsLE j k ↔ (∀ x ∈ s, 0 < x ∧ x ≤ k) ∧ s.sum = j
++  | 0, j, s => by
++      by_cases hj : j = 0
++      · subst hj
++        simp only [partsLE, ite_true, List.mem_singleton]
++        constructor
++        · rintro rfl; simp
++        · rintro ⟨h, -⟩
++          exact Multiset.eq_zero_of_forall_notMem fun x hx => by have := h x hx; omega
++      · simp only [partsLE, hj, ite_false, List.not_mem_nil, false_iff, not_and]
++        intro h hs
++        have : s = 0 := Multiset.eq_zero_of_forall_notMem fun x hx => by have := h x hx; omega
++        subst this; simp at hs; omega
++  | k + 1, j, s => by
++      simp only [partsLE, List.mem_flatMap, List.mem_range, List.mem_map]
++      constructor
++      · rintro ⟨c, hc, t, ht, rfl⟩
++        obtain ⟨ht1, ht2⟩ := (mem_partsLE k _ t).mp ht
++        have hcj : c * (k + 1) ≤ j := by
++          have := Nat.div_mul_le_self j (k + 1)
++          have : c * (k + 1) ≤ j / (k + 1) * (k + 1) := Nat.mul_le_mul_right _ (by omega)
++          omega
++        refine ⟨fun x hx => ?_, ?_⟩
++        · rcases Multiset.mem_add.mp hx with h | h
++          · rw [Multiset.eq_of_mem_replicate h]; omega
++          · have := ht1 x h; omega
++        · simp [Multiset.sum_replicate, ht2]; omega
++      · rintro ⟨h1, h2⟩
++        have hdec : s = Multiset.replicate (s.count (k + 1)) (k + 1) + s.filter (· ≠ k + 1) := by
++          rw [← Multiset.filter_eq', Multiset.filter_add_not]
++        have hsum : s.count (k + 1) * (k + 1) + (s.filter (· ≠ k + 1)).sum = j := by
++          rw [← h2]; conv_rhs => rw [hdec]
++          simp [Multiset.sum_replicate]
++        refine ⟨s.count (k + 1), ?_, s.filter (· ≠ k + 1), ?_, hdec.symm⟩
++        · exact Nat.lt_succ_of_le ((Nat.le_div_iff_mul_le (by omega)).mpr (by omega))
++        · refine (mem_partsLE k _ _).mpr ⟨fun x hx => ?_, by omega⟩
++          obtain ⟨hx1, hx2⟩ := Multiset.mem_filter.mp hx
++          have := h1 x hx1; omega
++
++theorem nodup_partsLE : ∀ (k j : ℕ), (partsLE j k).Nodup
++  | 0, j => by by_cases hj : j = 0 <;> simp [partsLE, hj]
++  | k + 1, j => by
++      simp only [partsLE]
++      refine List.nodup_flatMap.mpr ⟨fun c _ => (nodup_partsLE k _).map
++        (fun s t h => add_left_cancel h), ?_⟩
++      refine (List.nodup_range).pairwise_of_forall_ne fun c _ d _ hcd => ?_
++      rw [Function.onFun, List.disjoint_left]
++      intro s hs ht
++      obtain ⟨t1, ht1, rfl⟩ := List.mem_map.mp hs
++      obtain ⟨t2, ht2, he⟩ := List.mem_map.mp ht
++      have hc1 : (k + 1) ∉ t1 := fun h => by
++        have := ((mem_partsLE k _ t1).mp ht1).1 _ h; omega
++      have hc2 : (k + 1) ∉ t2 := fun h => by
++        have := ((mem_partsLE k _ t2).mp ht2).1 _ h; omega
++      have := congrArg (Multiset.count (k + 1)) he
++      simp [Multiset.count_eq_zero.mpr hc1, Multiset.count_eq_zero.mpr hc2] at this
++      exact hcd this.symm
++
++/-- `p(j)` equals the length of the explicit enumeration. -/
++theorem p_eq (j : ℕ) : p j = (partsLE j j).length := by
++  classical
++  have e : Nat.Partition j ≃ {s // s ∈ (partsLE j j).toFinset} :=
++    { toFun := fun μ => ⟨μ.parts, List.mem_toFinset.mpr ((mem_partsLE j j _).mpr
++        ⟨fun x hx => ⟨μ.parts_pos hx, μ.parts_sum ▸ Multiset.le_sum_of_mem hx⟩, μ.parts_sum⟩)⟩
++      invFun := fun s => ⟨s.1, fun hx => ((mem_partsLE j j _).mp
++        (List.mem_toFinset.mp s.2)).1 _ hx |>.1, ((mem_partsLE j j _).mp
++        (List.mem_toFinset.mp s.2)).2⟩
++      left_inv := fun μ => by ext; rfl
++      right_inv := fun s => rfl }
++  rw [p, Fintype.card_congr e, Fintype.card_coe, List.toFinset_card_of_nodup (nodup_partsLE j j)]
++
++/-! ## Counting -/
++
++theorem partition_counts :
++    (List.range 11).map p = [1, 1, 2, 3, 5, 7, 11, 15, 22, 30, 42] := by
++  rw [show (List.range 11).map p = (List.range 11).map (fun j => (partsLE j j).length) from
++    List.map_congr_left fun j _ => p_eq j]
++  decide +kernel
++
++theorem dimension_identity : ∑ j ∈ Finset.range 11, p j * (22 - 2 * j) = 846 := by
++  rw [Finset.sum_congr rfl fun j _ => by rw [p_eq j]]
++  decide +kernel
++
++theorem card_B21Idx : Fintype.card B21Idx = 846 := by
++  rw [Fintype.card_sigma]
++  simp only [Fintype.card_prod, Fintype.card_fin]
++  rw [← dimension_identity, ← Fin.sum_univ_eq_sum_range (fun j => p j * (22 - 2 * j)) 11]
++  rfl
++
++/-- The ordered reading: `λ` as a sequence of positive even parts (a composition of `|λ|/2`)
++gives 4094 index pairs; identifying reorderings gives the 846 of `card_B21Idx`. -/
++theorem ordered_family_count :
++    ∑ j ∈ Finset.range 11, Fintype.card (Composition j) * (22 - 2 * j) = 4094 := by
++  simp only [composition_card]
++  decide
++
++/-! ## Indexing -/
++
++theorem lam_sum (i : B21Idx) : i.lam.sum = 2 * (i.1 : ℕ) := by
++  show (i.2.1.parts.map (2 * ·)).sum = _
++  rw [Multiset.sum_map_mul_left, Multiset.map_id', i.2.1.parts_sum]
++
++/-- **No duplicates**: distinct indices give distinct printed pairs `(a, λ)`. -/
++theorem toPair_injective : Function.Injective B21Idx.toPair := by
++  rintro ⟨j, μ, a⟩ ⟨j', μ', a'⟩ h
++  simp only [B21Idx.toPair, Prod.mk.injEq] at h
++  obtain ⟨ha, hl⟩ := h
++  have hj : (j : ℕ) = j' := by
++    have e1 := lam_sum ⟨j, μ, a⟩
++    have e2 := lam_sum ⟨j', μ', a'⟩
++    rw [hl] at e1
++    dsimp only at e1 e2
++    omega
++  have hj' : j = j' := Fin.ext hj
++  subst hj'
++  have hμ : μ = μ' := by
++    apply Nat.Partition.ext
++    exact Multiset.map_injective (fun x y h => by simpa using h) hl
++  subst hμ
++  have : a = a' := Fin.ext ha
++  subst this
++  rfl
++
++/-- **Coverage**: the printed pairs of `B21Idx` are exactly the pairs `(a, λ)` with positive even
++parts and `a + |λ| ≤ 21`. -/
++theorem toPair_range (a : ℕ) (lam : Multiset ℕ) :
++    (∃ i : B21Idx, i.toPair = (a, lam)) ↔ IsB21Index a lam := by
++  constructor
++  · rintro ⟨⟨j, μ, a'⟩, h⟩
++    simp only [B21Idx.toPair, Prod.mk.injEq] at h
++    obtain ⟨rfl, rfl⟩ := h
++    refine ⟨fun x hx => ?_, ?_⟩
++    · obtain ⟨y, hy, rfl⟩ := Multiset.mem_map.mp hx
++      exact ⟨by have := μ.parts_pos hy; omega, ⟨y, by ring⟩⟩
++    · rw [lam_sum ⟨j, μ, a'⟩]; simp only [B21Idx.a]; have := a'.2; omega
++  · rintro ⟨hev, hle⟩
++    have hhalf : lam = (lam.map (· / 2)).map (2 * ·) := by
++      rw [Multiset.map_map]
++      conv_lhs => rw [← Multiset.map_id lam]
++      exact Multiset.map_congr rfl fun x hx => by
++        obtain ⟨_, k, hk⟩ := hev x hx; simp only [id_eq, Function.comp_apply]; omega
++    set μs := lam.map (· / 2)
++    have hpos : ∀ x ∈ μs, 0 < x := fun x hx => by
++      obtain ⟨y, hy, rfl⟩ := Multiset.mem_map.mp hx
++      obtain ⟨h1, k, hk⟩ := hev y hy; omega
++    have hsum : lam.sum = 2 * μs.sum := by
++      conv_lhs => rw [hhalf]
++      rw [Multiset.sum_map_mul_left, Multiset.map_id']
++    have hj : μs.sum < 11 := by omega
++    refine ⟨⟨⟨μs.sum, hj⟩, ⟨μs, fun hx => hpos _ hx, rfl⟩, ⟨a, by simp; omega⟩⟩, ?_⟩
++    simp only [B21Idx.toPair, B21Idx.a, B21Idx.lam, Prod.mk.injEq, true_and]
++    exact hhalf.symm
++
++/-- `B₂₁` is the span of the indexed family. -/
++theorem B21_eq_span : B21 = Submodule.span ℚ (Set.range genIdx) := by
++  unfold B21
++  congr 1
++  refine Set.ext fun f => ?_
++  show (∃ a lam, IsB21Index a lam ∧ f = gen a lam) ↔ ∃ i, genIdx i = f
++  constructor
++  · rintro ⟨a, lam, hI, rfl⟩
++    obtain ⟨i, hi⟩ := (toPair_range a lam).mpr hI
++    simp only [B21Idx.toPair, Prod.mk.injEq] at hi
++    exact ⟨i, by rw [genIdx, hi.1, hi.2]⟩
++  · rintro ⟨i, rfl⟩
++    exact ⟨i.a, i.lam, (toPair_range _ _).mp ⟨i, rfl⟩, rfl⟩
++
++/-! ## The power sums `P₁, …, P₄₅` are algebraically independent -/
++
++/-- A surjective endomorphism of a Noetherian ring is injective (the kernels of the iterates
++stabilize). -/
++theorem injective_of_surjective_endo {A : Type*} [CommRing A] [IsNoetherianRing A]
++    (f : A →+* A) (hf : Function.Surjective f) : Function.Injective f := by
++  have hmono : Monotone fun n : ℕ => RingHom.ker (f ^ n) := by
++    refine monotone_nat_of_le_succ fun n x hx => ?_
++    rw [RingHom.mem_ker] at hx ⊢
++    simp only [pow_succ', RingHom.mul_def, RingHom.comp_apply, hx, map_zero]
++  obtain ⟨N, hN⟩ := (monotone_stabilizes_iff_noetherian (R := A) (M := A)).mpr inferInstance
++    ⟨_, hmono⟩
++  rw [injective_iff_map_eq_zero]
++  intro x hx
++  obtain ⟨y, rfl⟩ : ∃ y, (f ^ N) y = x := by
++    rw [RingHom.coe_pow]; exact (hf.iterate N) x
++  have hy : y ∈ RingHom.ker (f ^ (N + 1)) := by
++    simp only [RingHom.mem_ker, pow_succ', RingHom.mul_def, RingHom.comp_apply, hx]
++  have := hN (N + 1) (Nat.le_succ N)
++  simp only [OrderHom.coe_mk] at this
++  rw [← this] at hy
++  exact hy
++
++/-- `y_k ↦ P_{k+1}`. -/
++noncomputable def psi : Poly →ₐ[ℚ] Poly := aeval fun k : Fin 45 => P (k + 1)
++
++theorem psum_mem_range (j : ℕ) (h1 : 1 ≤ j) (h2 : j ≤ 45) : psum (Fin 45) ℚ j ∈ psi.range :=
++  ⟨X ⟨j - 1, by omega⟩, by
++    show (aeval fun k : Fin 45 => P (k + 1)) (X ⟨j - 1, by omega⟩) = psum (Fin 45) ℚ j
++    rw [aeval_X, P]
++    congr 1
++    show j - 1 + 1 = j
++    omega⟩
++
++/-- Newton's identities: every `e_k`, `k ≤ 45`, is a polynomial in `P₁, …, P₄₅` over `ℚ`. -/
++theorem esymm_mem_range : ∀ k, k ≤ 45 → esymm (Fin 45) ℚ k ∈ psi.range := by
++  intro k
++  induction k using Nat.strong_induction_on with
++  | _ k ih =>
++    intro hk
++    rcases k with _ | k
++    · rw [esymm_zero]; exact Subalgebra.one_mem _
++    have hneg : (-1 : Poly) ∈ psi.range := Subalgebra.neg_mem _ (Subalgebra.one_mem _)
++    have hsum : (∑ a ∈ Finset.antidiagonal (k + 1) with a.1 < k + 1,
++        (-1 : Poly) ^ a.1 * esymm (Fin 45) ℚ a.1 * psum (Fin 45) ℚ a.2) ∈ psi.range := by
++      refine Subalgebra.sum_mem _ fun a ha => ?_
++      simp only [Finset.mem_filter, Finset.mem_antidiagonal] at ha
++      refine Subalgebra.mul_mem _ (Subalgebra.mul_mem _ (Subalgebra.pow_mem _ hneg _)
++        (ih a.1 ha.2 (by omega))) (psum_mem_range a.2 (by omega) (by omega))
++    have hkey : ((k + 1 : ℕ) : Poly) * esymm (Fin 45) ℚ (k + 1) ∈ psi.range := by
++      rw [mul_esymm_eq_sum]
++      exact Subalgebra.mul_mem _ (Subalgebra.pow_mem _ hneg _) hsum
++    have heq : esymm (Fin 45) ℚ (k + 1) =
++        ((k + 1 : ℕ) : ℚ)⁻¹ • (((k + 1 : ℕ) : Poly) * esymm (Fin 45) ℚ (k + 1)) := by
++      rw [← nsmul_eq_mul, ← Nat.cast_smul_eq_nsmul ℚ, smul_smul, inv_mul_cancel₀ (by positivity),
++        one_smul]
++    rw [heq]
++    exact Subalgebra.smul_mem _ hkey _
++
++theorem psi_range_symmetric : psi.range ≤ symmetricSubalgebra (Fin 45) ℚ := by
++  rw [psi, ← Algebra.adjoin_range_eq_range_aeval]
++  refine Algebra.adjoin_le ?_
++  rintro _ ⟨k, rfl⟩
++  exact psum_isSymmetric _ _ _
++
++/-- **The power sums `P₁, …, P₄₅` are algebraically independent over `ℚ`.** -/
++theorem psi_injective : Function.Injective psi := by
++  set S := symmetricSubalgebra (Fin 45) ℚ
++  let ψS : Poly →ₐ[ℚ] S := psi.codRestrict S fun x => psi_range_symmetric ⟨x, rfl⟩
++  let e := esymmAlgEquiv (Fin 45) ℚ (Fintype.card_fin 45)
++  let φ : Poly →ₐ[ℚ] Poly := e.symm.toAlgHom.comp ψS
++  have hφs : Function.Surjective φ := by
++    rw [← AlgHom.range_eq_top, eq_top_iff, ← adjoin_range_X]
++    refine Algebra.adjoin_le ?_
++    rintro _ ⟨i, rfl⟩
++    obtain ⟨y, hy⟩ := esymm_mem_range (i + 1) (by omega)
++    refine ⟨y, ?_⟩
++    have : ψS y = ⟨esymm (Fin 45) ℚ (i + 1), esymm_isSymmetric _ _ _⟩ := Subtype.ext hy
++    show e.symm (ψS y) = X i
++    rw [this]
++    exact esymmAlgEquiv_symm_apply ℚ (Fintype.card_fin 45) i
++  have hφi : Function.Injective φ :=
++    injective_of_surjective_endo φ.toRingHom hφs
++  intro x y hxy
++  apply hφi
++  simp only [φ, AlgHom.comp_apply]
++  congr 1
++  exact Subtype.ext hxy
++
++/-! ## The family as images of distinct monomials -/
++
++/-- The variable `y_{2q}` (0-based index `2q − 1`) carrying `P_{2q}`. -/
++def idx (q : ℕ) : Fin 45 := ⟨(2 * q - 1) % 45, Nat.mod_lt _ (by norm_num)⟩
++
++/-- The exponent vector of the monomial `y₁^a ∏_{q ∈ μ} y_{2q}`. -/
++noncomputable def expo (i : B21Idx) : Fin 45 →₀ ℕ :=
++  Finsupp.single 0 i.a + (i.2.1.parts.map fun q => Finsupp.single (idx q) 1).sum
++
++/-- `y₁ ↦ L − y₁`, `y_k ↦ y_k` otherwise. -/
++noncomputable def sigma : Poly →ₐ[ℚ] Poly :=
++  aeval fun k : Fin 45 => if k = 0 then C BGP212.Params.L - X 0 else X k
++
++theorem sigma_sigma (f : Poly) : sigma (sigma f) = f := by
++  have : sigma.comp sigma = AlgHom.id ℚ Poly := by
++    apply MvPolynomial.algHom_ext
++    intro k
++    by_cases hk : k = 0
++    · subst hk; simp [sigma, aeval_X, map_sub, MvPolynomial.algebraMap_eq]
++    · simp [sigma, aeval_X, hk]
++  exact congrArg (fun φ : Poly →ₐ[ℚ] Poly => φ f) this
++
++theorem sigma_injective : Function.Injective sigma :=
++  Function.LeftInverse.injective sigma_sigma
++
++theorem part_bounds (i : B21Idx) : ∀ q ∈ i.2.1.parts, 1 ≤ q ∧ q ≤ 10 := fun q hq =>
++  ⟨i.2.1.parts_pos hq, by
++    have := Multiset.le_sum_of_mem hq; rw [i.2.1.parts_sum] at this; have := i.1.2; omega⟩
++
++theorem idx_val (q : ℕ) (h1 : 1 ≤ q) (h2 : q ≤ 10) : ((idx q : Fin 45) : ℕ) = 2 * q - 1 := by
++  simp only [idx]; omega
++
++theorem monomial_multiset (s : Multiset ℕ) :
++    monomial ((s.map fun q => Finsupp.single (idx q) 1).sum) (1 : ℚ) =
++      (s.map fun q => X (idx q)).prod := by
++  induction s using Multiset.induction_on with
++  | empty => simp
++  | cons q s ih =>
++      simp only [Multiset.map_cons, Multiset.sum_cons, Multiset.prod_cons]
++      rw [← ih, show (X (idx q) : Poly) = monomial (Finsupp.single (idx q) 1) 1 from rfl,
++        monomial_mul_monomial, one_mul]
++
++theorem genIdx_eq (i : B21Idx) : genIdx i = psi (sigma (monomial (expo i) 1)) := by
++  have hsplit : monomial (expo i) (1 : ℚ) =
++      X 0 ^ i.a * (i.2.1.parts.map fun q => X (idx q)).prod := by
++    rw [expo, ← monomial_multiset, X_pow_eq_monomial, monomial_mul_monomial, one_mul]
++  rw [hsplit, map_mul, map_mul, map_pow, map_pow, map_multiset_prod, map_multiset_prod,
++    Multiset.map_map, Multiset.map_map]
++  have hs0 : sigma (X 0) = C BGP212.Params.L - X 0 := by simp [sigma, aeval_X]
++  have hsq : ∀ q ∈ i.2.1.parts, ((psi ∘ sigma) ∘ fun q => X (idx q)) q = P (2 * q) := by
++    intro q hq
++    obtain ⟨h1, h2⟩ := part_bounds i q hq
++    have hne : idx q ≠ 0 := fun h => by
++      have := congrArg Fin.val h; rw [idx_val q h1 h2] at this; simp at this; omega
++    simp only [Function.comp_apply, sigma, aeval_X, hne, ite_false, psi]
++    congr 1
++    rw [idx_val q h1 h2]; omega
++  rw [Multiset.map_congr rfl hsq, hs0]
++  simp only [genIdx, gen, Plam, B21Idx.lam, B21Idx.a, Multiset.map_map, map_sub, psi, aeval_X,
++    aeval_C, MvPolynomial.algebraMap_eq]
++  rfl
++
++theorem sum_single_apply (s : Multiset ℕ) (x : Fin 45) :
++    (s.map fun q => Finsupp.single (idx q) 1).sum x = (s.filter fun q => idx q = x).card := by
++  induction s using Multiset.induction_on with
++  | empty => simp
++  | cons q s ih =>
++      simp only [Multiset.map_cons, Multiset.sum_cons, Finsupp.add_apply, ih,
++        Multiset.filter_cons]
++      by_cases h : idx q = x
++      · simp [h]; omega
++      · simp [h]
++
++theorem expo_injective : Function.Injective expo := by
++  intro i i' h
++  apply toPair_injective
++  have hb := part_bounds i
++  have hb' := part_bounds i'
++  have h0 : i.a = i'.a := by
++    have := congrArg (fun f => f 0) h
++    simp only [expo, Finsupp.add_apply, Finsupp.single_eq_same, sum_single_apply] at this
++    have hz : ∀ q, 1 ≤ q → q ≤ 10 → idx q ≠ 0 := fun q h1 h2 e => by
++      have hv := idx_val q h1 h2
++      rw [e, Fin.val_zero] at hv
++      omega
++    have e1 : (i.2.1.parts.filter fun q => idx q = 0) = 0 := Multiset.filter_eq_nil.mpr
++      fun q hq => hz q (hb q hq).1 (hb q hq).2
++    have e2 : (i'.2.1.parts.filter fun q => idx q = 0) = 0 := Multiset.filter_eq_nil.mpr
++      fun q hq => hz q (hb' q hq).1 (hb' q hq).2
++    rw [e1, e2] at this; simpa using this
++  have hparts : i.2.1.parts = i'.2.1.parts := by
++    ext r
++    by_cases hr : 1 ≤ r ∧ r ≤ 10
++    · have := congrArg (fun f => f (idx r)) h
++      simp only [expo, Finsupp.add_apply, sum_single_apply] at this
++      have hr0 : (Finsupp.single (0 : Fin 45) i.a) (idx r) = 0 := by
++        rw [Finsupp.single_apply, ite_eq_right_iff.mpr]; intro e; exfalso
++        have := idx_val r hr.1 hr.2; rw [← e] at this; simp at this; omega
++      have hr0' : (Finsupp.single (0 : Fin 45) i'.a) (idx r) = 0 := by
++        rw [Finsupp.single_apply, ite_eq_right_iff.mpr]; intro e; exfalso
++        have := idx_val r hr.1 hr.2; rw [← e] at this; simp at this; omega
++      rw [hr0, hr0', zero_add, zero_add] at this
++      have key : ∀ (s : Multiset ℕ), (∀ q ∈ s, 1 ≤ q ∧ q ≤ 10) →
++          (s.filter fun q => idx q = idx r) = s.filter (· = r) := fun s hs =>
++        Multiset.filter_congr fun q hq => by
++          constructor
++          · intro e; have := congrArg Fin.val e
++            rw [idx_val q (hs q hq).1 (hs q hq).2, idx_val r hr.1 hr.2] at this; omega
++          · rintro rfl; rfl
++      rw [key _ hb, key _ hb', Multiset.filter_eq', Multiset.filter_eq'] at this
++      simpa using this
++    · have c1 : i.2.1.parts.count r = 0 := Multiset.count_eq_zero.mpr fun hm => hr (hb r hm)
++      have c2 : i'.2.1.parts.count r = 0 := Multiset.count_eq_zero.mpr fun hm => hr (hb' r hm)
++      rw [c1, c2]
++  simp only [B21Idx.toPair, B21Idx.lam, h0, hparts]
++
++/-- **The 846 spanning elements are linearly independent over `ℚ`.** -/
++theorem genIdx_linearIndependent : LinearIndependent ℚ genIdx := by
++  have hmono : LinearIndependent ℚ fun i : B21Idx => monomial (expo i) (1 : ℚ) := by
++    have := (basisMonomials (Fin 45) ℚ).linearIndependent.comp expo expo_injective
++    rw [coe_basisMonomials] at this
++    exact this
++  have hinj : Function.Injective (psi.comp sigma) := psi_injective.comp sigma_injective
++  have heq : genIdx = (psi.comp sigma).toLinearMap ∘ fun i => monomial (expo i) (1 : ℚ) :=
++    funext genIdx_eq
++  rw [heq]
++  exact hmono.map' (psi.comp sigma).toLinearMap (LinearMap.ker_eq_bot.mpr hinj)
++
++/-- **`dim_ℚ B₂₁ = 846`.** -/
++theorem finrank_B21 : Module.finrank ℚ B21 = 846 := by
++  rw [B21_eq_span, finrank_span_eq_card genIdx_linearIndependent, card_B21Idx]
++
++/-! ## Preparing V1: the algebra of (10.1) -/
++
++theorem simplexMoment_nil (R : ℚ) : simplexMoment R [] = 1 := by
++  simp [simplexMoment]
++
++/-- `m = 1`: `∫₀^R z^e dz = R^{e+1}/(e+1)`. -/
++theorem simplexMoment_single (R : ℚ) (e : ℕ) : simplexMoment R [e] = R ^ (e + 1) / (e + 1) := by
++  simp only [simplexMoment, List.length_singleton, List.sum_singleton, List.map_cons,
++    List.map_nil, List.prod_cons, List.prod_nil, mul_one]
++  rw [show 1 + e = e + 1 by omega, Nat.factorial_succ]
++  have : (e.factorial : ℚ) ≠ 0 := by positivity
++  push_cast
++  field_simp
++
++/-- **The Fubini step of (10.1).** Adding a coordinate `z` with exponent `u` multiplies the
++`m`-dimensional moment, read as `c · (R − z)^{m + s}` with `c = ∏ eᵢ! / (m + s)!`, by the Beta
++moment: `M_{m+1}(R; e, u) = c · ∫₀^R z^u (R − z)^{m+s} dz`. -/
++theorem simplexMoment_snoc (R : ℚ) (e : List ℕ) (u : ℕ) :
++    simplexMoment R (e ++ [u]) =
++      ((e.map Nat.factorial).prod : ℚ) / ((e.length + e.sum).factorial : ℚ) *
++        betaMoment R u (e.length + e.sum) := by
++  simp only [simplexMoment, betaMoment, List.length_append, List.length_singleton,
++    List.sum_append, List.sum_singleton, List.map_append, List.map_cons, List.map_nil,
++    List.prod_append, List.prod_cons, List.prod_nil, mul_one]
++  have h1 : e.length + 1 + (e.sum + u) = u + (e.length + e.sum) + 1 := by omega
++  rw [h1]
++  have : ((e.length + e.sum).factorial : ℚ) ≠ 0 := by positivity
++  push_cast
++  field_simp
++
++end BGP212.Var
++
++namespace BGP212.Challenge
++
++open BGP212.Var
++
++theorem mem_partsLE (k j : ℕ) (s : Multiset ℕ) :
++    s ∈ partsLE j k ↔ (∀ x ∈ s, 0 < x ∧ x ≤ k) ∧ s.sum = j :=
++  BGP212.Var.mem_partsLE k j s
++
++theorem nodup_partsLE (k j : ℕ) : (partsLE j k).Nodup :=
++  BGP212.Var.nodup_partsLE k j
++
++theorem p_eq_enumeration (j : ℕ) : p j = (partsLE j j).length :=
++  BGP212.Var.p_eq j
++
++theorem partition_counts :
++    (List.range 11).map p = [1, 1, 2, 3, 5, 7, 11, 15, 22, 30, 42] :=
++  BGP212.Var.partition_counts
++
++theorem dimension_identity : ∑ j ∈ Finset.range 11, p j * (22 - 2 * j) = 846 :=
++  BGP212.Var.dimension_identity
++
++theorem card_B21Idx : Fintype.card B21Idx = 846 :=
++  BGP212.Var.card_B21Idx
++
++theorem ordered_family_count :
++    ∑ j ∈ Finset.range 11, Fintype.card (Composition j) * (22 - 2 * j) = 4094 :=
++  BGP212.Var.ordered_family_count
++
++theorem toPair_injective : Function.Injective B21Idx.toPair :=
++  BGP212.Var.toPair_injective
++
++theorem toPair_range (a : ℕ) (lam : Multiset ℕ) :
++    (∃ i : B21Idx, i.toPair = (a, lam)) ↔ IsB21Index a lam :=
++  BGP212.Var.toPair_range a lam
++
++theorem B21_eq_span : B21 = Submodule.span ℚ (Set.range genIdx) :=
++  BGP212.Var.B21_eq_span
++
++theorem power_sums_algebraically_independent :
++    Function.Injective (MvPolynomial.aeval (R := ℚ) fun k : Fin 45 => P (k + 1)) :=
++  BGP212.Var.psi_injective
++
++theorem genIdx_linearIndependent : LinearIndependent ℚ genIdx :=
++  BGP212.Var.genIdx_linearIndependent
++
++theorem finrank_B21 : Module.finrank ℚ B21 = 846 :=
++  BGP212.Var.finrank_B21
++
++theorem simplexMoment_nil (R : ℚ) : simplexMoment R [] = 1 :=
++  BGP212.Var.simplexMoment_nil R
++
++theorem simplexMoment_single (R : ℚ) (e : ℕ) : simplexMoment R [e] = R ^ (e + 1) / (e + 1) :=
++  BGP212.Var.simplexMoment_single R e
++
++theorem simplexMoment_snoc (R : ℚ) (e : List ℕ) (u : ℕ) :
++    simplexMoment R (e ++ [u]) =
++      ((e.map Nat.factorial).prod : ℚ) / ((e.length + e.sum).factorial : ℚ) *
++        betaMoment R u (e.length + e.sum) :=
++  BGP212.Var.simplexMoment_snoc R e u
++
++end BGP212.Challenge
+diff --git a/specs/checks/variational_v0_negative_controls.py b/specs/checks/variational_v0_negative_controls.py
+new file mode 100644
+index 0000000..12fb5ed
+--- /dev/null
++++ b/specs/checks/variational_v0_negative_controls.py
+@@ -0,0 +1,32 @@
++"""V0 negative controls (outside the trusted base).
++
++Usage, from the repository root (after `lake build BGP212.Variational`):
++  python3 -I specs/checks/variational_v0_negative_controls.py OUTDIR
++  for f in OUTDIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++
++Each `ok_*.lean` file is a true count and is accepted; each `nc_*.lean` file changes one
++constraint of the printed index set (or the target count) and is rejected (`decide` fails).
++The counts use the explicit partition enumeration `partsLE`, equal to `Nat.Partition` counts
++by the kernel-checked `p_eq_enumeration`."""
++import os, sys
++
++out = sys.argv[1]
++os.makedirs(out, exist_ok=True)
++HDR = "import BGP212.Variational\nopen BGP212.Var\n"
++S = "∑ j ∈ Finset.range 11, (partsLE j j).length * (22 - 2 * j)"
++cases = {
++    "ok_846": ("the printed index set: 846", f"example : {S} = 846 := by decide +kernel"),
++    "nc_845": ("a dimension of 845", f"example : {S} = 845 := by decide +kernel"),
++    "ok_p10": ("p(10) = 42", "example : (partsLE 10 10).length = 42 := by decide +kernel"),
++    "nc_p10": ("p(10) = 41", "example : (partsLE 10 10).length = 41 := by decide +kernel"),
++    "ok_all_parts": ("all parts allowed (odd too): 3506",
++                     "example : ∑ d ∈ Finset.range 22, (partsLE d d).length = 3506 := by decide +kernel"),
++    "nc_all_parts": ("all parts allowed counted as 846",
++                     "example : ∑ d ∈ Finset.range 22, (partsLE d d).length = 846 := by decide +kernel"),
++    "ok_degree_22": ("degree bound 22: 1041",
++                     "example : ∑ j ∈ Finset.range 12, (partsLE j j).length * (23 - 2 * j) = 1041 := by decide +kernel"),
++    "nc_degree_22": ("degree bound 22 counted as 846",
++                     "example : ∑ j ∈ Finset.range 12, (partsLE j j).length * (23 - 2 * j) = 846 := by decide +kernel"),
++}
++for name, (what, body) in cases.items():
++    open(os.path.join(out, name + ".lean"), "w").write(f"{HDR}-- control: {what}\n{body}\n")
+diff --git a/specs/results/V0_variational_basis.yaml b/specs/results/V0_variational_basis.yaml
+new file mode 100644
+index 0000000..39fbc32
+--- /dev/null
++++ b/specs/results/V0_variational_basis.yaml
+@@ -0,0 +1,122 @@
++# Result record: eleventh Challenge/Solution pair (V0, the variational space B₂₁)
++
++identity:
++  id: V0
++  statement: "§11: B₂₁ = span_ℚ{(L − P₁)^a P_λ : a ≥ 0, λⱼ ∈ 2ℤ_{>0}, a + |λ| ≤ 21} in 45 variables has dimension exactly 846"
++  source: "Source/bgp212.pdf: §9.3 (L = 53/50, p. 40), §9.4 (I_T, J_T, p. 41), (10.1) (p. 41), §11 (B₂₁, p. 42)"
++  builds_on: "A1 (BGP212.Params.L), all earlier pairs unchanged"
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++verification:
++  definitions: BGP212/Variational.lean
++  challenge: Challenge/Variational.lean
++  solution: Solution/Variational.lean
++  comparator_config: Comparator/variational_v0.json
++  negative_controls_script: specs/checks/variational_v0_negative_controls.py
++  transcription:
++    P: "P j = psum (Fin 45) ℚ j = Σᵢ xᵢ^j (the 45 rescaled coordinates of §9.4)"
++    Plam: "P_λ = ∏ⱼ P_{λⱼ} over the multiset of parts; P_∅ = 1"
++    IsB21Index: "every part of λ positive and even, and a + |λ| ≤ 21 (a : ℕ, so a ≥ 0)"
++    gen: "(C L − P 1)^a * P_λ with L = 53/50"
++    B21: "Submodule.span ℚ {gen a λ | IsB21Index a λ}"
++    B21Idx: "Σ j : Fin 11, Nat.Partition j × Fin (22 − 2j): λ = 2μ with μ ⊢ j, a ≤ 21 − 2j"
++    p: "Fintype.card (Nat.Partition j) (Mathlib's partitions)"
++    partsLE: "an explicit, kernel-computable enumeration of partitions of j into parts ≤ k"
++  signatures:
++    mem_partsLE: "s ∈ partsLE j k ↔ (∀ x ∈ s, 0 < x ∧ x ≤ k) ∧ s.sum = j"
++    nodup_partsLE: "(partsLE j k).Nodup"
++    p_eq_enumeration: "p j = (partsLE j j).length"
++    partition_counts: "(List.range 11).map p = [1, 1, 2, 3, 5, 7, 11, 15, 22, 30, 42]"
++    dimension_identity: "∑ j ∈ range 11, p j * (22 − 2j) = 846"
++    card_B21Idx: "Fintype.card B21Idx = 846"
++    ordered_family_count: "∑ j ∈ range 11, card (Composition j) * (22 − 2j) = 4094"
++    toPair_injective: "Function.Injective B21Idx.toPair"
++    toPair_range: "(∃ i, i.toPair = (a, λ)) ↔ IsB21Index a λ"
++    B21_eq_span: "B21 = span ℚ (range genIdx)"
++    power_sums_algebraically_independent: "Function.Injective (aeval (R := ℚ) fun k : Fin 45 => P (k + 1))"
++    genIdx_linearIndependent: "LinearIndependent ℚ genIdx"
++    finrank_B21: "Module.finrank ℚ B21 = 846"
++    simplexMoment_nil: "simplexMoment R [] = 1"
++    simplexMoment_single: "simplexMoment R [e] = R^(e+1)/(e+1)"
++    simplexMoment_snoc: "simplexMoment R (e ++ [u]) = (∏ eᵢ!/(m + s)!) · betaMoment R u (m + s)"
++  proof_of_dimension: >
++    The family is the image of 846 distinct monomials y₁^a ∏_{q ∈ μ} y_{2q} of ℚ[y₁, …, y₄₅]
++    under σ : y₁ ↦ L − y₁ (an involution) followed by ψ : y_k ↦ P_k. ψ is injective: its image
++    lies in the symmetric subalgebra; Newton's identities (Mathlib's mul_esymm_eq_sum) put
++    every e_k, k ≤ 45, in its range over ℚ; composing with the inverse of Mathlib's
++    esymmAlgEquiv gives a surjective endomorphism of the Noetherian ring ℚ[y₁, …, y₄₅], which
++    is injective (injective_of_surjective_endo, kernels of iterates stabilize). Distinct
++    monomials are linearly independent (basisMonomials) and injective linear maps preserve
++    linear independence, so the 846 elements are independent and span B₂₁.
++  dimension_accounting: |
++    j = |λ|/2 :  0   1   2   3   4   5   6   7   8   9  10
++    p(j)      :  1   1   2   3   5   7  11  15  22  30  42
++    22 − 2j   : 22  20  18  16  14  12  10   8   6   4   2
++    product   : 22  20  36  48  70  84 110 120 132 120  84   total 846
++  findings:
++    F1_dimension_confirmed: >
++      The printed dimension 846 is exact: the 846 elements are linearly independent over ℚ in
++      45 variables (finrank_B21). Every index uses only P₁, P₂, P₄, …, P₂₀ (parts at most 20)
++      and total degree at most 21 ≤ 45, which is what makes the power sums independent here.
++    F2_repeated_monomials: >
++      "After repeated monomials are identified": reading λ as an ordered tuple of positive even
++      parts gives 4094 index pairs (ordered_family_count); identifying reorderings gives the
++      846 partitions. Distinct partitions then give distinct, independent elements, so no
++      further identification occurs.
++    F3_proper_subspace: >
++      B₂₁ is a proper subspace of the symmetric polynomials of degree at most 21, which have
++      dimension Σ_{d ≤ 21} p(d) = 3506 in at least 21 variables (exploratory count, kernel-checked
++      as the control ok_all_parts); B₂₁ keeps odd power sums only through P₁, inside L − P₁.
++    F4_J_normalization: >
++      B3's finding F3 (Theorem 11.1's J_T) is settled by §9.4: J_T(F) = 45 ∫_{T̂} (∫₀^{U(x̂)} F du)² dx̂
++      carries the factor k = 45, so Theorem 11.1's ratio J_T/I_T > 4 is the rescaled form of
++      Theorem 4.10's k·J_T(F) > I_T(F).
++  exploratory_vs_proved: >
++    Proved: every theorem listed under signatures. Exploratory (Python, outside the kernel):
++    the pre-check of the counts 846, 4094, 3506 and 1041; each is re-checked by the kernel
++    through partsLE.
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  negative_controls:
++    - change: "dimension 845; p(10) = 41; all parts allowed counted as 846; degree bound 22 counted as 846"
++      result: "kernel rejects each (decide fails)"
++    - change: "the true counts 846, 42, 3506, 1041 (positive controls)"
++      result: "kernel accepts"
++    - change: "finrank_B21 claimed as 845 in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.finrank_B21'"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run
++    with the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 40 seconds for the V0 comparator suite in the build container"
++  run_date: 2026-10-17
++  commit_hash: PENDING_VPS
++
++next_development:
++  V1: >
++    The simplex moment identity (10.1) as an integral: ∫_{z ≥ 0, Σz ≤ R} ∏ zᵢ^{eᵢ} dz =
++    simplexMoment R e, by induction on m through simplexMoment_snoc, Fubini, and the Beta
++    integral ∫₀^R z^u (R − z)^v dz = betaMoment R u v (Mathlib MeasureTheory /
++    intervalIntegral). Then Lemma 10.1 for rational polytopes.
++  V2: >
++    I_T and J_T on B₂₁ as exact rational Gram matrices (846 × 846) via Proposition 10.2's
++    stratification, with the matrix entries generated outside and checked in the kernel.
++  V3: >
++    With Axiom's P⋆: I_T(P⋆) > 0 and J_T(P⋆) − 4 I_T(P⋆) > 0 exactly, making
++    SieveInputs.theorem_11_1 a theorem.
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 7e1bf3d..7e8606f 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
