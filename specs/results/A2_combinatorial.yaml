@@ -60,6 +60,6 @@ result:
     - "Lean default kernel accepts the solution"
     - "Your solution is okay!"
   run_date: 2026-10-16
-  commit_hash: null   # set to the verified commit after the VPS run
+  commit_hash: 6cdfeb6c29c3c2a8ae8408a1fe36e704c9de5d1a
 
 footer: Admissible generalizations trail leading specifications.
