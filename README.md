@@ -55,11 +55,20 @@ v1.0.0's `gdt_count_per_period`, statement for statement (Gate B). It uses Mathl
 vendors GDT v1.0.0's definitions and lemmas in `BGP212/GDTv1Basic.lean` and
 `BGP212/GDTv1.lean`, with provenance hashes in their headers.
 
+The fifth pair is B2 (`Challenge/MultiShiftB2.lean`, `Solution/MultiShiftB2.lean`):
+relative density; local positivity (the accepted set is nonempty exactly when every local
+factor is positive); a minimal-period theorem extending GDT v1.0.0's to every nonempty shift
+set, with kernel-checked counterexamples showing both of its extra hypotheses are needed;
+and the W-trick of Definition 4.5. Through `admissible_iff_local_factors`, Lemma 12.1 gives
+a residue `b` with `gcd(b + h, W) = 1` for all `h ∈ H₄₅` and every `W`; at
+`W = 2·3·…·23` that residue is unique, `b = 74549147`.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
   Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
-  multi-shift GDT counting theorem (B1).
+  multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+  W-trick for H₄₅ (B2).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2).

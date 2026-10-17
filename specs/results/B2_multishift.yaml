@@ -1,0 +1,90 @@
+# Result record: fifth Challenge/Solution pair (B2: density, positivity, minimal period, W-trick)
+
+identity:
+  id: B2
+  statement: "Relative density, local positivity, minimal period with its counterexamples, and the W-trick for H₄₅"
+  specification: specs/B0_multishift_gdt.yaml
+  builds_on: [B1 (Solution/MultiShift.lean), A1 Lemma 12.1 (Solution/Lemma12_1.lean)]
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  challenge: Challenge/MultiShiftB2.lean
+  solution: Solution/MultiShiftB2.lean
+  data_module: BGP212/WTrick.lean
+  comparator_config: Comparator/multishift_b2.json
+  theorems:
+    gdtH_relative_density: "m · (absolute density) = ∏_{p | R}(1 − ν_p(H)/p) = localCount / R"
+    gdtH_local_positivity: "accepted set nonempty ⟺ AdmissibleH ∧ ∀ p | R, ν_p(H) < p"
+    gdtH_minimal_period: "H nonempty, AdmissibleH, all local factors positive ⟹ every positive period is a multiple of Tmin = mR"
+    gdtH_minimal_period_needs_shift: "counterexample N = 5, m = 2, a = 0, H = ∅: period 2, Tmin = 10"
+    gdtH_minimal_period_needs_nonempty: "counterexample N = 2, m = 1, a = 0, H = {0, 1}: empty set, period 1, Tmin = 2"
+    wtrick_count: "Definition 4.5: for squarefree W, #{b mod W : gcd(b + h, W) = 1 ∀ h ∈ H} = ∏_{p | W}(p − ν_p(H))"
+    admissible_iff_local_factors: "§2 admissibility of a tuple ⟺ ν_p(H) < p at every prime (the Join)"
+    h45_wtrick_exists: "for every W > 0 some b has gcd(b + h, W) = 1 for all h ∈ H₄₅, from Lemma 12.1"
+    h45_wtrick_W23: "W = 2·3·…·23: localCount = 1 and the unique residue is b = 74549147"
+  b0_coverage:
+    covered_now: [gdtH_relative_density, gdtH_local_positivity, "minimal period"]
+    all_b0_statements_covered: true
+  minimal_period_investigation:
+    method: "specs/checks/minimal_period_search.py: least positive period over 4,000 random (m, N, a, H)"
+    results:
+      "H nonempty, accepted set nonempty": "1821 cases; least period = Tmin in all 1821"
+      "H = ∅": "786 cases; least period = Tmin in 116 (exactly those with R = 1); otherwise least period m"
+      "accepted set empty": "1393 cases; least period 1 in all"
+    finding: >
+      The GDT v1.0.0 minimal-period theorem extends to every nonempty shift set, under
+      exactly two hypotheses beyond GDT's: H nonempty, and a nonempty accepted set
+      (equivalently, by gdtH_local_positivity, every local factor positive). Both are
+      necessary, each witnessed by a kernel-checked counterexample. B0 listed the
+      nonempty-set hypothesis; the nonempty-H hypothesis is the refinement found here.
+      For H = {0} both hold whenever GDT's Admissible holds, recovering
+      gdt_minimal_period's setting.
+    proof_idea: >
+      From one accepted n₀, a period t keeps every n₀ + k t accepted (period_iter).
+      m | t because n₀ and n₀ + t share the class a mod m. If a prime p | R did not
+      divide t, Bézout gives k with p | n₀ + k t + h₀ for a fixed h₀ ∈ H (exists_hit),
+      contradicting acceptance; so every p | R divides t, hence R | t (R squarefree),
+      and mR | t since gcd(m, R) = 1.
+    unused_hypothesis: "0 < t is carried for correspondence with gdt_minimal_period; the proof covers t = 0 too (marked _ht)."
+  w_trick_correspondence:
+    definition_4_5: >
+      Axiom chooses b with (b + hᵢ, W) = 1 for all i, where W is a product of small primes.
+      h45_wtrick_exists states exactly this condition (Nat.gcd, the list H₄₅) and proves
+      such b exists for every W > 0. wtrick_count counts the admissible residues for any
+      squarefree W. h45_wtrick_W23 pins the unique residue at W = 2·3·…·23; reduced mod 30
+      it is 17, matching B0's recorded reading.
+    scope: >
+      Axiom's W is ∏_{p ≤ log log log x} p, a growing primorial. The theorems here cover
+      every W, so the correspondence is exact for each fixed x; the asymptotic main-term
+      analysis of Lemma 4.9 that uses this b stays outside the proved scope.
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: Lean 4 kernel + core + Mathlib @ 85e3a25
+  track_a_isolation: "Lemma 12.1 still depends on [propext, Quot.sound] only."
+  negative_controls:
+    - change: "dropped the hypothesis H.Nonempty from gdtH_minimal_period in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.gdtH_minimal_period'"
+      note: "The weakened statement is false: gdtH_minimal_period_needs_shift is a counterexample."
+    - change: "changed the W-trick residue 74549147 to 74549148 in h45_wtrick_W23 in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.h45_wtrick_W23'"
+  sandbox: >
+    Comparator ran with the pass-through landrun stand-in in the authoring environment.
+    Rerun ./verify.sh on the VPS with the real landrun to record a sandboxed result.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25e006c35636f0e53b0e9296caca2685bc0
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  run_date: 2026-10-16
+  commit_hash: null   # set to the verified commit after the VPS run
+
+footer: Admissible generalizations trail leading specifications.

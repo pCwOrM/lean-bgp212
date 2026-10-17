@@ -1,0 +1,36 @@
+{
+    "challenge_module": "Challenge.MultiShiftB2",
+    "solution_module": "Solution.MultiShiftB2",
+    "theorem_names": [
+        "BGP212.Challenge.gdtH_relative_density",
+        "BGP212.Challenge.gdtH_local_positivity",
+        "BGP212.Challenge.gdtH_minimal_period",
+        "BGP212.Challenge.gdtH_minimal_period_needs_shift",
+        "BGP212.Challenge.gdtH_minimal_period_needs_nonempty",
+        "BGP212.Challenge.wtrick_count",
+        "BGP212.Challenge.admissible_iff_local_factors",
+        "BGP212.Challenge.h45_wtrick_exists",
+        "BGP212.Challenge.h45_wtrick_W23"
+    ],
+    "definition_names": [
+        "BGP212.MultiShift.nu",
+        "BGP212.MultiShift.acceptedH",
+        "BGP212.MultiShift.AdmissibleH",
+        "BGP212.MultiShift.IsPeriodH",
+        "BGP212.MultiShift.localCount",
+        "BGP212.WTrick.H45Z",
+        "BGP212.WTrick.W23",
+        "BGP212.H45",
+        "BGP212.IsPrime",
+        "BGP212.Admissible",
+        "GDT.rad",
+        "GDT.d",
+        "GDT.R",
+        "GDT.Tmin"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}
