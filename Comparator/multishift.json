@@ -1,0 +1,32 @@
+{
+    "challenge_module": "Challenge.MultiShift",
+    "solution_module": "Solution.MultiShift",
+    "theorem_names": [
+        "BGP212.Challenge.gdtH_empty",
+        "BGP212.Challenge.gdtH_periodic",
+        "BGP212.Challenge.gdtH_count_per_period",
+        "BGP212.Challenge.gdtH_density",
+        "BGP212.Challenge.gdtH_density_formula",
+        "BGP212.Challenge.gdtH_single_shift",
+        "BGP212.Challenge.gdt_count_per_period_via_multishift"
+    ],
+    "definition_names": [
+        "BGP212.MultiShift.nu",
+        "BGP212.MultiShift.acceptedH",
+        "BGP212.MultiShift.AdmissibleH",
+        "BGP212.MultiShift.SH",
+        "BGP212.MultiShift.IsPeriodH",
+        "BGP212.MultiShift.localCount",
+        "GDT.rad",
+        "GDT.d",
+        "GDT.R",
+        "GDT.Tmin",
+        "GDT.Admissible",
+        "GDT.accepted"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

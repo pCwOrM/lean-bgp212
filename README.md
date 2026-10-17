@@ -47,10 +47,19 @@ the factor-extraction Lemmas 7.5–7.7 in log-size form, Table 2, Lemma 8.2 and
 Lemma 9.2. Scope notes and the source hypotheses the proofs leave unused are in
 `specs/results/A2_combinatorial.yaml`.
 
+The fourth pair is B1, the multi-shift GDT counting theorem (`Challenge/MultiShift.lean`,
+`Solution/MultiShift.lean`). It counts `n ≡ a (mod m)` with `gcd(n + h, N) = 1` for every
+shift `h ∈ H`: each period `Tmin = mR` holds exactly `∏_{p | R} (p − ν_p(H))` such
+values, absolute density `(1/m)·∏_{p | R}(1 − ν_p(H)/p)`. With `H = {0}` it re-derives GDT
+v1.0.0's `gdt_count_per_period`, statement for statement (Gate B). It uses Mathlib and
+vendors GDT v1.0.0's definitions and lemmas in `BGP212/GDTv1Basic.lean` and
+`BGP212/GDTv1.lean`, with provenance hashes in their headers.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
-  Appendix B row as a formula in those parameters; the A2 combinatorial lemmas.
+  Appendix B row as a formula in those parameters; the A2 combinatorial lemmas; the
+  multi-shift GDT counting theorem (B1).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2).
@@ -60,6 +69,14 @@ Lemma 9.2. Scope notes and the source hypotheses the proofs leave unused are in
   count is checked here) and the exact variational certificate of Theorem 11.1.
 
 ## Comparator Verification
+
+Track B uses Mathlib, so fetch its build cache first:
+
+```text
+lake exe cache get
+```
+
+Then
 
 ```text
 ./verify.sh
@@ -74,8 +91,9 @@ Lean default kernel accepts the solution
 Your solution is okay!
 ```
 
-Axioms used: `propext`, `Quot.sound`. The record of the first run, including its
-sandbox note and negative control, is `specs/results/A1_lemma_12_1.yaml`.
+Axioms used: `propext` and `Quot.sound` for Lemma 12.1; `propext`, `Quot.sound` and
+`Classical.choice` for the other pairs (all within the permitted set). Each pair's
+run, sandbox provenance and negative controls are recorded in `specs/results/`.
 
 ## Source
 

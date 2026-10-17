@@ -20,3 +20,14 @@ name = "Challenge"
 
 [[lean_lib]]
 name = "Solution"
+
+# Track B (multi-shift GDT) builds on Mathlib. GDT v1.0.0's definitions and lemmas are
+# vendored in BGP212/GDTv1Basic.lean and BGP212/GDTv1.lean (provenance in their headers):
+# a package dependency would collide with GDT's own `Challenge`/`Solution` libraries.
+# The Track A pairs import neither, so their trusted base stays the Lean kernel plus core.
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "85e3a25e006c35636f0e53b0e9296caca2685bc0"   # the Mathlib commit pinned by GDT v1.0.0
+

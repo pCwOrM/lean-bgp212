@@ -1,0 +1,80 @@
+# Result record: fourth Challenge/Solution pair (B1, the multi-shift GDT counting theorem)
+
+identity:
+  id: B1
+  statement: "Multi-shift General Divisor Theorem: dichotomy, period, exact count per period, density"
+  specification: specs/B0_multishift_gdt.yaml
+  extends: "thinkthoughts/general-divisor-theorem v1.0.0 (commit cef9605)"
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+verification:
+  challenge: Challenge/MultiShift.lean
+  solution: Solution/MultiShift.lean
+  definitions: BGP212/MultiShift.lean
+  comparator_config: Comparator/multishift.json
+  theorems:
+    gdtH_empty: "¬AdmissibleH → the accepted set in [1, L] is empty (mirrors gdt_empty)"
+    gdtH_periodic: "Tmin = mR is a period (mirrors gdt_periodic)"
+    gdtH_count_per_period: "every window [b, b + Tmin) holds exactly ∏_{p | R} (p − ν_p(H)) (mirrors gdt_count_per_period)"
+    gdtH_density: "count up to q·Tmin + s = q·∏(p − ν_p(H)) + count up to s (mirrors gdt_density)"
+    gdtH_density_formula: "∏(p − ν_p(H)) / Tmin = (1/m)·∏_{p | R}(1 − ν_p(H)/p): absolute density, 1/m preserved"
+    gdtH_single_shift: "H = {0}: AdmissibleH ↔ Admissible, acceptedH ↔ accepted, ∏(p − ν_p) = φ(R)"
+    gdt_count_per_period_via_multishift: "GDT v1.0.0's gdt_count_per_period, re-derived through the multi-shift theorem"
+  b0_coverage:
+    covered: [gdtH_empty, gdtH_periodic, gdtH_count_per_period, gdtH_density, gdtH_single_shift]
+    added: [gdtH_density_formula, gdt_count_per_period_via_multishift]
+    pending_for_B2: [gdtH_relative_density, gdtH_local_positivity, "minimal period (B0 candidate statement)"]
+  gate_b: >
+    Passed. Solution/MultiShift.lean ends with a build-time check that the type of
+    gdt_count_per_period_via_multishift is definitionally equal to the type of GDT
+    v1.0.0's gdt_count_per_period. Pointing the check at gdt_density instead fails with
+    "Type mismatch", so the check discriminates.
+  gdt_reuse: >
+    GDT v1.0.0 is vendored, not required as a Lake package: its root libraries
+    `Challenge` and `Solution` collide with this repository's, which breaks module lookup
+    for the Track A pairs. BGP212/GDTv1Basic.lean is GeneralDivisorTheorem/Basic.lean
+    (sha256 4adb0144dfb1822cbff45e13978034e381002c440ec168f1d8fbd3faf4640f39), namespace GDT
+    kept, so GDT.rad, GDT.d, GDT.R, GDT.Tmin, GDT.Admissible and GDT.accepted are GDT's
+    definitions exactly. BGP212/GDTv1.lean is Solution/GeneralDivisionTheorem.lean
+    (sha256 b53d7328f2f03ac8734484666e37cbd6b955cef3461d484ce571104c41ec5a0d; the v1.0.0
+    tag predates the file rename), namespace renamed to BGP212.GDTv1. Changes in both are
+    module syntax only; both files are identical to GDT main modulo the file-name rename.
+  new_ingredients:
+    - "gcd_eq_one_iff: gcd(x, N) = 1 ⟺ no prime of N divides x"
+    - "acceptedH_iff: under AdmissibleH only the primes of R constrain n"
+    - "card_filter_crt: CRT as a product of counts over range(uv)"
+    - "count_one_prime: exactly p − ν_p(H) residues mod p avoid the classes of H"
+    - "count_avoid: over [0, ∏ P), avoiding H at each p ∈ P leaves ∏ (p − ν_p(H))"
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: Lean 4 kernel + core + Mathlib @ 85e3a25 (the commit pinned by GDT v1.0.0)
+  track_a_isolation: >
+    The Track A pairs import neither Mathlib nor the GDT files; Lemma 12.1 still depends
+    on [propext, Quot.sound] only after this change.
+  negative_controls:
+    - change: "removed the factor 1/m from gdtH_density_formula in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.gdtH_density_formula'"
+    - change: "replaced φ(R) by R in gdtH_single_shift in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.gdtH_single_shift'"
+  sandbox: >
+    Comparator ran with the pass-through landrun stand-in in the authoring environment,
+    on a Mathlib slice built from source (the Mathlib cache host is unreachable there).
+    On the VPS: lake exe cache get, then ./verify.sh with the real landrun.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25e006c35636f0e53b0e9296caca2685bc0
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  run_date: 2026-10-16
+  commit_hash: null   # set to the verified commit after the VPS run
+
+footer: Admissible generalizations trail leading specifications.
