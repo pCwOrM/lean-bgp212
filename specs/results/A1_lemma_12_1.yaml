@@ -24,10 +24,11 @@ verification:
   axioms_used: [propext, Quot.sound]       # permitted set also includes Classical.choice
   trusted_base: Lean 4 kernel + core library (Mathlib absent from this challenge)
   sandbox: >
-    Comparator ran with a pass-through stand-in for landrun, because landrun's Go
-    dependencies were unreachable in the build environment. Statement matching,
-    definition matching, the axiom check, and the kernel replay all ran in full.
-    Rerun ./verify.sh with a real landrun for the sandboxed build.
+    VPS reproduction using the real landrun executable at
+    /home/dan/landrun/landrun, sourced from commit
+    811cfff51ceaf3d9843708aa6d22e9b84ccac8b4.
+    Comparator accepted the solution and the Lean default kernel
+    accepted the proof. No pass-through stand-in was configured.
   negative_control: >
     Changing `h ≤ 212` to `h ≤ 213` in the Challenge made comparator reject with
     "Challenge and solution theorem statement do not match: 'BGP212.Challenge.h45_diameter'".
@@ -42,6 +43,6 @@ result:
     - "Your solution is okay!"
   solution_build_time: "about 3 s"
   run_date: 2026-10-16
-  commit_hash: null   # filled at first commit
+  commit_hash: d9af846edfe87ad90bbca43c58f7dd22cad05c74
 
 footer: Admissible generalizations trail leading specifications.
