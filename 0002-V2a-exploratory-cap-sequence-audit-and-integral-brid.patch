@@ -1,0 +1,371 @@
+From 314458163ad290b0c20fd31963b00185f8f0649a Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 21:51:34 -0600
+Subject: [PATCH 2/2] V2a (exploratory): cap-sequence audit and integral-bridge
+ specification
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+CapAudit.lean kernel-checks both cap data over m ≤ 60: Lemma 9.1's proof
+dilates a two-level datum (31/200, 17/100) that satisfies Definition 4.1 and
+lies strictly inside Table 3's support (rough count ≤ 10 vs ≤ 13).
+BridgeSpec.lean states, as type-checked Props parametrized by the cap
+function, the chain from V2a's rational decomposition to the Lebesgue
+integral (stratification, shift + inclusion–exclusion, two-group Dirichlet
+via V1, incBeta). CAPS_AND_BRIDGE.md classifies the discrepancy, its
+implications for P⋆, and recommends V2b. No new matrix entries.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ Exploratory/V2a/BridgeSpec.lean    | 115 ++++++++++++++++++++++++++++
+ Exploratory/V2a/CAPS_AND_BRIDGE.md | 117 +++++++++++++++++++++++++++++
+ Exploratory/V2a/CapAudit.lean      |  75 ++++++++++++++++++
+ Exploratory/V2a/NOTES.md           |   2 +-
+ 4 files changed, 308 insertions(+), 1 deletion(-)
+ create mode 100644 Exploratory/V2a/BridgeSpec.lean
+ create mode 100644 Exploratory/V2a/CAPS_AND_BRIDGE.md
+ create mode 100644 Exploratory/V2a/CapAudit.lean
+
+diff --git a/Exploratory/V2a/BridgeSpec.lean b/Exploratory/V2a/BridgeSpec.lean
+new file mode 100644
+index 0000000..2fe7a96
+--- /dev/null
++++ b/Exploratory/V2a/BridgeSpec.lean
+@@ -0,0 +1,115 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Lemma 9.1, (10.1), Lemma 10.1, Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.SimplexMoment
++import Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic
++
++/-! # V2a (exploratory): specification of the integral bridge
++
++Statements only, each packaged as a `Prop` (no proofs, no `sorry`): this file fixes *what* V2
++proper must prove so that V2a's rational decomposition becomes a theorem about the Lebesgue
++integral. Every statement is parametrized by the cap function `C`, so the same bridge serves
++Table 3's caps and the two-cap reading of Lemma 9.1's proof (`CapAudit.lean`).
++
++The chain, for a continuous integrand `f` on `ℝᴺ`:
++
++1. `Stratification`: `∫_{T̃} f = Σ_R ∫_{stratum R} f` (boundaries `xᵢ = g` are null).
++2. `ShiftInclusionExclusion`: `∫_{stratum R} f = Σ_{K ⊆ Rᶜ} (−1)^{|K|} ∫_{piece R K} f(· + g·1_{R∪K})`.
++3. `PieceMonomial`: a monomial over a piece is the two-group Dirichlet formula, a product of
++   factorial ratios times one interval integral. From V1: `simplex_integral` on the `Rᶜ`
++   block (radius `M − Σ_R y`), Fubini, and `simplex_integral` again on the `R` block after
++   writing `M − Σ_R y = (M − c) + (c − Σ_R y)`.
++4. `IncBetaIntegral`: that interval integral equals V2a's rational `incBeta`.
++
++Then 1–4 plus the binomial expansion of `(g + y)^e` (V1's `poly_integral` pattern) and the
++counting of `(R, K)` by cardinalities give `moment N α = ∫_{T̃} xᵅ`, and with `entry_45`
++(kernel-checked in `GramEntry.lean`) the Gram entry as an integral. -/
++
++namespace BGP212.V2a.Bridge
++
++open MeasureTheory
++
++/-- The rough coordinates of `x`: `{i : g < xᵢ}`. -/
++noncomputable def roughSet {N : ℕ} (g : ℝ) (x : Fin N → ℝ) : Finset (Fin N) :=
++  Finset.univ.filter fun i => g < x i
++
++/-- Lemma 9.1's rescaled support, with cap function `C`:
++`{x ≥ 0 : Σ xᵢ ≤ L, R_g(x) ≤ C(s(x))}`. -/
++def supportT (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) : Set (Fin N → ℝ) :=
++  {x | (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ roughSet g x, x i ≤ C (roughSet g x).card}
++
++/-- The closed stratum with rough set `R` (Proposition 10.2). -/
++def stratum {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R : Finset (Fin N)) : Set (Fin N → ℝ) :=
++  {x | (∀ i, 0 ≤ x i) ∧ (∀ i ∈ R, g ≤ x i) ∧ (∀ i ∉ R, x i ≤ g) ∧ ∑ i, x i ≤ L ∧
++    ∑ i ∈ R, x i ≤ C R.card}
++
++/-- The shift `g · 1_S`. -/
++noncomputable def shift {N : ℕ} (g : ℝ) (S : Finset (Fin N)) : Fin N → ℝ := fun i => if i ∈ S then g else 0
++
++/-- A piece after translating the rough coordinates and the inclusion–exclusion set `K`:
++`{y ≥ 0 : Σ_R y ≤ C(|R|) − |R| g, Σ y ≤ L − (|R| + |K|) g}`. -/
++def piece {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin N)) : Set (Fin N → ℝ) :=
++  {y | (∀ i, 0 ≤ y i) ∧ ∑ i ∈ R, y i ≤ C R.card - R.card * g ∧
++    ∑ i, y i ≤ L - (R.card + K.card) * g}
++
++/-- **Step 1.** The support is the union of the strata up to null sets. -/
++def Stratification : Prop :=
++  ∀ (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (f : (Fin N → ℝ) → ℝ), 0 < g → Continuous f →
++    ∫ x in supportT N g L C, f x = ∑ R : Finset (Fin N), ∫ x in stratum g L C R, f x
++
++/-- **Step 2.** Translation of the rough coordinates and inclusion–exclusion over the smooth
++upper bounds `xⱼ ≤ g`. -/
++def ShiftInclusionExclusion : Prop :=
++  ∀ (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (f : (Fin N → ℝ) → ℝ) (R : Finset (Fin N)),
++    0 < g → Continuous f →
++    ∫ x in stratum g L C R, f x =
++      ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * ∫ y in piece g L C R K, f (y + shift g (R ∪ K))
++
++/-- The two-group Dirichlet value of a monomial with exponent total `A` on the `r` rough
++coordinates, `B` on the `n` others, and `W = ∏ eᵢ!`. -/
++noncomputable def twoGroup (r n A B : ℕ) (W c M : ℝ) : ℝ :=
++  W / (((r - 1 + A).factorial : ℝ) * ((n + B).factorial : ℝ)) *
++    ∫ u in (0 : ℝ)..(min c M), u ^ (r - 1 + A) * (M - u) ^ (n + B)
++
++/-- **Step 3.** A monomial over a piece with `1 ≤ |R| < N` (the cases `R = ∅` and `R = univ`
++are the one-group formulas, V1's `simplex_integral` directly). From V1 and Fubini. -/
++def PieceMonomial : Prop :=
++  ∀ (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin N)) (e : Fin N → ℕ),
++    0 < R.card → R.card < N → Disjoint R K →
++    0 ≤ C R.card - R.card * g → 0 ≤ L - (R.card + K.card) * g →
++    ∫ y in piece g L C R K, ∏ i, y i ^ e i =
++      twoGroup R.card (N - R.card) (∑ i ∈ R, e i) (∑ i ∈ Rᶜ, e i)
++        (∏ i, ((e i).factorial : ℝ)) (C R.card - R.card * g) (L - (R.card + K.card) * g)
++
++/-- Empty pieces contribute nothing (the filters `0 < c_r`, `0 < M` of `GramEntry.lean`).
++`0 < N` is needed: `ℝ⁰` is a point of measure one. -/
++def PieceNull : Prop :=
++  ∀ (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin N)) (f : (Fin N → ℝ) → ℝ), 0 < N →
++    (C R.card - R.card * g ≤ 0 ∧ 0 < R.card ∨ L - (R.card + K.card) * g ≤ 0) →
++    ∫ y in piece g L C R K, f y = 0
++
++/-- **Step 4.** The one-variable factor is V2a's rational `incBeta` (binomial expansion and
++`integral_pow`). Stated for real arguments; `GramEntry.lean` evaluates it at rationals. -/
++def IncBetaIntegral : Prop :=
++  ∀ (c M : ℝ) (p q : ℕ),
++    ∫ u in (0 : ℝ)..c, u ^ p * (M - u) ^ q =
++      ∑ j ∈ Finset.range (q + 1),
++        (q.choose j : ℝ) * M ^ (q - j) * (-1) ^ j * c ^ (p + j + 1) / (p + j + 1)
++
++/-- **Sub-support monotonicity** (for the cap question): smaller caps give a smaller support,
++so a certificate on the two-cap support is a certificate for a function supported on
++Table 3's support. -/
++def SupportMono : Prop :=
++  ∀ (N : ℕ) (g L : ℝ) (C C' : ℕ → ℝ), (∀ m, C' m ≤ C m) → supportT N g L C' ⊆ supportT N g L C
++
++/-- **Target.** The V2a entry as a Lebesgue integral: for Table 3's caps
++(`C = BGP212.Params.C`), `∫_{T̃} (L − P₁) P₂ dx` equals the rational certified by `entry_45`
++(passed here as `q` because `GramEntry.lean` belongs to no library yet). -/
++def GramEntryIntegral (q : ℚ) : Prop :=
++  ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = (q : ℝ)
++
++end BGP212.V2a.Bridge
+diff --git a/Exploratory/V2a/CAPS_AND_BRIDGE.md b/Exploratory/V2a/CAPS_AND_BRIDGE.md
+new file mode 100644
+index 0000000..fd5a132
+--- /dev/null
++++ b/Exploratory/V2a/CAPS_AND_BRIDGE.md
+@@ -0,0 +1,117 @@
++# V2a, part 2: the cap sequences and the integral bridge
++
++Status: **exploratory**, on branch `v2a`, kept apart from A0–V1. No new matrix entries were computed.
++Kernel-checked here:
++- `CapAudit.lean`: decided facts about both cap data;
++- `BridgeSpec.lean`: the bridge statements, which type-check but are not yet proved.
++
++## 1. The two cap sequences
++
++### What the paper says
++
++| place | caps used |
++|---|---|
++| Definition 4.1 (p. 4) | general matrix `B`, with `δ < B_m ≤ B_{m+1} ≤ B_m + δ` |
++| §7.4, Lemma 7.10 (p. 36) | "the rough cap depends on the number of rough factors"; ranges over `m, m′ ≤ 13` |
++| Table 3, §9.1 display (p. 39) | ten-rung sequence `B₁,ₘ = (777, …, 1081)/5000`, constant `1081/5000` for `m ≥ 11` |
++| §9.3 dictionary (p. 40) | `C(m) = 4B₁,ₘ` |
++| Lemma 9.1, statement (p. 41) | `T̃ = {P₁ ≤ L, R_g ≤ C(s)}`, with C as in the dictionary |
++| **Lemma 9.1, proof** (p. 41) | "sends **the two physical rough caps** to `C(1) = C(2) = 31/50` and `C(s) = 17/25` for `s ≥ 3`" |
++| Tables 4 and 6 (pp. 40, 45) | ten-rung sequence (heredity `81/5000 < 82/5000`, first-rung wall `777/5000 ≤ 778/5000`) |
++| Theorem 11.1 (p. 43) | `F⋆ = 1_{T̃} P⋆`, so it inherits whichever T̃ was used |
++
++Undoing the dilation gives physical caps `B′₁ = B′₂ = 31/200` and `B′ₘ = 17/100` for m ≥ 3. That is a two-level datum. Neither 31/200 nor 17/100 appears anywhere else in the paper.
++
++### What the kernel checks (`CapAudit.lean`, all m ≤ ⌊1/δ⌋ = 60)
++
++- `lemma_9_1_proof_numbers`: the printed 31/50 and 17/25 are exactly 4·B′.
++- `table3_differs`: Table 3's C(m) differs from 4·B′ₘ at every m ≥ 1.
++- `def41_table3` and `def41_twoCap`: **both** data satisfy Definition 4.1.
++- `twoCap_lt_table3`: `B′ₘ < B₁,ₘ` for every m ≥ 1, so **the two-cap support lies strictly inside Table 3's support**.
++- `max_rough_table3` and `max_rough_twoCap`: at most **13** rough coordinates for Table 3, which matches Lemma 7.10's range. The two-cap datum allows only **10**.
++- `step_lt_delta_*`: both satisfy the step condition `B_{m+1} − B_m < δ` that Lemma 9.2's fiber formula needs.
++- `first_rung_wall`: both satisfy the first-rung cap wall.
++
++### Classification
++
++The evidence fits **an earlier stage of the datum**, a two-level cap, left behind in one sentence of a proof. It is neither an intentional relaxation nor a gap in the logic.
++- **Stage.**
++  - Every other occurrence uses the ten-rung sequence, including the Lemma 9.1 statement that this proof is meant to prove.
++  - The two-level datum is uniformly smaller and fully valid.
++  - Table 4's labels "Definition 1", "Proposition 2" and "Prop. 3(II)" follow Stadlmann's numbering, not this paper's. That is a second sign of text carried over from an earlier draft.
++- **Not an intentional relaxation as written.** The paper never states a sub-support argument. Lemma 9.1 asserts that the dilation maps T **onto** T̃, which is false for the two-cap set because it is strictly smaller.
++- **A genuine inconsistency, but only inside the proof of Lemma 9.1.** The statement is correct for Table 3. The proof's numerical sentence describes a different datum.
++
++### Implications for the P⋆ certificate
++
++1. **The logic is sound with either support.**
++   - Proposition 4.7 needs some F supported on Table 3's T with the strict inequality. If the certificate used the two-cap support T′ ⊂ T, then F⋆ = 1_{T′}P⋆ is still supported on T (`SupportMono`).
++   - Definition 4.6 integrates F, so I and J are then the T′ integrals. The marginal cutoff `A₁ − ε` does not depend on the caps.
++   - Lemma 9.2's formula holds for both data.
++   - The arithmetic side needs nothing new: Theorem 7.11 is proved for Table 3, and smaller caps generate a subfamily of moduli, because Ξ in Definition 7.4 grows with B.
++2. **The value 4.00438409833460131937… belongs to a pair (P⋆, support).**
++   - For the same P⋆ the ratio differs between the supports.
++   - V2a measured this on single moments: 8·10⁻⁷ for m(2), 8·10⁻⁵ for m(20), 1 % for m(40). Theorem 11.1's margin is 1.1·10⁻³.
++   - The two supports must therefore never be mixed: I and J must use the same caps.
++   - Neither inequality implies the other: J/I > 4 on one support says nothing about the other.
++3. **Deciding test, once P⋆ is available.** Compute J/I for P⋆ on both supports. Only one will reproduce `4.00438409833460131937` to 20 digits.
++4. **Deciding test without P⋆.** This would be exploratory, in floating point, and needs the Gram matrices, so it is deferred for now. If the largest generalized eigenvalue of (J, I) on B₂₁ falls below 4.00438… for one support, that support is ruled out.
++5. **Recommendation.**
++   - Take Table 3 as the specification. It matches the Lemma 9.1 statement, every table, Lemma 7.10, and the A1–A4 kernel results.
++   - Record the proof sentence as stale.
++   - Keep every V2 statement parametrized by the cap function C, so a certificate on either support can be checked.
++   - Ask Axiom which caps the certificate used, together with the P⋆ vector.
++
++## 2. The integral bridge: minimal specification (`BridgeSpec.lean`)
++
++Everything is parametrized by `(N, g, L, C)`, and integrands are continuous. Every definition and statement type-checks against Mathlib and V1.
++
++| step | statement | content | ingredients |
++|---|---|---|---|
++| 0 | `supportT`, `stratum`, `piece`, `shift`, `roughSet` | Lemma 9.1's T̃, with C as a parameter | — |
++| 1 | `Stratification` | `∫_{T̃} f = Σ_R ∫_{stratum R} f` | null hyperplanes `{xᵢ = g}` (`Measure.pi`), finite a.e.-disjoint union |
++| 2 | `ShiftInclusionExclusion` | `∫_{stratum R} f = Σ_{K⊆Rᶜ} (−1)^{\|K\|} ∫_{piece R K} f(· + g·1_{R∪K})` | `∏(1 − aⱼ)` expansion, translation invariance of `volume` |
++| 3 | `PieceMonomial`, `PieceNull` | two-group Dirichlet value for `1 ≤ \|R\| < N`, and empty pieces | V1 `simplex_integral` on the `Rᶜ` block (radius `M − Σ_R y`), Fubini (V1's `piFinSuccAbove` pattern), V1 again on the R block after `M − Σ_R y = (M − c) + (c − Σ_R y)` |
++| 4 | `IncBetaIntegral` | `∫₀^c u^p (M−u)^q = Σ_j C(q,j) M^{q−j} (−1)^j c^{p+j+1}/(p+j+1)` | `add_pow`, `integral_pow`; a short proof |
++| — | `SupportMono` | smaller caps give a smaller support | immediate |
++| target | `GramEntryIntegral q` | `∫_{T̃} (L − P₁)P₂ = q` with Table 3 caps; with `q` from `entry_45` | steps 1–4, the binomial expansion of `(g + y)^e`, and counting of (R, K) by cardinalities |
++
++Two remarks found while writing the statements:
++- `PieceNull` needs `0 < N`, because ℝ⁰ is a point of measure one.
++- `PieceMonomial` needs `1 ≤ |R| < N`. The cases R = ∅ and R = univ are V1's one-group formula.
++
++What V1 already supplies:
++- `simplex_integral` gives the one-group pieces outright.
++- Its proof pattern (`measurePreserving_piFinSuccAbove`, `integral_prod`) is the Fubini step of step 3.
++- `poly_integral` is the linearity pattern for the binomial expansion.
++
++What is new:
++- step 1's null-boundary argument;
++- step 2's inclusion–exclusion over sets;
++- the counting lemma that groups `Σ_{R,K}` into binomial multiplicities. This last one is finite combinatorics plus permutation invariance of `volume` (`volume_measurePreserving_piCongrLeft`).
++
++## 3. Recommended next verification milestone: **V2b, the first Gram entry as an integral**
++
++A thirteenth Challenge/Solution pair:
++- **Prove** steps 1–4, `PieceNull` and `SupportMono` for general (N, g, L, C).
++- **Promote** `GramEntry.lean`'s computable definitions into a library module, and prove the counting lemma that `moment N α` equals the unreduced (R, K) sum.
++- **Conclude** `GramEntryIntegral` for the V2a entry. This is the first Gram entry proved as a Lebesgue integral, with its rational value kernel-checked.
++- **Controls:** the N = 1 and N = 2 exact cases, plus a statement-level negative control.
++- **Target:** 13/13 suites.
++
++Why this comes before optimized certificates and P⋆:
++- It is independent of the cap question, because it is parametric in C.
++- It is independent of P⋆.
++- It is the step that turns rational arithmetic into a statement about I_T. Optimized certificates (an aggregate route with integer arithmetic) then change only the computable side. The bridge statements stay fixed.
++
++After V2b, in your priority order:
++1. **Optimized certificates.** Use the aggregate form `(M − u₁ − u₂)^A · E[P_Λ | u₁, u₂]` over 2,714 Λ, with Nat arithmetic over one common denominator.
++2. **P⋆.** Obtain it from Axiom, or reconstruct it from exploratory Gram matrices. Settle the cap question with test 3 or 4 above. Then V3 checks `I_T(P⋆) > 0` and `J_T(P⋆) − 4I_T(P⋆) > 0` directly.
++
++## 4. Questions for Axiom
++
++1. Which rough caps were used for the exact values behind Theorem 11.1: Table 3's ten-rung `C(m) = 4B₁,ₘ`, or the two-level `C(1) = C(2) = 31/50`, `C(s ≥ 3) = 17/25` from the proof of Lemma 9.1?
++2. The exact rational coefficient vector of P⋆ in the B₂₁ generators (the "certificate" of §11).
++3. The J_T normalization in Theorem 11.1 (B3 finding F3, settled by §9.4's factor 45): please confirm that `J_T(F) = 45 ∫_{T̂} (∫₀^{U} F du)² dx̂` is the quantity in `J_T(F⋆)/I_T(F⋆) = 4.00438…`.
++
++Admissible generalizations trail leading specifications.
+diff --git a/Exploratory/V2a/CapAudit.lean b/Exploratory/V2a/CapAudit.lean
+new file mode 100644
+index 0000000..163bff3
+--- /dev/null
++++ b/Exploratory/V2a/CapAudit.lean
+@@ -0,0 +1,75 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.1 (p. 4), Lemma 7.10 (p. 36), Table 3 and §9.1 (p. 39),
++§9.3 dictionary and Lemma 9.1 with its proof (pp. 40–41), Lemma 9.2 (p. 41).
++-/
++import BGP212.Params
++
++/-! # V2a (exploratory): the two cap sequences of §9
++
++The proof of Lemma 9.1 says the dilation "sends the two physical rough caps to
++`C(1) = C(2) = 31/50` and `C(s) = 17/25` for `s ≥ 3`". Undoing the dilation by 4, these are
++the physical caps `B'₁ = B'₂ = 31/200`, `B'ₘ = 17/100` (`m ≥ 3`): a two-level datum, `twoCap`.
++Table 3 (and `BGP212.Params.B`) carries the ten-rung sequence.
++
++Every statement below is decided by the kernel over `m ≤ ⌊1/δ⌋ = 60`, the full column range of
++Definition 4.1's matrix `B`. -/
++
++namespace BGP212.V2a.Caps
++
++open BGP212.Params
++
++/-- The physical two-level cap datum read off from the proof of Lemma 9.1. -/
++def twoCap (m : Nat) : Rat :=
++  if m = 0 then 0 else if m ≤ 2 then 31 / 200 else 17 / 100
++
++/-- `⌊1/δ⌋ = 60`. -/
++theorem floor_inv_delta : (2500 / 41 : Nat) = 60 := by decide
++
++/-- The numbers printed in Lemma 9.1's proof are exactly the dilation of `twoCap`. -/
++theorem lemma_9_1_proof_numbers :
++    4 * twoCap 1 = 31 / 50 ∧ 4 * twoCap 2 = 31 / 50 ∧ ∀ m ∈ List.range' 3 58, 4 * twoCap m = 17 / 25 := by
++  decide +kernel
++
++/-- Table 3's rescaled caps differ from them at every rough count `s ≥ 1`. -/
++theorem table3_differs : ∀ m ∈ List.range' 1 60, C m ≠ 4 * twoCap m := by decide +kernel
++
++/-- Definition 4.1's conditions `δ < B_m ≤ B_{m+1} ≤ B_m + δ` hold for **both** data. -/
++theorem def41_table3 : ∀ m ∈ List.range' 1 59, δ < B m ∧ B m ≤ B (m + 1) ∧ B (m + 1) ≤ B m + δ := by
++  decide +kernel
++
++theorem def41_twoCap :
++    ∀ m ∈ List.range' 1 59, δ < twoCap m ∧ twoCap m ≤ twoCap (m + 1) ∧ twoCap (m + 1) ≤ twoCap m + δ := by
++  decide +kernel
++
++/-- The two-cap datum lies below Table 3 at every rough count, so its support is contained in
++Table 3's support (same band `A`, smaller rough-mass caps). -/
++theorem twoCap_le_table3 : ∀ m ∈ List.range 61, twoCap m ≤ B m := by decide +kernel
++
++/-- Strict at every `m ≥ 1`: the containment is proper. -/
++theorem twoCap_lt_table3 : ∀ m ∈ List.range' 1 60, twoCap m < B m := by decide +kernel
++
++/-- Largest feasible rough count (`m δ ≤ B_m`): 13 for Table 3 (Lemma 7.10 ranges over
++`m, m′ ≤ 13`), 10 for the two-cap datum. -/
++theorem max_rough_table3 : 13 * δ ≤ B 13 ∧ ∀ m ∈ List.range' 14 47, B m < m * δ := by decide +kernel
++
++theorem max_rough_twoCap : 10 * δ ≤ twoCap 10 ∧ ∀ m ∈ List.range' 11 50, twoCap m < m * δ := by
++  decide +kernel
++
++/-- Lemma 9.2's fiber formula needs every cap step below `g` (equivalently `B_{m+1} − B_m < δ`);
++both data satisfy it. Table 3's tightest step is `m = 2 → 3`: `81/5000 < 82/5000`. -/
++theorem step_lt_delta_table3 : ∀ m ∈ List.range' 1 59, B (m + 1) - B m < δ := by decide +kernel
++
++theorem step_lt_delta_twoCap : ∀ m ∈ List.range' 1 59, twoCap (m + 1) - twoCap m < δ := by
++  decide +kernel
++
++theorem tightest_step : B 3 - B 2 = 81 / 5000 ∧ δ = 82 / 5000 := by decide +kernel
++
++/-- The first-rung cap wall of Table 4 / Appendix B (`B₁,₁ ≤ 778/5000`) holds for both. -/
++theorem first_rung_wall : B 1 ≤ 778 / 5000 ∧ twoCap 1 ≤ 778 / 5000 := by decide +kernel
++
++end BGP212.V2a.Caps
++
++#print axioms BGP212.V2a.Caps.twoCap_le_table3
+diff --git a/Exploratory/V2a/NOTES.md b/Exploratory/V2a/NOTES.md
+index 27c9390..1072de5 100644
+--- a/Exploratory/V2a/NOTES.md
++++ b/Exploratory/V2a/NOTES.md
+@@ -63,7 +63,7 @@ What this certifies: the kernel checks the **rational arithmetic of the decompos
+     - for m(40), the two cap sequences differ by **0.98 %**;
+     - for m(20), by 8.2·10⁻⁵;
+     - the margin is `4.00438/4 − 1 ≈ 1.1·10⁻³`.
+-  - **Which caps P⋆'s certificate used must be confirmed before V3.**
++  - **Which caps P⋆'s certificate used must be confirmed before V3.** Analysed in `CAPS_AND_BRIDGE.md` §1.
+ - **F2. The caps cut little at low degree and a lot at high degree.**
+   - The relative cap corrections against the full simplex `{P₁ ≤ L}` are:
+ 
+-- 
+2.43.0
+
