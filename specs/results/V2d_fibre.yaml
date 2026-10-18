@@ -65,8 +65,10 @@ verification:
     memory: "the import baseline (about 3 GB); no certificate"
     disk: "under 1 MB of new build artefacts"
   sandbox: >
-    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
-    the real landrun sandbox is recorded below.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All fifteen Comparator suites passed Lean kernel verification.
+    Four positive controls passed and four negative controls were rejected.
+    All negative controls produced unsolved goals.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -79,7 +81,7 @@ result:
     - "Your solution is okay!"
   verify_time: "about 104 seconds for the V2d comparator suite in the build container"
   run_date: 2026-10-18
-  commit_hash: PENDING_VPS
+  commit_hash: 52fd36a
 
 next_development:
   V2e: >
