@@ -1,0 +1,771 @@
+From 0ce145b50e010d621c22ed11883dd7b5a51af65a Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 17:54:02 -0600
+Subject: [PATCH] V1: the simplex moment identity (10.1) as a Lebesgue integral
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Twelfth Challenge/Solution pair. Proves the Beta integral
+∫₀^R x^u (R−x)^v = R^{u+v+1} u! v!/(u+v+1)! and, by Fubini and induction on the
+dimension, ∫_{z≥0, Σz≤R} ∏ zᵢ^{eᵢ} = R^{m+Σe} ∏ eᵢ!/(m+Σe)!, with the m = 0, R = 0,
+R < 0 and volume cases. At rational R the integral equals V0's simplexMoment,
+and rational polynomials integrate to an explicit rational (Lemma 10.1 on the
+simplex). Comparator suite simplex_moment_v1 added (12 suites); controls and
+result record included. Axioms: propext, Quot.sound, Classical.choice.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                                |   1 +
+ BGP212/SimplexMoment.lean                  |  50 ++++
+ Challenge.lean                             |   1 +
+ Challenge/SimplexMoment.lean               |  82 ++++++
+ Comparator/simplex_moment_v1.json          |  33 +++
+ README.md                                  |  21 +-
+ Solution.lean                              |   1 +
+ Solution/SimplexMoment.lean                | 304 +++++++++++++++++++++
+ specs/checks/simplex_moment_v1_controls.py |  35 +++
+ specs/results/V1_simplex_moment.yaml       | 104 +++++++
+ verify.sh                                  |   2 +-
+ 11 files changed, 632 insertions(+), 2 deletions(-)
+ create mode 100644 BGP212/SimplexMoment.lean
+ create mode 100644 Challenge/SimplexMoment.lean
+ create mode 100644 Comparator/simplex_moment_v1.json
+ create mode 100644 Solution/SimplexMoment.lean
+ create mode 100644 specs/checks/simplex_moment_v1_controls.py
+ create mode 100644 specs/results/V1_simplex_moment.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 9ec47a7..caa63a1 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -10,3 +10,4 @@ import BGP212.PackingLedgerB
+ import BGP212.Theorem711
+ import BGP212.Gap
+ import BGP212.Variational
++import BGP212.SimplexMoment
+diff --git a/BGP212/SimplexMoment.lean b/BGP212/SimplexMoment.lean
+new file mode 100644
+index 0000000..ea61f9c
+--- /dev/null
++++ b/BGP212/SimplexMoment.lean
+@@ -0,0 +1,50 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): (10.1), Lemma 10.1 and Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.Variational
++import Mathlib.MeasureTheory.Constructions.Pi
++import Mathlib.MeasureTheory.Integral.Prod
++import Mathlib.Algebra.MvPolynomial.Eval
++
++/-! # V1: the simplex moment identity (10.1) as an integral
++
++Track B (Mathlib measure theory). V0 defined the right side of (10.1) as the rational
++`simplexMoment` and proved its algebraic identities; V1 proves the integral identity itself:
++
++  `∫_{z ∈ ℝ^m, z ≥ 0, Σ zᵢ ≤ R} ∏ zᵢ^{eᵢ} dz = R^{m + Σ eᵢ} ∏ eᵢ! / (m + Σ eᵢ)!`
++
++with respect to Lebesgue measure (`volume` on `Fin m → ℝ`).
++
++* `simplex m R`: the closed simplex `{z | ∀ i, 0 ≤ zᵢ, Σ zᵢ ≤ R}`.
++* `momentR m R e`: the right side of (10.1) over `ℝ`.
++* `betaR R u v`: the right side of the Beta moment `∫₀^R z^u (R − z)^v dz`.
++* `polyIntegralQ R G`: the rational value `Σ_d G_d · simplexMoment R d` assigned to a rational
++  polynomial `G`; Lemma 10.1 for the simplex is that it equals the integral of `G`. -/
++
++namespace BGP212.Var
++
++open MeasureTheory
++
++/-- The closed simplex `{z ∈ ℝ^m : zᵢ ≥ 0, Σ zᵢ ≤ R}`. -/
++def simplex (m : ℕ) (R : ℝ) : Set (Fin m → ℝ) := {z | (∀ i, 0 ≤ z i) ∧ ∑ i, z i ≤ R}
++
++/-- The right side of (10.1) over `ℝ`. -/
++noncomputable def momentR (m : ℕ) (R : ℝ) (e : Fin m → ℕ) : ℝ :=
++  R ^ (m + ∑ i, e i) * (∏ i, ((e i).factorial : ℝ)) / ((m + ∑ i, e i).factorial : ℝ)
++
++/-- The right side of the Beta moment over `ℝ`. -/
++noncomputable def betaR (R : ℝ) (u v : ℕ) : ℝ :=
++  R ^ (u + v + 1) * (u.factorial : ℝ) * (v.factorial : ℝ) / ((u + v + 1).factorial : ℝ)
++
++/-- The exponent vector `d` as V0's list of exponents. -/
++def expList {m : ℕ} (d : Fin m →₀ ℕ) : List ℕ := List.ofFn fun i => d i
++
++/-- The rational value of `∫_{simplex m R} G` for `G ∈ ℚ[z₁, …, z_m]`: each monomial `z^d`
++contributes `simplexMoment R d`. -/
++noncomputable def polyIntegralQ {m : ℕ} (R : ℚ) (G : MvPolynomial (Fin m) ℚ) : ℚ :=
++  ∑ d ∈ G.support, G.coeff d * simplexMoment R (expList d)
++
++end BGP212.Var
+diff --git a/Challenge.lean b/Challenge.lean
+index 93fa5e9..9662d92 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -9,3 +9,4 @@ import Challenge.PackingC
+ import Challenge.Theorem711
+ import Challenge.Gap
+ import Challenge.Variational
++import Challenge.SimplexMoment
+diff --git a/Challenge/SimplexMoment.lean b/Challenge/SimplexMoment.lean
+new file mode 100644
+index 0000000..9c6c61a
+--- /dev/null
++++ b/Challenge/SimplexMoment.lean
+@@ -0,0 +1,82 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): (10.1) and Lemma 10.1 (pp. 41–42).
++-/
++import BGP212.SimplexMoment
++import Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic
++
++/-! # V1: the simplex moment identity (10.1) as an integral
++
++Statements only; proofs live in `Solution/SimplexMoment.lean`. Objects are defined in
++`BGP212/SimplexMoment.lean`. V0's `simplexMoment` and `betaMoment` are the rational right-hand
++sides; the theorems here are the integral identities they evaluate. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Var MeasureTheory
++
++/-- The simplex is compact (closed and inside `[0, |R|]^m`). -/
++theorem simplex_isCompact (m : ℕ) (R : ℝ) : IsCompact (simplex m R) :=
++  sorry
++
++/-- For `R < 0` the simplex is empty. -/
++theorem simplex_empty (m : ℕ) (R : ℝ) (hR : R < 0) : simplex m R = ∅ :=
++  sorry
++
++/-- The Fubini slice: `(x, w) ∈ simplex (m+1) R ↔ x ≥ 0 ∧ w ∈ simplex m (R − x)`. -/
++theorem cons_mem_simplex (m : ℕ) (R x : ℝ) (w : Fin m → ℝ) :
++    (Fin.cons x w : Fin (m + 1) → ℝ) ∈ simplex (m + 1) R ↔ 0 ≤ x ∧ w ∈ simplex m (R - x) :=
++  sorry
++
++/-- **The Beta moment**: `∫₀^R z^u (R − z)^v dz = R^{u+v+1} u! v! / (u+v+1)!` for every real `R`. -/
++theorem beta_integral (R : ℝ) (v u : ℕ) :
++    ∫ x in (0 : ℝ)..R, x ^ u * (R - x) ^ v = betaR R u v :=
++  sorry
++
++/-- **(10.1)**: `∫_{z ≥ 0, Σ zᵢ ≤ R} ∏ zᵢ^{eᵢ} dz = R^{m + Σ eᵢ} ∏ eᵢ! / (m + Σ eᵢ)!` for `R ≥ 0`. -/
++theorem simplex_integral (m : ℕ) (R : ℝ) (e : Fin m → ℕ) (hR : 0 ≤ R) :
++    ∫ z in simplex m R, ∏ i, z i ^ e i = momentR m R e :=
++  sorry
++
++/-- `m = 0`: the integral is `1` (a point of measure `1`). -/
++theorem simplex_integral_zero_dim (R : ℝ) (hR : 0 ≤ R) :
++    ∫ z in simplex 0 R, ∏ i, z i ^ (Fin.elim0 i : ℕ) = 1 :=
++  sorry
++
++/-- `R < 0`: every moment is `0`. -/
++theorem simplex_integral_neg (m : ℕ) (R : ℝ) (e : Fin m → ℕ) (hR : R < 0) :
++    ∫ z in simplex m R, ∏ i, z i ^ e i = 0 :=
++  sorry
++
++/-- `R = 0`, `m ≥ 1`: every moment is `0`. -/
++theorem simplex_integral_radius_zero (m : ℕ) (e : Fin (m + 1) → ℕ) :
++    ∫ z in simplex (m + 1) 0, ∏ i, z i ^ e i = 0 :=
++  sorry
++
++/-- The volume of the simplex is `R^m / m!`. -/
++theorem simplex_volume (m : ℕ) (R : ℝ) (hR : 0 ≤ R) :
++    ∫ _ in simplex m R, (1 : ℝ) = R ^ m / (m.factorial : ℝ) :=
++  sorry
++
++/-- At a rational radius the Beta integral's value is V0's `betaMoment`. -/
++theorem betaR_eq_betaMoment (R : ℚ) (u v : ℕ) : betaR (R : ℝ) u v = (betaMoment R u v : ℝ) :=
++  sorry
++
++/-- At a rational radius the value of (10.1) is V0's `simplexMoment`. -/
++theorem momentR_eq_simplexMoment (m : ℕ) (R : ℚ) (e : Fin m → ℕ) :
++    momentR m (R : ℝ) e = (simplexMoment R (List.ofFn e) : ℝ) :=
++  sorry
++
++/-- **(10.1) at a rational radius**: the integral is the rational `simplexMoment R e`. -/
++theorem simplex_integral_rat (m : ℕ) (R : ℚ) (hR : 0 ≤ R) (e : Fin m → ℕ) :
++    ∫ z in simplex m (R : ℝ), ∏ i, z i ^ e i = (simplexMoment R (List.ofFn e) : ℝ) :=
++  sorry
++
++/-- **Lemma 10.1 on the simplex**: a rational polynomial integrates to `polyIntegralQ R G ∈ ℚ`. -/
++theorem poly_integral (m : ℕ) (R : ℚ) (hR : 0 ≤ R) (G : MvPolynomial (Fin m) ℚ) :
++    ∫ z in simplex m (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) z G = (polyIntegralQ R G : ℝ) :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/simplex_moment_v1.json b/Comparator/simplex_moment_v1.json
+new file mode 100644
+index 0000000..16d8162
+--- /dev/null
++++ b/Comparator/simplex_moment_v1.json
+@@ -0,0 +1,33 @@
++{
++    "challenge_module": "Challenge.SimplexMoment",
++    "solution_module": "Solution.SimplexMoment",
++    "theorem_names": [
++        "BGP212.Challenge.simplex_isCompact",
++        "BGP212.Challenge.simplex_empty",
++        "BGP212.Challenge.cons_mem_simplex",
++        "BGP212.Challenge.beta_integral",
++        "BGP212.Challenge.simplex_integral",
++        "BGP212.Challenge.simplex_integral_zero_dim",
++        "BGP212.Challenge.simplex_integral_neg",
++        "BGP212.Challenge.simplex_integral_radius_zero",
++        "BGP212.Challenge.simplex_volume",
++        "BGP212.Challenge.betaR_eq_betaMoment",
++        "BGP212.Challenge.momentR_eq_simplexMoment",
++        "BGP212.Challenge.simplex_integral_rat",
++        "BGP212.Challenge.poly_integral"
++    ],
++    "definition_names": [
++        "BGP212.Var.simplex",
++        "BGP212.Var.momentR",
++        "BGP212.Var.betaR",
++        "BGP212.Var.expList",
++        "BGP212.Var.polyIntegralQ",
++        "BGP212.Var.simplexMoment",
++        "BGP212.Var.betaMoment"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index dc583f2..91d78ba 100644
+--- a/README.md
++++ b/README.md
+@@ -150,6 +150,18 @@ in `BGP212/Variational.lean`): **the variational space `B₂₁` of §11 has dim
+ - For V1: `simplexMoment` (the right side of (10.1)) with its `m = 0`, `m = 1` and Fubini-step
+   identities.
+ 
++The twelfth pair is V1 (`Challenge/SimplexMoment.lean`, `Solution/SimplexMoment.lean`, objects
++in `BGP212/SimplexMoment.lean`): **the simplex moment identity (10.1) as a Lebesgue integral**.
++
++- `beta_integral : ∫₀^R x^u (R − x)^v dx = R^{u+v+1} u! v! / (u+v+1)!` for every real `R`.
++- `simplex_integral : ∫_{z ≥ 0, Σ zᵢ ≤ R} ∏ zᵢ^{eᵢ} dz = R^{m+Σeᵢ} ∏ eᵢ! / (m+Σeᵢ)!` for `R ≥ 0`,
++  by Fubini and induction on the dimension; boundary cases `m = 0`, `R = 0`, `R < 0`, and the
++  volume `R^m/m!`.
++- `simplex_integral_rat`: at rational `R` the integral is V0's rational `simplexMoment`; V0
++  proved the algebra of that formula, V1 proves it is the integral.
++- `poly_integral` (Lemma 10.1 on the simplex): a rational polynomial integrates to the explicit
++  rational `polyIntegralQ R G`, the step Proposition 10.2's Gram matrices build on (V2).
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+@@ -157,7 +169,7 @@ in `BGP212/Variational.lean`): **the variational space `B₂₁` of §11 has dim
+   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
+   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
+-  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0).
++  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -228,6 +240,13 @@ python3 -I specs/checks/variational_v0_negative_controls.py /tmp/v0_neg
+ for f in /tmp/v0_neg/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For V1's controls:
++
++```text
++python3 -I specs/checks/simplex_moment_v1_controls.py /tmp/v1_ctl
++for f in /tmp/v1_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 54a7af9..5cd7c0e 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -9,3 +9,4 @@ import Solution.PackingC
+ import Solution.Theorem711
+ import Solution.Gap
+ import Solution.Variational
++import Solution.SimplexMoment
+diff --git a/Solution/SimplexMoment.lean b/Solution/SimplexMoment.lean
+new file mode 100644
+index 0000000..b4b06d4
+--- /dev/null
++++ b/Solution/SimplexMoment.lean
+@@ -0,0 +1,304 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): (10.1), Lemma 10.1 (pp. 41–42).
++-/
++import BGP212.SimplexMoment
++import Solution.Variational
++import Mathlib.MeasureTheory.Integral.Pi
++import Mathlib.Analysis.SpecialFunctions.Integrals.Basic
++import Mathlib.MeasureTheory.Integral.IntervalIntegral.FundThmCalculus
++import Mathlib.Tactic.FieldSimp
++
++/-! # V1: (10.1) as an integral (proofs)
++
++* `beta_integral`: `∫₀^R z^u (R − z)^v dz = R^{u+v+1} u! v! / (u+v+1)!` for every real `R`, by
++  induction on `v`: the derivative of `z^{u+1}(R − z)^{v+1}` integrates to `0` over `[0, R]`.
++* `simplex_integral`: (10.1) for `R ≥ 0`, by induction on `m`: split off the first coordinate
++  (`measurePreserving_piFinSuccAbove`), apply Fubini (`integral_prod`), integrate the inner
++  `m`-dimensional simplex of radius `R − x` by induction, and close with the Beta moment.
++* Boundary cases, the rational form `= simplexMoment R e`, and exact integration of rational
++  polynomials (Lemma 10.1 on the simplex). -/
++
++namespace BGP212.Var
++
++open MeasureTheory
++
++theorem simplex_zero (R : ℝ) (hR : 0 ≤ R) : simplex 0 R = Set.univ := by
++  ext z; simp [simplex, hR]
++
++theorem zero_dim (R : ℝ) (e : Fin 0 → ℕ) (hR : 0 ≤ R) :
++    ∫ z in simplex 0 R, ∏ i, z i ^ e i = momentR 0 R e := by
++  rw [simplex_zero R hR, Measure.restrict_univ]
++  simp [momentR, Measure.real, volume_pi, Measure.pi_empty_univ]
++
++theorem simplex_isClosed (m : ℕ) (R : ℝ) : IsClosed (simplex m R) := by
++  have h1 : IsClosed {z : Fin m → ℝ | ∀ i, 0 ≤ z i} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun i => isClosed_le continuous_const (continuous_apply i)
++  have h2 : IsClosed {z : Fin m → ℝ | ∑ i, z i ≤ R} :=
++    isClosed_le (continuous_finsetSum _ fun i _ => continuous_apply i) continuous_const
++  exact h1.inter h2
++
++theorem simplex_subset_Icc (m : ℕ) (R : ℝ) : simplex m R ⊆ Set.Icc 0 (fun _ => |R|) := by
++  rintro z ⟨h0, hs⟩
++  refine ⟨fun i => h0 i, fun i => ?_⟩
++  have : z i ≤ ∑ j, z j := Finset.single_le_sum (fun j _ => h0 j) (Finset.mem_univ i)
++  exact le_trans this (le_trans hs (le_abs_self R))
++
++theorem simplex_isCompact (m : ℕ) (R : ℝ) : IsCompact (simplex m R) :=
++  isCompact_Icc.of_isClosed_subset (simplex_isClosed m R) (simplex_subset_Icc m R)
++
++theorem simplex_measurableSet (m : ℕ) (R : ℝ) : MeasurableSet (simplex m R) :=
++  (simplex_isClosed m R).measurableSet
++
++theorem simplex_empty (m : ℕ) (R : ℝ) (hR : R < 0) : simplex m R = ∅ := by
++  ext z
++  simp only [simplex, Set.mem_ofPred_eq, Set.mem_empty_iff_false, iff_false, not_and, not_le]
++  intro h0
++  exact lt_of_lt_of_le hR (Finset.sum_nonneg fun i _ => h0 i)
++
++theorem cons_mem_simplex (m : ℕ) (R x : ℝ) (w : Fin m → ℝ) :
++    (Fin.cons x w : Fin (m + 1) → ℝ) ∈ simplex (m + 1) R ↔ 0 ≤ x ∧ w ∈ simplex m (R - x) := by
++  simp only [simplex, Set.mem_ofPred_eq, Fin.forall_fin_succ, Fin.cons_zero, Fin.cons_succ,
++    Fin.sum_univ_succ]
++  constructor
++  · rintro ⟨⟨h1, h2⟩, h3⟩; exact ⟨h1, h2, by linarith⟩
++  · rintro ⟨h1, h2, h3⟩; exact ⟨⟨h1, h2⟩, by linarith⟩
++
++theorem integrableOn_monomial (m : ℕ) (R : ℝ) (e : Fin m → ℕ) :
++    IntegrableOn (fun z : Fin m → ℝ => ∏ i, z i ^ e i) (simplex m R) :=
++  (by fun_prop : Continuous fun z : Fin m → ℝ => ∏ i, z i ^ e i).continuousOn.integrableOn_compact
++    (simplex_isCompact m R)
++
++/-- The inner integral over the last `m` coordinates, at a fixed first coordinate `x`. -/
++theorem inner_eq (m : ℕ) (R : ℝ) (e : Fin (m + 1) → ℕ)
++    (ih : ∀ r, 0 ≤ r → ∫ w in simplex m r, ∏ j, w j ^ e j.succ = momentR m r (fun j : Fin m => e j.succ))
++    (x : ℝ) :
++    ∫ w : Fin m → ℝ, (simplex (m + 1) R).indicator (fun z => ∏ i, z i ^ e i) (Fin.cons x w) =
++      (Set.Icc 0 R).indicator (fun x => x ^ e 0 * momentR m (R - x) (fun j : Fin m => e j.succ)) x := by
++  by_cases hx : 0 ≤ x ∧ x ≤ R
++  · rw [Set.indicator_of_mem (show x ∈ Set.Icc 0 R from hx)]
++    have : (fun w : Fin m → ℝ => (simplex (m + 1) R).indicator (fun z => ∏ i, z i ^ e i)
++        (Fin.cons x w)) = fun w => x ^ e 0 *
++          (simplex m (R - x)).indicator (fun w => ∏ j, w j ^ e j.succ) w := by
++      funext w
++      by_cases hw : w ∈ simplex m (R - x)
++      · rw [Set.indicator_of_mem ((cons_mem_simplex m R x w).mpr ⟨hx.1, hw⟩),
++          Set.indicator_of_mem hw, Fin.prod_univ_succ]
++        simp
++      · rw [Set.indicator_of_notMem (fun h => hw ((cons_mem_simplex m R x w).mp h).2),
++          Set.indicator_of_notMem hw, mul_zero]
++    rw [this, MeasureTheory.integral_const_mul, integral_indicator (simplex_measurableSet m _),
++      ih (R - x) (by linarith [hx.2])]
++  · rw [Set.indicator_of_notMem (show x ∉ Set.Icc 0 R from hx)]
++    have : (fun w : Fin m → ℝ => (simplex (m + 1) R).indicator (fun z => ∏ i, z i ^ e i)
++        (Fin.cons x w)) = fun _ => 0 := by
++      funext w
++      refine Set.indicator_of_notMem (fun h => hx ?_) _
++      obtain ⟨h1, h2⟩ := (cons_mem_simplex m R x w).mp h
++      refine ⟨h1, ?_⟩
++      by_contra hlt
++      rw [simplex_empty m (R - x) (by linarith)] at h2
++      exact h2
++    rw [this, MeasureTheory.integral_zero]
++
++theorem beta_step (R : ℝ) (u v : ℕ) :
++    ((u : ℝ) + 1) * ∫ x in (0 : ℝ)..R, x ^ u * (R - x) ^ (v + 1) =
++      ((v : ℝ) + 1) * ∫ x in (0 : ℝ)..R, x ^ (u + 1) * (R - x) ^ v := by
++  have hG : ∀ x ∈ Set.uIcc (0 : ℝ) R, HasDerivAt (fun x => x ^ (u + 1) * (R - x) ^ (v + 1))
++      (((u : ℝ) + 1) * (x ^ u * (R - x) ^ (v + 1)) - ((v : ℝ) + 1) * (x ^ (u + 1) * (R - x) ^ v)) x := by
++    intro x _
++    have h1 := hasDerivAt_pow (u + 1) x
++    have h2 := (hasDerivAt_pow (v + 1) (R - x)).comp x ((hasDerivAt_id x).const_sub R)
++    refine HasDerivAt.congr_deriv (h1.mul h2) ?_
++    simp only [Nat.add_sub_cancel]
++    push_cast
++    ring
++  have hint : IntervalIntegrable (fun x : ℝ => ((u : ℝ) + 1) * (x ^ u * (R - x) ^ (v + 1)) -
++      ((v : ℝ) + 1) * (x ^ (u + 1) * (R - x) ^ v)) volume 0 R :=
++    (by fun_prop : Continuous fun x : ℝ => ((u : ℝ) + 1) * (x ^ u * (R - x) ^ (v + 1)) -
++      ((v : ℝ) + 1) * (x ^ (u + 1) * (R - x) ^ v)).intervalIntegrable 0 R
++  have := intervalIntegral.integral_eq_sub_of_hasDerivAt hG hint
++  rw [intervalIntegral.integral_sub, intervalIntegral.integral_const_mul,
++    intervalIntegral.integral_const_mul] at this
++  · simp at this
++    linarith
++  · exact ((by fun_prop : Continuous fun x : ℝ => ((u : ℝ) + 1) * (x ^ u * (R - x) ^ (v + 1)))).intervalIntegrable 0 R
++  · exact ((by fun_prop : Continuous fun x : ℝ => ((v : ℝ) + 1) * (x ^ (u + 1) * (R - x) ^ v))).intervalIntegrable 0 R
++
++theorem beta_integral (R : ℝ) : ∀ (v u : ℕ), ∫ x in (0 : ℝ)..R, x ^ u * (R - x) ^ v = betaR R u v
++  | 0, u => by
++      simp only [pow_zero, mul_one, integral_pow, betaR, Nat.factorial_zero, Nat.cast_one]
++      rw [Nat.factorial_succ]
++      have : (u.factorial : ℝ) ≠ 0 := by positivity
++      push_cast
++      field_simp
++      simp
++  | v + 1, u => by
++      have h := beta_step R u v
++      rw [beta_integral R v (u + 1)] at h
++      have hu : ((u : ℝ) + 1) ≠ 0 := by positivity
++      rw [show (∫ x in (0 : ℝ)..R, x ^ u * (R - x) ^ (v + 1)) =
++        ((v : ℝ) + 1) * betaR R (u + 1) v / ((u : ℝ) + 1) by field_simp; linarith]
++      simp only [betaR]
++      rw [show u + 1 + v + 1 = u + (v + 1) + 1 by omega, Nat.factorial_succ u, Nat.factorial_succ v]
++      push_cast
++      field_simp
++
++theorem moment_cons (m : ℕ) (R : ℝ) (e : Fin (m + 1) → ℕ) :
++    momentR (m + 1) R e =
++      (∏ j : Fin m, ((e j.succ).factorial : ℝ)) / ((m + ∑ j : Fin m, e j.succ).factorial : ℝ) *
++        betaR R (e 0) (m + ∑ j : Fin m, e j.succ) := by
++  simp only [momentR, betaR, Fin.sum_univ_succ, Fin.prod_univ_succ]
++  rw [show m + 1 + (e 0 + ∑ j : Fin m, e j.succ) = e 0 + (m + ∑ j : Fin m, e j.succ) + 1 by omega]
++  have : ((m + ∑ j : Fin m, e j.succ).factorial : ℝ) ≠ 0 := by positivity
++  field_simp
++
++/-- **(10.1)**: `∫_{z ≥ 0, Σ z ≤ R} ∏ zᵢ^{eᵢ} dz = R^{m + Σ eᵢ} ∏ eᵢ! / (m + Σ eᵢ)!` for `R ≥ 0`. -/
++theorem simplex_integral : ∀ (m : ℕ) (R : ℝ) (e : Fin m → ℕ), 0 ≤ R →
++    ∫ z in simplex m R, ∏ i, z i ^ e i = momentR m R e
++  | 0, R, e, hR => zero_dim R e hR
++  | m + 1, R, e, hR => by
++      have ih := fun r hr => simplex_integral m r (fun j : Fin m => e j.succ) hr
++      have hE := (measurePreserving_piFinSuccAbove (fun _ : Fin (m + 1) => (volume : Measure ℝ)) 0)
++      have hint : Integrable ((simplex (m + 1) R).indicator fun z : Fin (m + 1) → ℝ =>
++          ∏ i, z i ^ e i) (Measure.pi fun _ => volume) := by
++        rw [← volume_pi, integrable_indicator_iff (simplex_measurableSet _ _)]
++        exact integrableOn_monomial _ _ _
++      rw [← integral_indicator (simplex_measurableSet _ _), volume_pi,
++        ← hE.symm.integral_comp', integral_prod _ ?_]
++      · simp only [MeasurableEquiv.piFinSuccAbove_symm_apply, Fin.insertNthEquiv,
++          Equiv.coe_fn_mk, Fin.insertNth_zero']
++        simp_rw [← volume_pi]
++        simp_rw [inner_eq m R e ih]
++        rw [integral_indicator measurableSet_Icc, integral_Icc_eq_integral_Ioc,
++          ← intervalIntegral.integral_of_le hR]
++        simp only [momentR]
++        have : (fun x : ℝ => x ^ e 0 * ((R - x) ^ (m + ∑ j : Fin m, e j.succ) *
++            (∏ j : Fin m, ((e j.succ).factorial : ℝ)) / ((m + ∑ j : Fin m, e j.succ).factorial : ℝ))) =
++            fun x => (∏ j : Fin m, ((e j.succ).factorial : ℝ)) / ((m + ∑ j : Fin m, e j.succ).factorial : ℝ) *
++              (x ^ e 0 * (R - x) ^ (m + ∑ j : Fin m, e j.succ)) := by
++          funext x; ring
++        rw [this, intervalIntegral.integral_const_mul, beta_integral, ← moment_cons]
++        rfl
++      · exact (hE.symm.integrable_comp_emb (MeasurableEquiv.measurableEmbedding _)).mpr hint
++
++
++/-! ## Boundary cases -/
++
++/-- `m = 0`: the simplex in `ℝ⁰` is the single point when `R ≥ 0`, of measure `1`. -/
++theorem simplex_integral_zero_dim (R : ℝ) (hR : 0 ≤ R) :
++    ∫ z in simplex 0 R, ∏ i, z i ^ (Fin.elim0 i : ℕ) = 1 := by
++  rw [simplex_integral 0 R _ hR]; simp [momentR]
++
++/-- `R < 0`: the simplex is empty and every moment vanishes. -/
++theorem simplex_integral_neg (m : ℕ) (R : ℝ) (e : Fin m → ℕ) (hR : R < 0) :
++    ∫ z in simplex m R, ∏ i, z i ^ e i = 0 := by
++  rw [simplex_empty m R hR, Measure.restrict_empty, integral_zero_measure]
++
++/-- `R = 0`, `m ≥ 1`: the simplex is a point of measure zero. -/
++theorem simplex_integral_radius_zero (m : ℕ) (e : Fin (m + 1) → ℕ) :
++    ∫ z in simplex (m + 1) 0, ∏ i, z i ^ e i = 0 := by
++  rw [simplex_integral (m + 1) 0 e le_rfl]
++  simp [momentR]
++
++/-- The volume of the simplex: `R^m / m!`. -/
++theorem simplex_volume (m : ℕ) (R : ℝ) (hR : 0 ≤ R) :
++    ∫ _ in simplex m R, (1 : ℝ) = R ^ m / (m.factorial : ℝ) := by
++  have := simplex_integral m R (fun _ => 0) hR
++  simp only [pow_zero, Finset.prod_const_one] at this
++  rw [this]; simp [momentR]
++
++/-! ## The integral identity and V0's algebraic formula -/
++
++/-- `betaR` at a rational radius is V0's `betaMoment`. -/
++theorem betaR_eq_betaMoment (R : ℚ) (u v : ℕ) : betaR (R : ℝ) u v = (betaMoment R u v : ℝ) := by
++  simp [betaR, betaMoment]
++
++/-- `momentR` at a rational radius is V0's `simplexMoment` of the exponent list. -/
++theorem momentR_eq_simplexMoment (m : ℕ) (R : ℚ) (e : Fin m → ℕ) :
++    momentR m (R : ℝ) e = (simplexMoment R (List.ofFn e) : ℝ) := by
++  simp only [momentR, simplexMoment, List.length_ofFn, List.sum_ofFn, List.map_ofFn,
++    List.prod_ofFn, Function.comp_def]
++  push_cast
++  ring
++
++/-- **(10.1) at a rational radius**: the integral equals V0's rational `simplexMoment`. -/
++theorem simplex_integral_rat (m : ℕ) (R : ℚ) (hR : 0 ≤ R) (e : Fin m → ℕ) :
++    ∫ z in simplex m (R : ℝ), ∏ i, z i ^ e i = (simplexMoment R (List.ofFn e) : ℝ) := by
++  rw [simplex_integral _ _ _ (by exact_mod_cast hR), momentR_eq_simplexMoment]
++
++/-! ## Rational polynomials on the simplex (Lemma 10.1) -/
++
++/-- **Lemma 10.1 on the simplex**: for `G ∈ ℚ[z₁, …, z_m]` and rational `R ≥ 0`, the integral of
++`G` over the simplex is the rational number `polyIntegralQ R G`. -/
++theorem poly_integral (m : ℕ) (R : ℚ) (hR : 0 ≤ R) (G : MvPolynomial (Fin m) ℚ) :
++    ∫ z in simplex m (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) z G = (polyIntegralQ R G : ℝ) := by
++  simp only [MvPolynomial.eval₂_eq', polyIntegralQ]
++  rw [integral_finsetSum]
++  · push_cast
++    refine Finset.sum_congr rfl fun d _ => ?_
++    rw [MeasureTheory.integral_const_mul, simplex_integral _ _ _ (by exact_mod_cast hR)]
++    congr 1
++    exact momentR_eq_simplexMoment m R d
++  · intro d _
++    exact (integrableOn_monomial m _ _).const_mul _
++
++end BGP212.Var
++
++namespace BGP212.Challenge
++
++open BGP212.Var MeasureTheory
++
++theorem simplex_isCompact (m : ℕ) (R : ℝ) : IsCompact (simplex m R) :=
++  BGP212.Var.simplex_isCompact m R
++
++theorem simplex_empty (m : ℕ) (R : ℝ) (hR : R < 0) : simplex m R = ∅ :=
++  BGP212.Var.simplex_empty m R hR
++
++theorem cons_mem_simplex (m : ℕ) (R x : ℝ) (w : Fin m → ℝ) :
++    (Fin.cons x w : Fin (m + 1) → ℝ) ∈ simplex (m + 1) R ↔ 0 ≤ x ∧ w ∈ simplex m (R - x) :=
++  BGP212.Var.cons_mem_simplex m R x w
++
++theorem beta_integral (R : ℝ) (v u : ℕ) :
++    ∫ x in (0 : ℝ)..R, x ^ u * (R - x) ^ v = betaR R u v :=
++  BGP212.Var.beta_integral R v u
++
++theorem simplex_integral (m : ℕ) (R : ℝ) (e : Fin m → ℕ) (hR : 0 ≤ R) :
++    ∫ z in simplex m R, ∏ i, z i ^ e i = momentR m R e :=
++  BGP212.Var.simplex_integral m R e hR
++
++theorem simplex_integral_zero_dim (R : ℝ) (hR : 0 ≤ R) :
++    ∫ z in simplex 0 R, ∏ i, z i ^ (Fin.elim0 i : ℕ) = 1 :=
++  BGP212.Var.simplex_integral_zero_dim R hR
++
++theorem simplex_integral_neg (m : ℕ) (R : ℝ) (e : Fin m → ℕ) (hR : R < 0) :
++    ∫ z in simplex m R, ∏ i, z i ^ e i = 0 :=
++  BGP212.Var.simplex_integral_neg m R e hR
++
++theorem simplex_integral_radius_zero (m : ℕ) (e : Fin (m + 1) → ℕ) :
++    ∫ z in simplex (m + 1) 0, ∏ i, z i ^ e i = 0 :=
++  BGP212.Var.simplex_integral_radius_zero m e
++
++theorem simplex_volume (m : ℕ) (R : ℝ) (hR : 0 ≤ R) :
++    ∫ _ in simplex m R, (1 : ℝ) = R ^ m / (m.factorial : ℝ) :=
++  BGP212.Var.simplex_volume m R hR
++
++theorem betaR_eq_betaMoment (R : ℚ) (u v : ℕ) : betaR (R : ℝ) u v = (betaMoment R u v : ℝ) :=
++  BGP212.Var.betaR_eq_betaMoment R u v
++
++theorem momentR_eq_simplexMoment (m : ℕ) (R : ℚ) (e : Fin m → ℕ) :
++    momentR m (R : ℝ) e = (simplexMoment R (List.ofFn e) : ℝ) :=
++  BGP212.Var.momentR_eq_simplexMoment m R e
++
++theorem simplex_integral_rat (m : ℕ) (R : ℚ) (hR : 0 ≤ R) (e : Fin m → ℕ) :
++    ∫ z in simplex m (R : ℝ), ∏ i, z i ^ e i = (simplexMoment R (List.ofFn e) : ℝ) :=
++  BGP212.Var.simplex_integral_rat m R hR e
++
++theorem poly_integral (m : ℕ) (R : ℚ) (hR : 0 ≤ R) (G : MvPolynomial (Fin m) ℚ) :
++    ∫ z in simplex m (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) z G = (polyIntegralQ R G : ℝ) :=
++  BGP212.Var.poly_integral m R hR G
++
++end BGP212.Challenge
+diff --git a/specs/checks/simplex_moment_v1_controls.py b/specs/checks/simplex_moment_v1_controls.py
+new file mode 100644
+index 0000000..1379e93
+--- /dev/null
++++ b/specs/checks/simplex_moment_v1_controls.py
+@@ -0,0 +1,35 @@
++"""V1 positive and negative controls (outside the trusted base).
++
++Usage, from the repository root (after `lake build Solution.SimplexMoment`):
++  python3 -I specs/checks/simplex_moment_v1_controls.py OUTDIR
++  for f in OUTDIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++
++Each file evaluates one concrete integral through the kernel-checked identity (10.1) or the
++Beta moment and then asks `norm_num` to confirm a value. `ok_*` files carry the true value and
++are accepted; `nc_*` files carry a value from a plausible wrong formula and are rejected."""
++import os, sys
++
++out = sys.argv[1]
++os.makedirs(out, exist_ok=True)
++HDR = ("import Solution.SimplexMoment\nopen BGP212.Var MeasureTheory\n")
++TRI = ("example : ∫ z in simplex 2 ((1 : ℚ) : ℝ), ∏ i, z i ^ ({VEC} : Fin 2 → ℕ) i = {VAL} := by\n"
++       "  rw [simplex_integral_rat 2 1 (by norm_num)]\n"
++       "  norm_num [simplexMoment, Nat.factorial]\n")
++BETA = ("example : ∫ x in (0 : ℝ)..1, x ^ 2 * (1 - x) ^ 3 = {VAL} := by\n"
++        "  rw [beta_integral]\n"
++        "  norm_num [betaR, Nat.factorial]\n")
++VOL = ("example : ∫ _ in simplex 3 (2 : ℝ), (1 : ℝ) = {VAL} := by\n"
++       "  rw [simplex_volume 3 2 (by norm_num)]\n"
++       "  norm_num [Nat.factorial]\n")
++cases = {
++    "ok_triangle_area": ("area of the unit triangle: 1/2", TRI.replace("{VEC}", "![0, 0]").replace("{VAL}", "1 / 2")),
++    "nc_triangle_area": ("area 1 (the formula without the dimension term m)", TRI.replace("{VEC}", "![0, 0]").replace("{VAL}", "1")),
++    "ok_z1z2": ("∫ z₁ z₂ over the unit triangle: 1/24", TRI.replace("{VEC}", "![1, 1]").replace("{VAL}", "1 / 24")),
++    "nc_z1z2": ("1/12 (the factorial of Σe in place of (m + Σe)!)", TRI.replace("{VEC}", "![1, 1]").replace("{VAL}", "1 / 12")),
++    "ok_beta": ("∫₀¹ x²(1 − x)³ dx = 1/60", BETA.replace("{VAL}", "1 / 60")),
++    "nc_beta": ("1/72 (a wrong value)", BETA.replace("{VAL}", "1 / 72")),
++    "ok_volume": ("volume of the simplex of radius 2 in ℝ³: 4/3", VOL.replace("{VAL}", "4 / 3")),
++    "nc_volume": ("8 (the cube [0, 2]³)", VOL.replace("{VAL}", "8")),
++}
++for name, (what, body) in cases.items():
++    open(os.path.join(out, name + ".lean"), "w").write(f"{HDR}-- control: {what}\n{body}")
+diff --git a/specs/results/V1_simplex_moment.yaml b/specs/results/V1_simplex_moment.yaml
+new file mode 100644
+index 0000000..ba4b161
+--- /dev/null
++++ b/specs/results/V1_simplex_moment.yaml
+@@ -0,0 +1,104 @@
++# Result record: twelfth Challenge/Solution pair (V1, the simplex moment identity (10.1))
++
++identity:
++  id: V1
++  statement: "(10.1) as a Lebesgue integral identity on the closed simplex, with the Beta moment, boundary cases, the rational link to V0, and exact integration of rational polynomials (Lemma 10.1 on the simplex)"
++  source: "Source/bgp212.pdf: (10.1) and Lemma 10.1 (pp. 41–42); Proposition 10.2 (p. 42) as the next use"
++  builds_on: "V0 (simplexMoment, betaMoment, simplexMoment_snoc), unchanged; A0–V0 unchanged"
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++scope:
++  proved: "the integral identity (10.1) for every m, every exponent vector e and every real R ≥ 0 (R < 0 separately); the Beta moment for every real R; exact rational values for rational R; rational polynomials integrate to the explicit rational polyIntegralQ"
++  distinct_from_V0: >
++    V0 proved algebraic identities of the rational right-hand sides (simplexMoment,
++    betaMoment, simplexMoment_snoc). V1 proves that those right-hand sides are the values of
++    the integrals (simplex_integral, beta_integral) and connects them at rational radii
++    (simplex_integral_rat, betaR_eq_betaMoment).
++  outside_V1: "the 846 × 846 Gram matrices of I_T and J_T (V2), the stratification of Proposition 10.2, and the variational inequality of Theorem 11.1 (V3)"
++
++verification:
++  definitions: BGP212/SimplexMoment.lean
++  challenge: Challenge/SimplexMoment.lean
++  solution: Solution/SimplexMoment.lean
++  comparator_config: Comparator/simplex_moment_v1.json
++  controls_script: specs/checks/simplex_moment_v1_controls.py
++  transcription:
++    simplex: "{z : Fin m → ℝ | (∀ i, 0 ≤ z i) ∧ Σ i, z i ≤ R}, integrated against volume (Lebesgue measure, Measure.pi)"
++    momentR: "R^(m + Σ eᵢ) · ∏ eᵢ! / (m + Σ eᵢ)! over ℝ"
++    betaR: "R^(u + v + 1) · u! · v! / (u + v + 1)! over ℝ"
++    polyIntegralQ: "Σ_{d ∈ supp G} G_d · simplexMoment R (List.ofFn d)"
++  signatures:
++    simplex_isCompact: "IsCompact (simplex m R)"
++    simplex_empty: "R < 0 → simplex m R = ∅"
++    cons_mem_simplex: "Fin.cons x w ∈ simplex (m+1) R ↔ 0 ≤ x ∧ w ∈ simplex m (R − x)"
++    beta_integral: "∫ x in 0..R, x^u (R − x)^v = betaR R u v (every real R)"
++    simplex_integral: "0 ≤ R → ∫ z in simplex m R, ∏ zᵢ^{eᵢ} = momentR m R e"
++    simplex_integral_zero_dim: "0 ≤ R → ∫ z in simplex 0 R, ∏ (empty) = 1"
++    simplex_integral_neg: "R < 0 → ∫ z in simplex m R, ∏ zᵢ^{eᵢ} = 0"
++    simplex_integral_radius_zero: "∫ z in simplex (m+1) 0, ∏ zᵢ^{eᵢ} = 0"
++    simplex_volume: "0 ≤ R → ∫ _ in simplex m R, 1 = R^m / m!"
++    betaR_eq_betaMoment: "betaR (R : ℝ) u v = (betaMoment R u v : ℝ) for R : ℚ"
++    momentR_eq_simplexMoment: "momentR m (R : ℝ) e = (simplexMoment R (List.ofFn e) : ℝ) for R : ℚ"
++    simplex_integral_rat: "0 ≤ R : ℚ → ∫ z in simplex m R, ∏ zᵢ^{eᵢ} = (simplexMoment R (List.ofFn e) : ℝ)"
++    poly_integral: "0 ≤ R : ℚ → ∫ z in simplex m R, G(z) = (polyIntegralQ R G : ℝ) for G ∈ ℚ[z₁, …, z_m]"
++  proof_outline: >
++    Beta: d/dz [z^{u+1}(R − z)^{v+1}] = (u+1) z^u (R − z)^{v+1} − (v+1) z^{u+1}(R − z)^v integrates
++    to 0 over [0, R] (fundamental theorem of calculus), so (u+1)·B(u, v+1) = (v+1)·B(u+1, v);
++    induction on v from B(u, 0) = R^{u+1}/(u+1). (10.1): induction on m. The simplex in ℝ^{m+1}
++    is split along its first coordinate by the measure-preserving equivalence
++    ℝ^{m+1} ≃ ℝ × ℝ^m (measurePreserving_piFinSuccAbove); Fubini (integral_prod, with
++    integrability from the compactness of the simplex) reduces the inner integral to the
++    m-dimensional simplex of radius R − x (cons_mem_simplex), equal by induction to
++    c·(R − x)^{m+s}; the outer integral is c·B(e₀, m + s); and momentR (m+1) R e = c·betaR R e₀ (m+s)
++    (moment_cons, the real form of V0's simplexMoment_snoc with the coordinate split at the
++    front). m = 0: the simplex in ℝ⁰ is the whole one-point space, of measure 1.
++  build_cost:
++    mathlib_modules_added: 1055
++    mathlib_build_storage_added: "1.4 GB (build container)"
++    one_time_compilation: "about 74 minutes on 2 cores (build container)"
++    vps: "Mathlib cache from `lake exe cache get` covers these modules; check disk before verification"
++  exploratory_vs_proved: >
++    Proved: every theorem listed under signatures. The controls evaluate concrete integrals
++    through the proved identities; no numerical integration enters.
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  controls:
++    - change: "area of the unit triangle 1/2; ∫ z₁z₂ over it 1/24; ∫₀¹ x²(1 − x)³ dx = 1/60; volume of the radius-2 simplex in ℝ³ 4/3"
++      result: "accepted (positive controls)"
++    - change: "area 1 (formula without m); 1/12 for ∫ z₁z₂ ((Σe)! in place of (m + Σe)!); 1/72 for the Beta moment; 8 for the volume (the cube)"
++      result: "rejected: norm_num reduces each to False after rewriting with the proved identity"
++    - change: "simplex_volume claimed with (m + 1)! in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.simplex_volume'"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run
++    with the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 1 minute 40 seconds for the V1 comparator suite in the build container"
++  run_date: 2026-10-17
++  commit_hash: PENDING_VPS
++
++next_development:
++  V2: >
++    Proposition 10.2 on B₂₁: for each rough set R ⊆ {1, …, 45} the stratum is a rational polytope;
++    translate by g, triangulate (or use inclusion–exclusion on the upper bounds) into scaled
++    and translated simplices, and integrate with poly_integral. Generate the 846 × 846 Gram
++    entries of I_T and J_T outside the kernel as exact rationals with a certificate of each
++    reduction, and check them in the kernel. Symmetry of the integrand under S₄₅ reduces the
++    work to orbit representatives of the strata.
++  V3: "With Axiom's P⋆: I_T(P⋆) > 0 and J_T(P⋆) − 4 I_T(P⋆) > 0 exactly; SieveInputs.theorem_11_1 becomes a theorem."
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 7e8606f..2bfc479 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
