@@ -13,16 +13,16 @@
 
 For `m : ℕ`, `R : ℝ`, `e : Fin m → ℕ`, and `0 ≤ R`, the simplex
 
-\[
+$$
 \Delta_m(R)=\{x\in\mathbb R^m:x_i\ge0,\ \sum_i x_i\le R\}
-\]
+$$
 
 satisfies
 
-\[
+$$
 \int_{\Delta_m(R)}\prod_{i=1}^m x_i^{e_i}\,dx
 =\frac{R^{m+\sum_i e_i}\prod_i e_i!}{(m+\sum_i e_i)!}.
-\]
+$$
 
 The Lean statement identifies the integral with `momentR m R e`; the displayed closed form follows from that definition. The development includes dimension-zero, negative-radius, zero-radius, volume, and rational-polynomial cases (`poly_integral`, `Solution/SimplexMoment.lean:237`).
 
@@ -33,9 +33,9 @@ The Lean statement identifies the integral with `momentR m R e`; the displayed c
 
 The indexed generators `genIdx : B21Idx → Poly` are linearly independent over `ℚ`, and
 
-\[
+$$
 \dim_{\mathbb Q}(B_{21})=846.
-\]
+$$
 
 The proof combines an injective exponent encoding, independence of distinct monomials, and injectivity of polynomial transformations. The rank theorem uses `B21_eq_span` and `card_B21Idx`. **Scope:** dimension of the specified rational polynomial subspace, not a claim about every polynomial on 45 variables.
 
@@ -46,11 +46,11 @@ The proof combines an injective exponent encoding, independence of distinct mono
 
 For arbitrary `N : ℕ`, `g L : ℝ`, `C : ℕ → ℝ`, `e : Fin N → ℕ`, `p : ℕ`, and **`0 ≤ g`**,
 
-\[
+$$
 \int_{\operatorname{supportT}(N,g,L,C)}
  (L-\sum_i x_i)^p\prod_i x_i^{e_i}\,dx
 =\operatorname{gramGen}(N,g,L,C,e,p).
-\]
+$$
 
 The right side is an explicit finite closed-form expression defined in Lean. It uses rough-set decomposition, inclusion–exclusion, group integrals, and the placement-counting identities `sig_insert`, `sig_union`, and `sig_card`. No specific Table 3 cap function is required for the general theorem.
 
@@ -63,11 +63,11 @@ The right side is an explicit finite closed-form expression defined in Lean. It 
 
 For all `i j : BGP212.Var.B21Idx`, the integral of the product of the corresponding polynomial generators over the **Table 3, 45-coordinate** constrained support equals the real cast of an explicit finite sum of rational `gramGen` expressions:
 
-\[
+$$
 \int_{T} \operatorname{eval}(\operatorname{genIdx}(i))
 \operatorname{eval}(\operatorname{genIdx}(j))\,dx
 =\left(\sum_{\varphi}\operatorname{gramGen}_{\mathbb Q}(\operatorname{expo}(\varphi),i.a+j.a)\right)_{\mathbb R}.
-\]
+$$
 
 The sum runs over placements of the combined power-sum parts into the 45 coordinates, as specified by the Lean theorem. This is **an exact rational representation for each entry**, not a generated or certified full 846 × 846 matrix. A worked example has an exact rational certificate.
 
@@ -78,16 +78,16 @@ The sum runs over placements of the combined power-sum parts into the 45 coordin
 
 For `n : ℕ`, `g L τ : ℝ`, `C : ℕ → ℝ`, **`0 ≤ g`**, **`τ ≤ L`**, `x ∈ hatSupport n g τ C`, and any `u : ℝ`,
 
-\[
+$$
 \operatorname{Fin.snoc}(x,u)\in\operatorname{supportT}(n+1,g,L,C)
 \iff 0\le u\le U(x),
-\]
+$$
 
 where
 
-\[
+$$
 U(x)=\min\left\{L-\sum_i x_i,\ \max\bigl(g,C(s+1)-\rho_1\bigr)\right\},
-\]
+$$
 
 with `s = roughCount g x` and `ρ₁ = roughMass g x`.
 
@@ -100,16 +100,16 @@ with `s = roughCount g x` and `ρ₁ = roughMass g x`.
 
 For `0 ≤ g`, `τ ≤ L`, `CapStep g C`, `0 ≤ C 0`, and continuous `P : (Fin (n+1) → ℝ) → ℝ`, Lean proves
 
-\[
+$$
 \operatorname{marginalJ}(n,g,L,\tau,C,P)=jT(n,g,L,\tau,C,P).
-\]
+$$
 
 For arbitrary `U M : ℝ` and `p t : ℕ`, Lean also proves the interval-integral identity
 
-\[
+$$
 \int_0^U(M-u)^p u^t\,du
 =\sum_{j=0}^{p}\binom pj M^{p-j}(-1)^j\frac{U^{t+j+1}}{t+j+1}.
-\]
+$$
 
 This proves the geometry-to-marginal bridge and the inner polynomial integration step. It **does not yet** compute general `J_T` Gram entries.
 
