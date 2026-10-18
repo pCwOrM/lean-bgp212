@@ -1,0 +1,49 @@
+{
+    "challenge_module": "Challenge.Fibre",
+    "solution_module": "Solution.Fibre",
+    "theorem_names": [
+        "BGP212.Challenge.roughSet_snoc",
+        "BGP212.Challenge.roughCount_snoc",
+        "BGP212.Challenge.roughMass_snoc",
+        "BGP212.Challenge.fibre_equiv",
+        "BGP212.Challenge.empty_fibre_neg",
+        "BGP212.Challenge.empty_fibre_cap",
+        "BGP212.Challenge.fibre_integral",
+        "BGP212.Challenge.marginal_agrees",
+        "BGP212.Challenge.inner_integral",
+        "BGP212.Challenge.tau_le_L",
+        "BGP212.Challenge.C_zero_table3",
+        "BGP212.Challenge.capStep_table3",
+        "BGP212.Challenge.capStep_zero_fails_table3",
+        "BGP212.Challenge.v2d_spec_discharged"
+    ],
+    "definition_names": [
+        "BGP212.Gram.roughSet",
+        "BGP212.Gram.supportT",
+        "BGP212.V2d.roughCount",
+        "BGP212.V2d.roughMass",
+        "BGP212.V2d.hatSupport",
+        "BGP212.V2d.endpoint",
+        "BGP212.V2d.CapStep",
+        "BGP212.V2d.marginalJ",
+        "BGP212.V2d.jT",
+        "BGP212.V2d.FibreEquiv",
+        "BGP212.V2d.EmptyFibreCap",
+        "BGP212.V2d.EmptyFibreNeg",
+        "BGP212.V2d.MarginalAgrees",
+        "BGP212.V2d.InnerIntegral",
+        "BGP212.V2d.FibreEquivTable3",
+        "BGP212.V2d.MarginalAgreesTable3",
+        "BGP212.Params.Bnum",
+        "BGP212.Params.B",
+        "BGP212.Params.C",
+        "BGP212.Params.g",
+        "BGP212.Params.L",
+        "BGP212.Params.τ"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}

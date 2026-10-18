@@ -1,0 +1,90 @@
+# Result record: fifteenth Challenge/Solution pair (V2d, the J_T fibre theorem of Lemma 9.2)
+
+identity:
+  id: V2d
+  statement: "For x̂ ∈ T̂ = {x̂ ≥ 0 : S ≤ τ, ρ₁ ≤ C(s)}: (x̂, u) ∈ T̃ ⇔ 0 ≤ u ≤ U(x̂) = min{L − S, max{g, C(s+1) − ρ₁}}; the fibre is empty off T̂ (cap step from m = 1 and C(0) ≥ 0); Definition 4.6's marginal of 1_{T̃} P equals J_T(P) for continuous P; ∫₀^U (M − u)^p u^t du in closed form"
+  source: "Source/bgp212.pdf: Definition 4.1, Definition 4.6, Table 3 (p. 39), §9.4 and Lemma 9.2, Theorem 11.1"
+  builds_on: "V2b (supportT, roughSet, supportT_measurableSet, mem_roughSet), A1 (BGP212.Params), V2d-Spec (exploratory statements, now proved); A0–V2c unchanged"
+
+state:
+  mathematical: proved
+  computational: "kernel-verified (only the Table 3 cap-step facts use decide +kernel)"
+  provenance: pinned
+  publication: draft
+
+scope:
+  proved: >
+    roughCount_eq, roughMass_eq, roughSet_snoc, roughCount_snoc, roughMass_snoc, mem_supportT_snoc,
+    fibre_equiv (Lemma 9.2, any cap function), empty_fibre_neg, roughMass_of_count_zero,
+    empty_fibre_cap, hatSupport_eq (T̂ is V2b's supportT with L := τ), hatSupport_measurableSet,
+    endpoint_nonneg, fibre_integral, fibre_integral_zero, marginal_agrees, inner_integral,
+    g_nonneg, tau_le_L, C_zero_table3, capStep_table3, capStep_zero_fails_table3,
+    v2d_spec_discharged (FibreEquiv, EmptyFibreCap, EmptyFibreNeg, MarginalAgrees, InnerIntegral,
+    FibreEquivTable3, MarginalAgreesTable3).
+  open_from_spec: "none: all five obligations of V2d-Spec and both Table 3 instances are proved"
+  unproved_assumptions: "none (axioms: propext, Quot.sound, Classical.choice)"
+  cap_finding: >
+    The cap step C(m+1) ≤ C(m) + g holds at Table 3 for every m ≥ 1 (tightest: C(3) − C(2) =
+    81/1250 < g = 82/1250) and fails at m = 0 (C(1) = 777/1250 > C(0) + g). Lemma 9.2 needs only
+    the step from m = 1 together with C(0) ≥ 0, matching Definition 4.1's "whenever both sides
+    are defined". Both hypotheses are shown necessary by the controls.
+  outside_V2d: >
+    the J_T integral bridge (cells by branch of U, the aggregate Dirichlet lemma, counting;
+    planned as V2e/V2f), the §9.3 rescaling, P⋆ and Theorem 11.1; no Gram entries of J_T are
+    computed.
+
+verification:
+  definitions: BGP212/Fibre.lean
+  challenge: Challenge/Fibre.lean
+  solution: Solution/Fibre.lean
+  comparator_config: Comparator/fibre_v2d.json
+  controls_script: specs/checks/fibre_v2d_controls.py
+  challenge_theorems: [roughSet_snoc, roughCount_snoc, roughMass_snoc, fibre_equiv, empty_fibre_neg,
+    empty_fibre_cap, fibre_integral, marginal_agrees, inner_integral, tau_le_L, C_zero_table3,
+    capStep_table3, capStep_zero_fails_table3, v2d_spec_discharged]
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
+  controls:
+    - change: "n = 0 at Table 3: U(∅) = min(L, max(g, C(1))) = 777/1250, and (3/5) ∈ T̃₁ via fibre_equiv"
+      result: "accepted (ok_endpoint, ok_endpoint_value)"
+    - change: "endpoint with C(s) in place of C(s+1) (U = g): (3/5) ∉ T̃₁; U(∅) = 41/625"
+      result: "rejected (nc_endpoint_Cs, nc_endpoint_value)"
+    - change: "cap function with C(1) = 1/10, C(2) = 1 (step 9/10 > g): x̂ = (1/5) violates its cap, yet (1/5, 1/2) ∈ T̃₂"
+      result: "accepted (ok_capstep_needed); the empty-fibre claim without CapStep is rejected (nc_capstep)"
+    - change: "C(0) = −1: x̂ = ∅ violates its cap, yet (1/2) ∈ T̃₁"
+      result: "accepted (ok_cap0_needed); the empty-fibre claim without 0 ≤ C 0 is rejected (nc_cap0)"
+    - change: "fibre_equiv stated with u < U(x̂) in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.fibre_equiv'"
+    - change: "empty_fibre_cap stated without the CapStep hypothesis in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.empty_fibre_cap'"
+  resources:
+    new_mathlib_modules: "none beyond V2c"
+    build: "Fibre modules elaborate in seconds (incremental lake build of the three roots: about 10 s)"
+    kernel_arithmetic: "only capStep_table3, capStep_zero_fails_table3 and C_zero_table3 (small decide +kernel)"
+    comparator_suite: "about 104 seconds in the build container"
+    memory: "the import baseline (about 3 GB); no certificate"
+    disk: "under 1 MB of new build artefacts"
+  sandbox: >
+    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
+    the real landrun sandbox is recorded below.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  verify_time: "about 104 seconds for the V2d comparator suite in the build container"
+  run_date: 2026-10-18
+  commit_hash: PENDING_VPS
+
+next_development:
+  V2e: >
+    The aggregate Dirichlet lemma (∫_{piece} yᵗ h(u₁, u₂) as a two-variable integral) and the
+    J_T cells for one branch of U.
+  V2f: "All three branches of U, the placement counting, and J_T Gram entries of B₂₁ generators."
+
+footer: Admissible generalizations trail leading specifications.

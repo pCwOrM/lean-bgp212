@@ -193,6 +193,23 @@ integral bridge**.
 - `gram_entry_example` (two distinguished coordinates): `I_T[(1, (2)), (0, (2))] =
   ∫_{T̃} (L − P₁) P₂² = gramExampleQ ≈ 5.45081 × 10⁻⁶⁰`, its value certified cell by cell.
 
+The fifteenth pair is V2d (`Challenge/Fibre.lean`, `Solution/Fibre.lean`, objects in
+`BGP212/Fibre.lean`): **the `J_T` fibre theorem, Lemma 9.2**. With `x̂ ∈ ℝⁿ`, `S = Σ x̂ᵢ`,
+`s` the rough count and `ρ₁` the rough mass, `T̂ = {x̂ ≥ 0 : S ≤ τ, ρ₁ ≤ C(s)}` and
+`U(x̂) = min{L − S, max{g, C(s+1) − ρ₁}}`:
+
+- `roughSet_snoc`, `roughCount_snoc`, `roughMass_snoc`: appending `u` adds the new coordinate to
+  the rough set exactly when `u > g`.
+- `fibre_equiv`: for `x̂ ∈ T̂`, `(x̂, u) ∈ T̃ ⇔ 0 ≤ u ≤ U(x̂)` (any cap function, `0 ≤ g`, `τ ≤ L`).
+- `empty_fibre_neg`, `empty_fibre_cap`: the fibre is empty when a coordinate is negative, or when
+  `ρ₁ > C(s)`; the latter uses the cap step `C(m+1) ≤ C(m) + g` **for `m ≥ 1`** and `0 ≤ C(0)`.
+  At Table 3 the step from `m = 0` fails (`C(1) = 777/1250 > g`; `capStep_zero_fails_table3`),
+  and both hypotheses as stated hold (`capStep_table3`, `C_zero_table3`).
+- `fibre_integral`, `marginal_agrees`: for continuous `P`, Definition 4.6's marginal of
+  `1_{T̃} P` equals `J_T(P) = k ∫_{T̂} (∫₀^{U} P du)²`.
+- `inner_integral`: `∫₀^U (M − u)^p u^t du` in closed form, the first block of the `J_T` bridge.
+- `v2d_spec_discharged`: all seven specification statements, including the Table 3 instances.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -203,7 +220,7 @@ integral bridge**.
   W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1); the Gram entry
   `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b); every monomial
   integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
-  (V2c).
+  (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -293,6 +310,13 @@ For V2c's controls:
 ```text
 python3 -I specs/checks/gram_general_v2c_controls.py /tmp/v2c_ctl
 for f in /tmp/v2c_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V2d's controls:
+
+```text
+python3 -I specs/checks/fibre_v2d_controls.py /tmp/v2d_ctl
+for f in /tmp/v2d_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
