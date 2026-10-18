@@ -4,6 +4,22 @@ Specification layer and Lean verification artifacts for the exact and combinator
 parts of Axiom Math's *A New Bound for Small Gaps Between Primes* (H₁ ≤ 212,
 preliminary draft of September 3, 2026).
 
+## Mathematical theorem inventory
+
+**[Exact Rational Integration over Constrained Simplices — Theorem Inventory](specs/paper/THEOREMS.md)**
+
+Six principal mathematical results, including exact simplex moments,
+the 846-dimensional polynomial basis, general constrained monomial
+integration, rational Gram representations, and the J_T fibre and
+marginal identities.
+
+Each result is linked to its Lean declaration, mathematical hypotheses,
+and verification status.
+
+The repository contains 15 independently verified Comparator suites.
+The unconditional H₁ ≤ 212 argument remains outside the completed
+formalization.
+
 ## Scope
 
 This repository verifies the exact and combinatorial layer of the H₁ ≤ 212 deduction.
