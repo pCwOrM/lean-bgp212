@@ -1,8 +1,10 @@
 # BGP212
 
-Specification layer and Lean verification artifacts for the exact and combinatorial
-parts of Axiom Math's *A New Bound for Small Gaps Between Primes* (H₁ ≤ 212,
-preliminary draft of September 3, 2026).
+**[translatepi.ai](https://translatepi.ai/paper/)** · The reading point. PiπΠ.
+
+Independent mathematical specifications, exact certificates, and Lean 4 verification.
+
+This repository develops formal proofs for the exact and combinatorial parts of Axiom Math's *A New Bound for Small Gaps Between Primes* (H₁ ≤ 212, preliminary draft of September 3, 2026).
 
 ## Mathematical theorem inventory
 
