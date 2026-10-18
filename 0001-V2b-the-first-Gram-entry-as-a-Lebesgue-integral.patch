@@ -1,0 +1,2029 @@
+From 2cf4bd85d9290601c2000536dc5fd433a5144385 Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 23:48:14 -0600
+Subject: [PATCH] V2b: the first Gram entry as a Lebesgue integral
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Thirteenth Challenge/Solution pair. Proves, for every dimension N, g ≥ 0, L,
+cap function C and coordinate a, that ∫_{T̃} (L − Σx)^p x_a^e equals the
+closed form of Proposition 10.2 (integral_supportT): pointwise stratification
+and inclusion–exclusion, translation with null faces, two-group Dirichlet
+integrals from V1 by Fubini, and binomial counting; boundary cases R = ∅,
+R = univ, N = 0 and empty index types. At Table 3 the entry
+I_T[(1,∅),(0,(2))] = ∫ (L − P₁)P₂ = gramEntryQ (gram_entry_integral,
+gram_entry_B21 in V0's generators), with the rational value kernel-checked
+row by row (Solution/GramEntryCert.lean) and equal to V2a's exploratory
+value. Comparator suite gram_entry_v2b added (13 suites); controls and
+result record included. Axioms: propext, Quot.sound, Classical.choice.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                             |    1 +
+ BGP212/GramEntry.lean                   |  116 +++
+ Challenge.lean                          |    1 +
+ Challenge/GramEntry.lean                |  146 ++++
+ Comparator/gram_entry_v2b.json          |   57 ++
+ README.md                               |   25 +-
+ Solution.lean                           |    2 +
+ Solution/GramEntry.lean                 | 1067 +++++++++++++++++++++++
+ Solution/GramEntryCert.lean             |  121 +++
+ specs/checks/gram_entry_v2b_controls.py |   91 ++
+ specs/checks/gram_entry_v2b_emit.py     |  129 +++
+ specs/results/V2b_gram_entry.yaml       |  114 +++
+ verify.sh                               |    2 +-
+ 13 files changed, 1870 insertions(+), 2 deletions(-)
+ create mode 100644 BGP212/GramEntry.lean
+ create mode 100644 Challenge/GramEntry.lean
+ create mode 100644 Comparator/gram_entry_v2b.json
+ create mode 100644 Solution/GramEntry.lean
+ create mode 100644 Solution/GramEntryCert.lean
+ create mode 100644 specs/checks/gram_entry_v2b_controls.py
+ create mode 100644 specs/checks/gram_entry_v2b_emit.py
+ create mode 100644 specs/results/V2b_gram_entry.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index caa63a1..cfbc3e8 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -11,3 +11,4 @@ import BGP212.Theorem711
+ import BGP212.Gap
+ import BGP212.Variational
+ import BGP212.SimplexMoment
++import BGP212.GramEntry
+diff --git a/BGP212/GramEntry.lean b/BGP212/GramEntry.lean
+new file mode 100644
+index 0000000..3ad8e99
+--- /dev/null
++++ b/BGP212/GramEntry.lean
+@@ -0,0 +1,116 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), §9.3–§9.4 and Lemma 9.1 (pp. 40–41), (10.1), Lemma 10.1
++and Proposition 10.2 (pp. 41–42), §11 (B₂₁, p. 42).
++-/
++import BGP212.SimplexMoment
++import BGP212.Params
++import Mathlib.Algebra.Order.Field.Rat
++
++/-! # V2b: one Gram entry of `I_T` as a Lebesgue integral
++
++Track B (Mathlib measure theory). V2a computed the Gram entry
++`I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx` as an exact rational by Proposition 10.2's
++decomposition. V2b proves that decomposition is the Lebesgue integral.
++
++Objects (all parametrized by the cap function `C : ℕ → ℝ`, as V2a's cap audit recommends):
++
++* `supportT N g L C`: Lemma 9.1's rescaled support `{x ≥ 0 : Σ xᵢ ≤ L, R_g(x) ≤ C(s(x))}`, with
++  `roughSet g x = {i : g < xᵢ}`, `s(x) = |roughSet g x|`, `R_g(x) = Σ_{roughSet} xᵢ`.
++* `Qset g L C R K`: an inclusion–exclusion piece (coordinates in `R ∪ K` exceed `g`, cap of `R`).
++* `pieceSet N R c M`: a translated piece `{y ≥ 0 : Σ_R y ≤ c, Σ y ≤ M}`; `shiftV g S = g · 1_S`.
++* `simplexF ι R`, `momentF ι R e`: (10.1) over any finite index type.
++* `wsVal`, `twoGroup`, `Hin`, `Hk`, `Hout`, `gramRow`, `gramFormula`: the closed form, defined over
++  any linearly ordered field, so the same definition is evaluated over `ℚ` by the kernel and
++  used over `ℝ` in the integral theorems.
++* `gramEntryQ`: the Table 3 instance, `45 · gramFormula 45 (41/625) (53/50) C 2 1 : ℚ`. -/
++
++namespace BGP212.Gram
++
++/-! ## Sets -/
++
++/-- The simplex `{z ≥ 0, Σ z ≤ R}` over a finite index type. -/
++def simplexF (ι : Type*) [Fintype ι] (R : ℝ) : Set (ι → ℝ) := {z | (∀ i, 0 ≤ z i) ∧ ∑ i, z i ≤ R}
++
++/-- The right side of (10.1) over a finite index type. -/
++noncomputable def momentF (ι : Type*) [Fintype ι] (R : ℝ) (e : ι → ℕ) : ℝ :=
++  R ^ (Fintype.card ι + ∑ i, e i) * (∏ i, ((e i).factorial : ℝ)) /
++    ((Fintype.card ι + ∑ i, e i).factorial : ℝ)
++
++/-- The rough coordinates `{i : g < xᵢ}`. -/
++noncomputable def roughSet {N : ℕ} (g : ℝ) (x : Fin N → ℝ) : Finset (Fin N) :=
++  by classical exact Finset.univ.filter fun i => g < x i
++
++/-- **Lemma 9.1's rescaled support** with cap function `C`:
++`{x ≥ 0 : Σ xᵢ ≤ L, R_g(x) ≤ C(s(x))}`. -/
++def supportT (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) : Set (Fin N → ℝ) :=
++  {x | (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ roughSet g x, x i ≤ C (roughSet g x).card}
++
++/-- An inclusion–exclusion piece before translation. -/
++def Qset {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin N)) : Set (Fin N → ℝ) :=
++  {x | (∀ i, 0 ≤ x i) ∧ (∀ i ∈ R ∪ K, g < x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card}
++
++/-- A translated piece `{y ≥ 0 : Σ_{i ∈ R} yᵢ ≤ c, Σ yᵢ ≤ M}`. -/
++def pieceSet (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) : Set (Fin N → ℝ) :=
++  {y | (∀ i, 0 ≤ y i) ∧ ∑ i ∈ R, y i ≤ c ∧ ∑ i, y i ≤ M}
++
++/-- The shift `g · 1_S`. -/
++noncomputable def shiftV {N : ℕ} (g : ℝ) (S : Finset (Fin N)) : Fin N → ℝ :=
++  by classical exact fun i => if i ∈ S then g else 0
++
++/-! ## The closed form -/
++
++section Formula
++variable {K : Type*} [Field K] [LinearOrder K]
++
++/-- `c^{r + A + j} A! j! / (r + A + j)!`: a weighted simplex moment
++`∫_{simplex_r(c)} z_a^A (c − Σ z)^j`. -/
++def wsVal (r A j : ℕ) (c : K) : K :=
++  c ^ (r + A + j) * (A.factorial : K) * (j.factorial : K) / ((r + A + j).factorial : K)
++
++/-- The two-group value of a piece with `r` coordinates in `R` and `n` outside: exponent `A` on
++a coordinate in `R` or `B` on one outside, weight `(M − Σ y)^p`, caps `Σ_R y ≤ c`, `Σ y ≤ M`. -/
++def twoGroup (n r A B p : ℕ) (c M : K) : K :=
++  if 0 ≤ c ∧ 0 ≤ M then
++    (B.factorial : K) * (p.factorial : K) / ((n + B + p).factorial : K) *
++      ∑ j ∈ Finset.range (n + B + p + 1), ((n + B + p).choose j : K) *
++        (M - min c M) ^ (n + B + p - j) * wsVal r A j (min c M)
++  else 0
++
++/-- Pieces with the distinguished coordinate rough (`|R| = r`, `|K| = k`). -/
++def Hin (N : ℕ) (g L : K) (C : ℕ → K) (e p r k : ℕ) : K :=
++  ∑ t ∈ Finset.range (e + 1), (e.choose t : K) * g ^ (e - t) *
++    twoGroup (N - r) r t 0 p (C r - r * g) (L - ((r : K) + k) * g)
++
++/-- Pieces with the distinguished coordinate in the inclusion–exclusion set. -/
++def Hk (N : ℕ) (g L : K) (C : ℕ → K) (e p r k : ℕ) : K :=
++  ∑ t ∈ Finset.range (e + 1), (e.choose t : K) * g ^ (e - t) *
++    twoGroup (N - r) r 0 t p (C r - r * g) (L - ((r : K) + k) * g)
++
++/-- Pieces with the distinguished coordinate smooth and unshifted. -/
++def Hout (N : ℕ) (g L : K) (C : ℕ → K) (e p r k : ℕ) : K :=
++  ∑ t ∈ Finset.range (e + 1), (e.choose t : K) * (0 : K) ^ (e - t) *
++    twoGroup (N - r) r 0 t p (C r - r * g) (L - ((r : K) + k) * g)
++
++/-- One row (`r` rough coordinates besides the distinguished one) of the closed form. -/
++def gramRow (N : ℕ) (g L : K) (C : ℕ → K) (e p r : ℕ) : K :=
++  ((N - 1).choose r : K) *
++    ∑ k ∈ Finset.range (N - 1 - r + 1), ((N - 1 - r).choose k : K) *
++      ((-1 : K) ^ k * Hin N g L C e p (r + 1) k + (-1 : K) ^ k * Hout N g L C e p r k -
++        (-1 : K) ^ k * Hk N g L C e p r (k + 1))
++
++/-- **The closed form** of `∫_{T̃} (L − Σ x)^p x_a^e` (Proposition 10.2 made explicit). -/
++def gramFormula (N : ℕ) (g L : K) (C : ℕ → K) (e p : ℕ) : K :=
++  ∑ r ∈ Finset.range (N - 1 + 1), gramRow N g L C e p r
++
++end Formula
++
++/-- **The Table 3 Gram entry** `I_T[(1, ∅), (0, (2))]`, as a rational:
++`45 · gramFormula 45 g L C 2 1` with Table 3's `g = 41/625`, `L = 53/50`, `C(m) = 4B₁,ₘ`
++(`BGP212.Params`). -/
++def gramEntryQ : ℚ :=
++  45 * gramFormula 45 BGP212.Params.g BGP212.Params.L BGP212.Params.C 2 1
++
++end BGP212.Gram
+diff --git a/Challenge.lean b/Challenge.lean
+index 9662d92..a34f4cb 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -10,3 +10,4 @@ import Challenge.Theorem711
+ import Challenge.Gap
+ import Challenge.Variational
+ import Challenge.SimplexMoment
++import Challenge.GramEntry
+diff --git a/Challenge/GramEntry.lean b/Challenge/GramEntry.lean
+new file mode 100644
+index 0000000..f91a4c5
+--- /dev/null
++++ b/Challenge/GramEntry.lean
+@@ -0,0 +1,146 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), Lemma 9.1 (p. 41), (10.1), Lemma 10.1, Proposition 10.2
++(pp. 41–42), §11 (p. 42).
++-/
++import BGP212.GramEntry
++import Mathlib.MeasureTheory.Integral.Bochner.Basic
++
++/-! # V2b: one Gram entry of `I_T` as a Lebesgue integral
++
++Statements only; proofs live in `Solution/GramEntry.lean` (integral identities) and
++`Solution/GramEntryCert.lean` (the kernel-evaluated rational certificate). Objects are defined in
++`BGP212/GramEntry.lean`; every integral statement is parametrized by the cap function `C`,
++except the three Table 3 instances at the end. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram MeasureTheory
++
++/-- **(10.1) over any finite index type** (V1 transported along `Fintype.equivFin`). -/
++theorem simplexF_integral {ι : Type*} [Fintype ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ) :
++    ∫ z in simplexF ι R, ∏ i, z i ^ e i = momentF ι R e :=
++  sorry
++
++/-- **Zero-dimensional simplex**: over an empty index type the simplex is the point `ℝ⁰`, of measure one. -/
++theorem simplexF_integral_isEmpty {ι : Type*} [Fintype ι] [IsEmpty ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ) :
++    ∫ z in simplexF ι R, ∏ i, z i ^ e i = 1 :=
++  sorry
++
++/-- **Weighted simplex moment**: `∫_{simplexF ι c} zᵉ (c − Σ z)^p = c^{|ι| + Σe + p} ∏ eᵢ! p! / (|ι| + Σe + p)!` (from (10.1) on `ι ⊕ Unit` and Fubini). -/
++theorem weighted_simplexF {ι : Type*} [Fintype ι] (c : ℝ) (hc : 0 ≤ c) (e : ι → ℕ) (p : ℕ) :
++    ∫ z in simplexF ι c, (∏ i, z i ^ e i) * (c - ∑ i, z i) ^ p =
++      c ^ (Fintype.card ι + ∑ i, e i + p) * (∏ i, ((e i).factorial : ℝ)) *
++        (p.factorial : ℝ) / ((Fintype.card ι + ∑ i, e i + p).factorial : ℝ) :=
++  sorry
++
++/-- **Stratification and inclusion–exclusion, pointwise**: the indicator of the support is the signed sum, over rough sets `R` and `K ⊆ Rᶜ`, of the indicators of the pieces `Qset R K` (no null sets are discarded at this step). -/
++theorem indicator_supportT {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (F : (Fin N → ℝ) → ℝ) (x : Fin N → ℝ) :
++    (supportT N g L C).indicator F x =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator F x :=
++  sorry
++
++/-- **Translation**: for `g ≥ 0` and disjoint `R`, `K`, the piece `Qset R K` becomes, after `x = y + g·1_{R∪K}`, the closed piece `pieceSet R (C|R| − |R|g) (L − (|R| + |K|)g)` up to the null faces `yᵢ = 0`. -/
++theorem integral_Qset {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (R K : Finset (Fin N)) (hRK : Disjoint R K) (F : (Fin N → ℝ) → ℝ) :
++    ∫ x, (Qset g L C R K).indicator F x =
++      ∫ y in pieceSet N R (C R.card - R.card * g) (L - (R.card + K.card) * g),
++        F (y + shiftV g (R ∪ K)) :=
++  sorry
++
++/-- Pieces with a negative cap or radius are empty. -/
++theorem pieceSet_empty (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) (h : ¬(0 ≤ c ∧ 0 ≤ M)) :
++    pieceSet N R c M = ∅ :=
++  sorry
++
++/-- **Two-group Dirichlet, distinguished coordinate rough** (`a ∈ R`): Fubini over `(y|_R, y|_{Rᶜ})`, (10.1) on each block. -/
++theorem piece_integral_mem (N : ℕ) (R : Finset (Fin N)) (a : Fin N) (ha : a ∈ R) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N R c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup (N - R.card) R.card t 0 p c M :=
++  sorry
++
++/-- **Two-group Dirichlet, distinguished coordinate smooth** (`a ∉ R`). -/
++theorem piece_integral_notMem (N : ℕ) (R : Finset (Fin N)) (a : Fin N) (ha : a ∉ R) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N R c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup (N - R.card) R.card 0 t p c M :=
++  sorry
++
++/-- **Boundary `R = ∅`**: the rough block is `ℝ⁰`; the piece is the full simplex of radius `M`. -/
++theorem piece_integral_empty (N : ℕ) (a : Fin N) (t p : ℕ) (c M : ℝ) (hc : 0 ≤ c) (hM : 0 ≤ M) :
++    ∫ y in pieceSet N ∅ c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      M ^ (N + t + p) * (t.factorial : ℝ) * (p.factorial : ℝ) / ((N + t + p).factorial : ℝ) :=
++  sorry
++
++/-- **Boundary `R = univ`**: the complement block is `ℝ⁰`. -/
++theorem piece_integral_univ (N : ℕ) (a : Fin N) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N Finset.univ c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup 0 N t 0 p c M :=
++  sorry
++
++/-- **Boundary `N = 0`**: in `ℝ⁰` the support is everything or nothing. -/
++theorem supportT_zero_dim (g L : ℝ) (C : ℕ → ℝ) :
++    supportT 0 g L C = {_x | 0 ≤ L ∧ 0 ≤ C 0} :=
++  sorry
++
++/-- **Boundary `N = 0`**, integrated. -/
++theorem integral_supportT_zero_dim (g L : ℝ) (C : ℕ → ℝ) (p : ℕ) :
++    ∫ x in supportT 0 g L C, (L - ∑ i, x i) ^ p = if 0 ≤ L ∧ 0 ≤ C 0 then L ^ p else 0 :=
++  sorry
++
++/-- **Counting**: a signed sum over rough sets `R` and `K ⊆ Rᶜ` whose terms depend only on `|R|`, `|K|` and the position of a coordinate `a` groups into binomial multiplicities. -/
++theorem count_pieces (N : ℕ) (a : Fin N) (Hin Hk Hout : ℕ → ℕ → ℝ) :
++    ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card *
++        (if a ∈ R then Hin R.card K.card else if a ∈ K then Hk R.card K.card else Hout R.card K.card) =
++      ∑ r ∈ Finset.range (N - 1 + 1), ((N - 1).choose r : ℝ) *
++        ∑ k ∈ Finset.range (N - 1 - r + 1), ((N - 1 - r).choose k : ℝ) *
++          ((-1 : ℝ) ^ k * Hin (r + 1) k + (-1 : ℝ) ^ k * Hout r k - (-1 : ℝ) ^ k * Hk r (k + 1)) :=
++  sorry
++
++/-- **Proposition 10.2 for `(L − Σ x)^p x_a^e`**: the integral over the support equals the closed form, for every `N`, `g ≥ 0`, `L`, cap function `C` and coordinate `a`. -/
++theorem integral_supportT (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (a : Fin N) (e p : ℕ) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) ^ p * x a ^ e = gramFormula N g L C e p :=
++  sorry
++
++/-- Smaller caps give a smaller support (the two-cap datum of Lemma 9.1's proof lies inside Table 3's). -/
++theorem supportT_mono (N : ℕ) (g L : ℝ) (C C' : ℕ → ℝ) (h : ∀ m, C' m ≤ C m) :
++    supportT N g L C' ⊆ supportT N g L C :=
++  sorry
++
++/-- **The Gram entry `∫_{T̃} (L − P₁) P₂`** for every `N`, `g ≥ 0`, `L` and cap function `C`. -/
++theorem gram_entry_integral_general (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) * ∑ i, x i ^ 2 = N * gramFormula N g L C 2 1 :=
++  sorry
++
++/-- The closed form commutes with `ℚ → ℝ`. -/
++theorem gramFormula_ratCast (N : ℕ) (g L : ℚ) (C : ℕ → ℚ) (e p : ℕ) :
++    ((gramFormula N g L C e p : ℚ) : ℝ) = gramFormula N (g : ℝ) (L : ℝ) (fun m => (C m : ℝ)) e p :=
++  sorry
++
++/-- **Computational certificate**: the closed form at Table 3, evaluated by the kernel row by row. -/
++theorem gramEntryQ_eq :
++    gramEntryQ = (56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 /
++          475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) :=
++  sorry
++
++/-- **The Table 3 Gram entry as a Lebesgue integral**: `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx = gramEntryQ` over the rescaled support with Table 3's caps. -/
++theorem gram_entry_integral :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = (gramEntryQ : ℝ) :=
++  sorry
++
++/-- The same integral with the value written out (V2a's `entry_45`). -/
++theorem gram_entry_integral_value :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = ((56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 /
++          475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) :=
++  sorry
++
++/-- **The entry in V0's basis of `B₂₁`**: `∫_{T̃} gen 1 ∅ · gen 0 {2}`, the generators evaluated at `x`. -/
++theorem gram_entry_B21 :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 1 0) *
++        MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 {2}) = (gramEntryQ : ℝ) :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/gram_entry_v2b.json b/Comparator/gram_entry_v2b.json
+new file mode 100644
+index 0000000..d1b480e
+--- /dev/null
++++ b/Comparator/gram_entry_v2b.json
+@@ -0,0 +1,57 @@
++{
++    "challenge_module": "Challenge.GramEntry",
++    "solution_module": "Solution.GramEntry",
++    "theorem_names": [
++        "BGP212.Challenge.simplexF_integral",
++        "BGP212.Challenge.simplexF_integral_isEmpty",
++        "BGP212.Challenge.weighted_simplexF",
++        "BGP212.Challenge.indicator_supportT",
++        "BGP212.Challenge.integral_Qset",
++        "BGP212.Challenge.pieceSet_empty",
++        "BGP212.Challenge.piece_integral_mem",
++        "BGP212.Challenge.piece_integral_notMem",
++        "BGP212.Challenge.piece_integral_empty",
++        "BGP212.Challenge.piece_integral_univ",
++        "BGP212.Challenge.supportT_zero_dim",
++        "BGP212.Challenge.integral_supportT_zero_dim",
++        "BGP212.Challenge.count_pieces",
++        "BGP212.Challenge.integral_supportT",
++        "BGP212.Challenge.supportT_mono",
++        "BGP212.Challenge.gram_entry_integral_general",
++        "BGP212.Challenge.gramFormula_ratCast",
++        "BGP212.Challenge.gramEntryQ_eq",
++        "BGP212.Challenge.gram_entry_integral",
++        "BGP212.Challenge.gram_entry_integral_value",
++        "BGP212.Challenge.gram_entry_B21"
++    ],
++    "definition_names": [
++        "BGP212.Gram.simplexF",
++        "BGP212.Gram.momentF",
++        "BGP212.Gram.roughSet",
++        "BGP212.Gram.supportT",
++        "BGP212.Gram.Qset",
++        "BGP212.Gram.pieceSet",
++        "BGP212.Gram.shiftV",
++        "BGP212.Gram.wsVal",
++        "BGP212.Gram.twoGroup",
++        "BGP212.Gram.Hin",
++        "BGP212.Gram.Hk",
++        "BGP212.Gram.Hout",
++        "BGP212.Gram.gramRow",
++        "BGP212.Gram.gramFormula",
++        "BGP212.Gram.gramEntryQ",
++        "BGP212.Params.Bnum",
++        "BGP212.Params.B",
++        "BGP212.Params.C",
++        "BGP212.Params.g",
++        "BGP212.Params.L",
++        "BGP212.Var.P",
++        "BGP212.Var.Plam",
++        "BGP212.Var.gen"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/README.md b/README.md
+index 91d78ba..c8dc70c 100644
+--- a/README.md
++++ b/README.md
+@@ -162,6 +162,21 @@ in `BGP212/SimplexMoment.lean`): **the simplex moment identity (10.1) as a Lebes
+ - `poly_integral` (Lemma 10.1 on the simplex): a rational polynomial integrates to the explicit
+   rational `polyIntegralQ R G`, the step Proposition 10.2's Gram matrices build on (V2).
+ 
++The thirteenth pair is V2b (`Challenge/GramEntry.lean`, `Solution/GramEntry.lean`,
++`Solution/GramEntryCert.lean`, objects in `BGP212/GramEntry.lean`): **the first Gram entry as a
++Lebesgue integral**, `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx`.
++
++- `integral_supportT`: for every dimension `N`, `g ≥ 0`, `L`, **cap function `C`** and coordinate
++  `a`, `∫_{T̃} (L − Σ x)^p x_a^e` equals the closed form `gramFormula` (Proposition 10.2 made
++  explicit): pointwise stratification and inclusion–exclusion (`indicator_supportT`), translation
++  with null faces (`integral_Qset`), two-group Dirichlet integrals from V1 by Fubini
++  (`piece_integral_mem`, `piece_integral_notMem`), and binomial counting (`count_pieces`).
++- Boundary cases: `R = ∅`, `R = univ`, `N = 0`, empty index types.
++- `gramEntryQ_eq` (computational certificate): the closed form at Table 3, evaluated over `ℚ` by
++  the kernel row by row; it equals V2a's exploratory value exactly.
++- `gram_entry_integral`, `gram_entry_B21`: the Table 3 entry, in V0's generators `gen 1 ∅`,
++  `gen 0 {2}`, equals `gramEntryQ ≈ 1.18854 × 10⁻⁵⁸`.
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+@@ -169,7 +184,8 @@ in `BGP212/SimplexMoment.lean`): **the simplex moment identity (10.1) as a Lebes
+   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
+   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
+   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
+-  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1).
++  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1); the Gram entry
++  `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -247,6 +263,13 @@ python3 -I specs/checks/simplex_moment_v1_controls.py /tmp/v1_ctl
+ for f in /tmp/v1_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For V2b's controls:
++
++```text
++python3 -I specs/checks/gram_entry_v2b_controls.py /tmp/v2b_ctl
++for f in /tmp/v2b_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 5cd7c0e..2ddaea8 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -10,3 +10,5 @@ import Solution.Theorem711
+ import Solution.Gap
+ import Solution.Variational
+ import Solution.SimplexMoment
++import Solution.GramEntryCert
++import Solution.GramEntry
+diff --git a/Solution/GramEntry.lean b/Solution/GramEntry.lean
+new file mode 100644
+index 0000000..b093abf
+--- /dev/null
++++ b/Solution/GramEntry.lean
+@@ -0,0 +1,1067 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Lemma 9.1 (p. 41), (10.1), Lemma 10.1, Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.GramEntry
++import Solution.GramEntryCert
++import Solution.SimplexMoment
++import Mathlib.MeasureTheory.Group.Integral
++import Mathlib.Algebra.MvPolynomial.CommRing
++
++
++/-! # V2b: the Gram entry as a Lebesgue integral (proofs)
++
++PROVED INTEGRAL IDENTITIES. The chain from the support to the closed form `gramFormula`:
++
++1. `simplexF_integral`: V1's (10.1) transported to any finite index type.
++2. `integral_fibred`: Fubini on `{(z, w) : z ∈ A, w ∈ simplexF κ (M − Σ z)}`.
++3. `weighted_simplexF`: `∫ zᵉ (c − Σ z)^p`, from (10.1) on `ι ⊕ Unit` and step 2.
++4. `piece_integral_mem` / `piece_integral_notMem`: a piece `{y ≥ 0 : Σ_R y ≤ c, Σ y ≤ M}` split as
++   `(y|_R, y|_{Rᶜ})` (`volume_preserving_piEquivPiSubtypeProd`), inner block by step 3, outer block
++   by expanding `(M − Σ z)^q` around `min c M` and step 3 again.
++5. `indicator_supportT`: stratification by the rough set and inclusion–exclusion over the smooth
++   bounds, as a pointwise identity of indicators (`Finset.sum_powerset_neg_one_pow_card`).
++6. `integral_Qset`: translation `x = y + g·1_{R∪K}` (`integral_add_right_eq_self`) and the null
++   faces `yᵢ = 0` (`Measure.pi_hyperplane`).
++7. `count_pieces`: grouping the `(R, K)` sum by cardinalities (`Finset.sum_powerset_insert`,
++   `Finset.sum_powerset_apply_card`).
++8. `integral_supportT`, `gram_entry_integral_general`: the closed form for every `N`, `g ≥ 0`,
++   `L`, cap function `C`; boundary cases `R = ∅`, `R = univ`, `N = 0`, empty index types.
++
++The Table 3 value comes from the computational certificate `Solution/GramEntryCert.lean`. -/
++
++namespace BGP212.Gram
++
++open MeasureTheory BGP212.Var
++
++variable {ι : Type*} [Fintype ι]
++
++theorem simplexF_isClosed (R : ℝ) : IsClosed (simplexF ι R) := by
++  have h1 : IsClosed {z : ι → ℝ | ∀ i, 0 ≤ z i} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun i => isClosed_le continuous_const (continuous_apply i)
++  have h2 : IsClosed {z : ι → ℝ | ∑ i, z i ≤ R} :=
++    isClosed_le (continuous_finsetSum _ fun i _ => continuous_apply i) continuous_const
++  exact h1.inter h2
++
++theorem simplexF_subset_Icc (R : ℝ) : simplexF ι R ⊆ Set.Icc 0 (fun _ => |R|) := by
++  rintro z ⟨h0, hs⟩
++  refine ⟨fun i => h0 i, fun i => ?_⟩
++  have : z i ≤ ∑ j, z j := Finset.single_le_sum (fun j _ => h0 j) (Finset.mem_univ i)
++  exact le_trans this (le_trans hs (le_abs_self R))
++
++theorem simplexF_isCompact (R : ℝ) : IsCompact (simplexF ι R) :=
++  isCompact_Icc.of_isClosed_subset (simplexF_isClosed R) (simplexF_subset_Icc R)
++
++theorem simplexF_measurableSet (R : ℝ) : MeasurableSet (simplexF ι R) :=
++  (simplexF_isClosed R).measurableSet
++
++/-- Reindexing along `σ : Fin m ≃ ι`: integrals over `ι → ℝ` are integrals over `Fin m → ℝ`. -/
++theorem integral_reindex {m : ℕ} (σ : Fin m ≃ ι) (F : (ι → ℝ) → ℝ) :
++    ∫ z, F z = ∫ w : Fin m → ℝ, F (fun i => w (σ.symm i)) := by
++  have h := volume_measurePreserving_piCongrLeft (fun _ : ι => ℝ) σ
++  have := h.integral_comp' F
++  rw [← this]
++  congr 1
++  funext w
++  congr 1
++  funext i
++  simp [MeasurableEquiv.coe_piCongrLeft, Equiv.piCongrLeft_apply_eq_cast]
++
++/-- **(10.1) over any finite index type** (V1 transported along `Fintype.equivFin`). -/
++theorem simplexF_integral (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ) :
++    ∫ z in simplexF ι R, ∏ i, z i ^ e i = momentF ι R e := by
++  set σ : Fin (Fintype.card ι) ≃ ι := (Fintype.equivFin ι).symm
++  rw [← integral_indicator (simplexF_measurableSet R), integral_reindex σ]
++  have hset : ∀ w : Fin (Fintype.card ι) → ℝ,
++      ((fun i => w (σ.symm i)) ∈ simplexF ι R ↔ w ∈ simplex (Fintype.card ι) R) := by
++    intro w
++    simp only [simplexF, simplex, Set.mem_ofPred_eq]
++    constructor
++    · rintro ⟨h0, hs⟩
++      refine ⟨fun j => by simpa using h0 (σ j), ?_⟩
++      rwa [Equiv.sum_comp σ.symm w] at hs
++    · rintro ⟨h0, hs⟩
++      exact ⟨fun i => h0 _, by rwa [Equiv.sum_comp σ.symm (fun j => w j)]⟩
++  have hfun : (fun w : Fin (Fintype.card ι) → ℝ =>
++      (simplexF ι R).indicator (fun z => ∏ i, z i ^ e i) (fun i => w (σ.symm i))) =
++      (simplex (Fintype.card ι) R).indicator (fun w => ∏ j, w j ^ e (σ j)) := by
++    funext w
++    by_cases hw : w ∈ simplex (Fintype.card ι) R
++    · rw [Set.indicator_of_mem ((hset w).mpr hw), Set.indicator_of_mem hw]
++      exact (Equiv.prod_comp σ (fun i => w (σ.symm i) ^ e i)).symm.trans (by simp)
++    · rw [Set.indicator_of_notMem (fun h => hw ((hset w).mp h)), Set.indicator_of_notMem hw]
++  rw [hfun, integral_indicator (simplex_measurableSet _ _), simplex_integral _ _ _ hR]
++  simp only [momentR, momentF]
++  rw [Equiv.sum_comp σ e, Equiv.prod_comp σ (fun i => ((e i).factorial : ℝ))]
++
++
++/-! ## Fubini over a product of a set `A` and a simplex fibre -/
++
++variable {κ : Type*} [Fintype κ]
++
++/-- The region `{(z, w) : z ∈ A, w ∈ simplexF κ (M − Σ z)}`. -/
++def fibred (A : Set (ι → ℝ)) (κ : Type*) [Fintype κ] (M : ℝ) : Set ((ι → ℝ) × (κ → ℝ)) :=
++  {p | p.1 ∈ A ∧ p.2 ∈ simplexF κ (M - ∑ i, p.1 i)}
++
++theorem fibred_isClosed {A : Set (ι → ℝ)} (hA : IsClosed A) (M : ℝ) :
++    IsClosed (fibred A κ M) := by
++  have h1 : IsClosed {p : (ι → ℝ) × (κ → ℝ) | p.1 ∈ A} := hA.preimage continuous_fst
++  have h2 : IsClosed {p : (ι → ℝ) × (κ → ℝ) | ∀ j, 0 ≤ p.2 j} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun j => isClosed_le continuous_const
++      ((continuous_apply j).comp continuous_snd)
++  have h3 : IsClosed {p : (ι → ℝ) × (κ → ℝ) | ∑ j, p.2 j ≤ M - ∑ i, p.1 i} :=
++    isClosed_le (continuous_finsetSum _ fun j _ => (continuous_apply j).comp continuous_snd)
++      (continuous_const.sub (continuous_finsetSum _ fun i _ => (continuous_apply i).comp continuous_fst))
++  have : fibred A κ M = {p | p.1 ∈ A} ∩ ({p | ∀ j, 0 ≤ p.2 j} ∩ {p | ∑ j, p.2 j ≤ M - ∑ i, p.1 i}) := by
++    ext p; simp [fibred, simplexF]
++  rw [this]
++  exact h1.inter (h2.inter h3)
++
++theorem fibred_isCompact {A : Set (ι → ℝ)} (hA : IsCompact A) (hA0 : ∀ z ∈ A, ∀ i, 0 ≤ z i)
++    (M : ℝ) : IsCompact (fibred A κ M) := by
++  refine (hA.prod (simplexF_isCompact (ι := κ) |M|)).of_isClosed_subset
++    (fibred_isClosed hA.isClosed M) ?_
++  rintro ⟨z, w⟩ ⟨hz, hw0, hws⟩
++  refine ⟨hz, hw0, le_trans hws ?_⟩
++  have : 0 ≤ ∑ i, z i := Finset.sum_nonneg fun i _ => hA0 z hz i
++  linarith [le_abs_self M]
++
++/-- **Fubini on a fibred region**: integrate the simplex fibre first. -/
++theorem integral_fibred {A : Set (ι → ℝ)} (hA : IsCompact A) (hA0 : ∀ z ∈ A, ∀ i, 0 ≤ z i)
++    (M : ℝ) (F : (ι → ℝ) × (κ → ℝ) → ℝ) (hF : Continuous F) :
++    ∫ p, (fibred A κ M).indicator F p =
++      ∫ z in A, ∫ w in simplexF κ (M - ∑ i, z i), F (z, w) := by
++  have hmeas : MeasurableSet (fibred A κ M) := (fibred_isClosed hA.isClosed M).measurableSet
++  have hint : Integrable ((fibred A κ M).indicator F) (volume.prod volume) := by
++    rw [integrable_indicator_iff hmeas]
++    exact hF.continuousOn.integrableOn_compact (fibred_isCompact hA hA0 M)
++  rw [show (volume : Measure ((ι → ℝ) × (κ → ℝ))) = volume.prod volume from rfl,
++    integral_prod _ hint, ← integral_indicator hA.isClosed.measurableSet]
++  congr 1
++  funext z
++  by_cases hz : z ∈ A
++  · rw [Set.indicator_of_mem hz, ← integral_indicator (simplexF_measurableSet _)]
++    congr 1
++    funext w
++    by_cases hw : w ∈ simplexF κ (M - ∑ i, z i)
++    · rw [Set.indicator_of_mem (show (z, w) ∈ fibred A κ M from ⟨hz, hw⟩), Set.indicator_of_mem hw]
++    · rw [Set.indicator_of_notMem (fun h => hw h.2), Set.indicator_of_notMem hw]
++  · rw [Set.indicator_of_notMem hz]
++    have : (fun w => (fibred A κ M).indicator F (z, w)) = fun _ => 0 := by
++      funext w; exact Set.indicator_of_notMem (fun h => hz h.1) _
++    rw [this, integral_zero]
++
++
++/-! ## Weighted simplex moments -/
++
++theorem momentF_unit (r : ℝ) (q : ℕ) :
++    momentF Unit r (fun _ => q) = r ^ (q + 1) * (q.factorial : ℝ) / ((q + 1).factorial : ℝ) := by
++  simp [momentF, add_comm]
++
++/-- `∫_{simplexF ι c} zᵉ (c − Σ z)^{q+1} = c^{|ι| + Σe + q + 1} ∏ eᵢ! (q+1)! / (|ι| + Σe + q + 1)!`,
++from (10.1) on `ι ⊕ Unit` and Fubini. -/
++theorem weighted_succ (c : ℝ) (hc : 0 ≤ c) (e : ι → ℕ) (q : ℕ) :
++    ∫ z in simplexF ι c, (∏ i, z i ^ e i) * (c - ∑ i, z i) ^ (q + 1) =
++      c ^ (Fintype.card ι + ∑ i, e i + (q + 1)) * (∏ i, ((e i).factorial : ℝ)) *
++        ((q + 1).factorial : ℝ) / ((Fintype.card ι + ∑ i, e i + (q + 1)).factorial : ℝ) := by
++  -- (10.1) on `ι ⊕ Unit`
++  have hY := simplexF_integral (ι := ι ⊕ Unit) c hc (Sum.elim e fun _ => q)
++  have hΦ := volume_measurePreserving_sumPiEquivProdPi_symm (fun _ : ι ⊕ Unit => ℝ)
++  rw [← integral_indicator (simplexF_measurableSet _), ← hΦ.integral_comp'] at hY
++  have hfun : (fun p : (ι → ℝ) × (Unit → ℝ) => (simplexF (ι ⊕ Unit) c).indicator
++      (fun y => ∏ i, y i ^ (Sum.elim e (fun _ => q)) i)
++      ((MeasurableEquiv.sumPiEquivProdPi fun _ : ι ⊕ Unit => ℝ).symm p)) =
++      (fibred (simplexF ι c) Unit c).indicator (fun p => (∏ i, p.1 i ^ e i) * p.2 () ^ q) := by
++    funext ⟨z, w⟩
++    have hmem : (MeasurableEquiv.sumPiEquivProdPi fun _ : ι ⊕ Unit => ℝ).symm (z, w) ∈
++        simplexF (ι ⊕ Unit) c ↔ (z, w) ∈ fibred (simplexF ι c) Unit c := by
++      simp only [simplexF, fibred, Set.mem_ofPred_eq, Sum.forall, Fintype.sum_sum_type,
++        MeasurableEquiv.coe_sumPiEquivProdPi_symm, Equiv.sumPiEquivProdPi_symm_apply,
++        Fintype.univ_unit, Finset.sum_singleton]
++      constructor
++      · rintro ⟨⟨h1, h2⟩, h3⟩
++        exact ⟨⟨h1, by linarith [h2 ()]⟩, h2, by linarith⟩
++      · rintro ⟨⟨h1, _⟩, h2, h3⟩
++        exact ⟨⟨h1, h2⟩, by linarith⟩
++    by_cases h : (z, w) ∈ fibred (simplexF ι c) Unit c
++    · rw [Set.indicator_of_mem (hmem.mpr h), Set.indicator_of_mem h]
++      simp [Fintype.prod_sum_type, MeasurableEquiv.coe_sumPiEquivProdPi_symm,
++        Equiv.sumPiEquivProdPi_symm_apply]
++    · rw [Set.indicator_of_notMem (fun h' => h (hmem.mp h')), Set.indicator_of_notMem h]
++  rw [hfun, integral_fibred (simplexF_isCompact c) (fun z hz => hz.1) c _ (by fun_prop)] at hY
++  have hinner : ∀ z ∈ simplexF ι c,
++      ∫ w in simplexF Unit (c - ∑ i, z i), (∏ i, z i ^ e i) * w () ^ q =
++        (q.factorial : ℝ) / ((q + 1).factorial : ℝ) * ((∏ i, z i ^ e i) * (c - ∑ i, z i) ^ (q + 1)) := by
++    intro z hz
++    have h0 : 0 ≤ c - ∑ i, z i := by linarith [hz.2]
++    rw [MeasureTheory.integral_const_mul]
++    have := simplexF_integral (ι := Unit) (c - ∑ i, z i) h0 (fun _ => q)
++    simp only [Fintype.univ_unit, Finset.prod_singleton] at this
++    rw [this, momentF_unit]
++    ring
++  rw [setIntegral_congr_fun (simplexF_measurableSet c) hinner, MeasureTheory.integral_const_mul] at hY
++  have hq : ((q.factorial : ℝ) / ((q + 1).factorial : ℝ)) ≠ 0 := by positivity
++  rw [← mul_right_inj' hq, hY]
++  simp only [momentF, Fintype.card_sum, Fintype.card_unit, Fintype.sum_sum_type, Sum.elim_inl,
++    Sum.elim_inr, Fintype.univ_unit, Finset.sum_singleton, Fintype.prod_sum_type,
++    Finset.prod_singleton]
++  rw [show Fintype.card ι + 1 + (∑ i, e i + q) = Fintype.card ι + ∑ i, e i + (q + 1) by ring]
++  rw [Nat.factorial_succ q]
++  push_cast
++  field_simp
++
++/-- **Weighted simplex moment**: `∫_{simplexF ι c} zᵉ (c − Σ z)^p
++= c^{|ι| + Σe + p} ∏ eᵢ! p! / (|ι| + Σe + p)!` for `c ≥ 0`. -/
++theorem weighted_simplexF (c : ℝ) (hc : 0 ≤ c) (e : ι → ℕ) (p : ℕ) :
++    ∫ z in simplexF ι c, (∏ i, z i ^ e i) * (c - ∑ i, z i) ^ p =
++      c ^ (Fintype.card ι + ∑ i, e i + p) * (∏ i, ((e i).factorial : ℝ)) *
++        (p.factorial : ℝ) / ((Fintype.card ι + ∑ i, e i + p).factorial : ℝ) := by
++  cases p with
++  | zero =>
++      simp only [pow_zero, mul_one, Nat.factorial_zero, Nat.cast_one, add_zero]
++      exact simplexF_integral c hc e
++  | succ q => exact weighted_succ c hc e q
++
++
++/-- A weight `(M − Σ z)^q` with `M ≥ c` expands around `c`:
++`∫_{simplexF ι c} zᵉ (M − Σ z)^q = Σⱼ C(q, j) (M − c)^{q−j} ∫ zᵉ (c − Σ z)^j`. -/
++theorem shifted_weighted (c M : ℝ) (hc : 0 ≤ c) (e : ι → ℕ) (q : ℕ) :
++    ∫ z in simplexF ι c, (∏ i, z i ^ e i) * (M - ∑ i, z i) ^ q =
++      ∑ j ∈ Finset.range (q + 1), (q.choose j : ℝ) * (M - c) ^ (q - j) *
++        (c ^ (Fintype.card ι + ∑ i, e i + j) * (∏ i, ((e i).factorial : ℝ)) * (j.factorial : ℝ) /
++          ((Fintype.card ι + ∑ i, e i + j).factorial : ℝ)) := by
++  have hexp : ∀ z : ι → ℝ, (∏ i, z i ^ e i) * (M - ∑ i, z i) ^ q =
++      ∑ j ∈ Finset.range (q + 1), (q.choose j : ℝ) * (M - c) ^ (q - j) *
++        ((∏ i, z i ^ e i) * (c - ∑ i, z i) ^ j) := by
++    intro z
++    rw [show M - ∑ i, z i = (c - ∑ i, z i) + (M - c) by ring, add_pow, Finset.mul_sum]
++    refine Finset.sum_congr rfl fun j _ => ?_
++    ring
++  simp_rw [hexp]
++  rw [integral_finsetSum]
++  · refine Finset.sum_congr rfl fun j _ => ?_
++    rw [MeasureTheory.integral_const_mul, weighted_simplexF c hc e j]
++  · intro j _
++    exact ((by fun_prop : Continuous fun z : ι → ℝ => (q.choose j : ℝ) * (M - c) ^ (q - j) *
++      ((∏ i, z i ^ e i) * (c - ∑ i, z i) ^ j)).continuousOn.integrableOn_compact
++        (simplexF_isCompact c))
++
++
++/-! ## The two-group pieces over `Fin N` -/
++
++theorem pieceSet_measurableSet (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) :
++    MeasurableSet (pieceSet N R c M) := by
++  have h1 : IsClosed {y : Fin N → ℝ | ∀ i, 0 ≤ y i} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun i => isClosed_le continuous_const (continuous_apply i)
++  have h2 : IsClosed {y : Fin N → ℝ | ∑ i ∈ R, y i ≤ c} :=
++    isClosed_le (continuous_finsetSum _ fun i _ => continuous_apply i) continuous_const
++  have h3 : IsClosed {y : Fin N → ℝ | ∑ i, y i ≤ M} :=
++    isClosed_le (continuous_finsetSum _ fun i _ => continuous_apply i) continuous_const
++  exact (h1.inter (h2.inter h3)).measurableSet
++
++theorem pieceSet_empty (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) (h : ¬(0 ≤ c ∧ 0 ≤ M)) :
++    pieceSet N R c M = ∅ := by
++  ext y
++  simp only [pieceSet, Set.mem_ofPred_eq, Set.mem_empty_iff_false, iff_false, not_and]
++  intro h0 hR hM
++  exact h ⟨le_trans (Finset.sum_nonneg fun i _ => h0 i) hR,
++    le_trans (Finset.sum_nonneg fun i _ => h0 i) hM⟩
++
++/-- The split `y ↦ (y|_R, y|_{Rᶜ})` and its effect on the sums. -/
++theorem split_sums (N : ℕ) (R : Finset (Fin N)) (z : {i // i ∈ R} → ℝ) (w : {i // i ∉ R} → ℝ) :
++    let y := (MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm (z, w)
++    (∀ i : {i // i ∈ R}, y i = z i) ∧ (∀ i : {i // i ∉ R}, y i = w i) ∧
++      ∑ i ∈ R, y i = ∑ i, z i ∧ ∑ i, y i = ∑ i, z i + ∑ i, w i := by
++  intro y
++  have h1 : ∀ i : {i // i ∈ R}, y i = z i := fun i => by
++    simp [y, MeasurableEquiv.piEquivPiSubtypeProd_symm_apply, i.2]
++  have h2 : ∀ i : {i // i ∉ R}, y i = w i := fun i => by
++    simp [y, MeasurableEquiv.piEquivPiSubtypeProd_symm_apply, i.2]
++  refine ⟨h1, h2, ?_, ?_⟩
++  · rw [Finset.sum_subtype R (fun _ => Iff.rfl) y]
++    exact Finset.sum_congr rfl fun i _ => h1 i
++  · rw [← Fintype.sum_subtype_add_sum_subtype (· ∈ R) y]
++    have e1 : ∑ i : {i // i ∈ R}, y i = ∑ i, z i := Finset.sum_congr rfl fun i _ => h1 i
++    have e2 : ∑ i : {i // i ∉ R}, y i = ∑ i, w i := Finset.sum_congr rfl fun i _ => h2 i
++    rw [← e1, ← e2]
++    congr 1
++    exact Finset.sum_congr (by congr; exact Subsingleton.elim _ _) fun _ _ => rfl
++
++theorem card_compl_subtype (N : ℕ) (R : Finset (Fin N)) :
++    Fintype.card {i // i ∉ R} = N - R.card := by
++  rw [Fintype.card_subtype_compl, Fintype.card_fin, Fintype.card_coe]
++
++/-- Integrals over a piece become fibred integrals over `(y|_R, y|_{Rᶜ})`. -/
++theorem piece_as_fibred (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) (G : (Fin N → ℝ) → ℝ) :
++    ∫ y in pieceSet N R c M, G y =
++      ∫ p, (fibred (simplexF {i // i ∈ R} (min c M)) {i // i ∉ R} M).indicator
++        (fun p => G ((MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm p)) p := by
++  set Φ := MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R) with hΦdef
++  have hΦ : MeasurePreserving Φ.symm volume volume := by
++    convert (volume_preserving_piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm Φ <;> rfl
++  rw [← integral_indicator (pieceSet_measurableSet N R c M), ← hΦ.integral_comp']
++  congr 1
++  funext ⟨z, w⟩
++  obtain ⟨-, -, hR, hall⟩ := split_sums N R z w
++  rw [← hΦdef] at hR hall
++  have hmem : Φ.symm (z, w) ∈ pieceSet N R c M ↔
++      (z, w) ∈ fibred (simplexF {i // i ∈ R} (min c M)) {i // i ∉ R} M := by
++    simp only [pieceSet, fibred, simplexF, Set.mem_ofPred_eq, hR, hall, le_min_iff]
++    constructor
++    · rintro ⟨h0, hc, hM⟩
++      have hz : ∀ i, 0 ≤ z i := fun i => by
++        have := h0 i; rwa [(split_sums N R z w).1 i] at this
++      have hw : ∀ i, 0 ≤ w i := fun i => by
++        have := h0 i; rwa [(split_sums N R z w).2.1 i] at this
++      have : 0 ≤ ∑ i, w i := Finset.sum_nonneg fun i _ => hw i
++      exact ⟨⟨hz, hc, by linarith⟩, hw, by linarith⟩
++    · rintro ⟨⟨hz, hc, -⟩, hw, hM⟩
++      refine ⟨fun i => ?_, hc, by linarith⟩
++      by_cases hi : i ∈ R
++      · have := (split_sums N R z w).1 ⟨i, hi⟩; simp only at this; rw [this]; exact hz _
++      · have := (split_sums N R z w).2.1 ⟨i, hi⟩; simp only at this; rw [this]; exact hw _
++  by_cases h : (z, w) ∈ fibred (simplexF {i // i ∈ R} (min c M)) {i // i ∉ R} M
++  · rw [Set.indicator_of_mem (hmem.mpr h), Set.indicator_of_mem h]
++  · rw [Set.indicator_of_notMem (fun h' => h (hmem.mp h')), Set.indicator_of_notMem h]
++
++
++theorem single_facts {κ : Type*} [Fintype κ] [DecidableEq κ] (b : κ) (t : ℕ) (x : κ → ℝ) :
++    (∏ i, x i ^ (if i = b then t else 0)) = x b ^ t ∧
++      (∑ i, (if i = b then t else 0)) = t ∧
++      (∏ i, (((if i = b then t else 0).factorial : ℕ) : ℝ)) = (t.factorial : ℝ) := by
++  refine ⟨?_, ?_, ?_⟩
++  · simp [pow_zero, Finset.prod_ite_eq']
++  · simp [Finset.sum_ite_eq']
++  · simp [apply_ite Nat.factorial, Finset.prod_ite_eq']
++
++/-- **A piece, special coordinate rough** (`a ∈ R`). -/
++theorem piece_integral_mem (N : ℕ) (R : Finset (Fin N)) (a : Fin N) (ha : a ∈ R) (t p : ℕ)
++    (c M : ℝ) :
++    ∫ y in pieceSet N R c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup (N - R.card) R.card t 0 p c M := by
++  classical
++  by_cases h : 0 ≤ c ∧ 0 ≤ M
++  swap
++  · rw [pieceSet_empty N R c M h, Measure.restrict_empty, integral_zero_measure, twoGroup, if_neg h]
++  have hc' : 0 ≤ min c M := le_min h.1 h.2
++  rw [piece_as_fibred]
++  have hF : (fun pr : ({i // i ∈ R} → ℝ) × ({i // i ∉ R} → ℝ) =>
++      ((MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm pr) a ^ t *
++        (M - ∑ i, ((MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm pr) i) ^ p) =
++      fun pr => pr.1 ⟨a, ha⟩ ^ t * ((M - ∑ i, pr.1 i) - ∑ i, pr.2 i) ^ p := by
++    funext ⟨z, w⟩
++    obtain ⟨h1, -, -, hall⟩ := split_sums N R z w
++    rw [hall, show M - (∑ i, z i + ∑ i, w i) = (M - ∑ i, z i) - ∑ i, w i by ring]
++    have := h1 ⟨a, ha⟩
++    simp only at this
++    rw [this]
++  rw [hF, integral_fibred (simplexF_isCompact _) (fun z hz => hz.1) M _ (by fun_prop)]
++  have hinner : ∀ z ∈ simplexF {i // i ∈ R} (min c M),
++      ∫ w in simplexF {i // i ∉ R} (M - ∑ i, z i), z ⟨a, ha⟩ ^ t * ((M - ∑ i, z i) - ∑ i, w i) ^ p =
++        (p.factorial : ℝ) / ((N - R.card + p).factorial : ℝ) *
++          ((∏ i, z i ^ (if i = ⟨a, ha⟩ then t else 0)) * (M - ∑ i, z i) ^ (N - R.card + 0 + p)) := by
++    intro z hz
++    have h0 : 0 ≤ M - ∑ i, z i := by linarith [hz.2, min_le_right c M]
++    rw [MeasureTheory.integral_const_mul]
++    have hw := weighted_simplexF (ι := {i // i ∉ R}) (M - ∑ i, z i) h0 (fun _ => 0) p
++    simp only [pow_zero, Finset.prod_const_one, one_mul, Finset.sum_const_zero, add_zero,
++      Nat.factorial_zero, Nat.cast_one, mul_one, card_compl_subtype] at hw
++    rw [hw, (single_facts (⟨a, ha⟩ : {i // i ∈ R}) t z).1]
++    ring
++  rw [setIntegral_congr_fun (simplexF_measurableSet _) hinner, MeasureTheory.integral_const_mul,
++    shifted_weighted (min c M) M hc']
++  obtain ⟨-, hsum, hprod⟩ := single_facts (⟨a, ha⟩ : {i // i ∈ R}) t (fun _ => (0 : ℝ))
++  rw [hsum, hprod, twoGroup, if_pos h, Fintype.card_coe]
++  simp only [add_zero, Nat.factorial_zero, Nat.cast_one, one_mul, wsVal]
++
++/-- **A piece, special coordinate smooth** (`a ∉ R`). -/
++theorem piece_integral_notMem (N : ℕ) (R : Finset (Fin N)) (a : Fin N) (ha : a ∉ R) (t p : ℕ)
++    (c M : ℝ) :
++    ∫ y in pieceSet N R c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup (N - R.card) R.card 0 t p c M := by
++  classical
++  by_cases h : 0 ≤ c ∧ 0 ≤ M
++  swap
++  · rw [pieceSet_empty N R c M h, Measure.restrict_empty, integral_zero_measure, twoGroup, if_neg h]
++  have hc' : 0 ≤ min c M := le_min h.1 h.2
++  rw [piece_as_fibred]
++  have hF : (fun pr : ({i // i ∈ R} → ℝ) × ({i // i ∉ R} → ℝ) =>
++      ((MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm pr) a ^ t *
++        (M - ∑ i, ((MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm pr) i) ^ p) =
++      fun pr => pr.2 ⟨a, ha⟩ ^ t * ((M - ∑ i, pr.1 i) - ∑ i, pr.2 i) ^ p := by
++    funext ⟨z, w⟩
++    obtain ⟨-, h2, -, hall⟩ := split_sums N R z w
++    rw [hall, show M - (∑ i, z i + ∑ i, w i) = (M - ∑ i, z i) - ∑ i, w i by ring]
++    have := h2 ⟨a, ha⟩
++    simp only at this
++    rw [this]
++  rw [hF, integral_fibred (simplexF_isCompact _) (fun z hz => hz.1) M _ (by fun_prop)]
++  have hinner : ∀ z ∈ simplexF {i // i ∈ R} (min c M),
++      ∫ w in simplexF {i // i ∉ R} (M - ∑ i, z i), w ⟨a, ha⟩ ^ t * ((M - ∑ i, z i) - ∑ i, w i) ^ p =
++        (t.factorial : ℝ) * (p.factorial : ℝ) / ((N - R.card + t + p).factorial : ℝ) *
++          ((∏ i, z i ^ (fun _ => 0 : {i // i ∈ R} → ℕ) i) * (M - ∑ i, z i) ^ (N - R.card + t + p)) := by
++    intro z hz
++    have h0 : 0 ≤ M - ∑ i, z i := by linarith [hz.2, min_le_right c M]
++    have hw := weighted_simplexF (ι := {i // i ∉ R}) (M - ∑ i, z i) h0
++      (fun i => if i = ⟨a, ha⟩ then t else 0) p
++    obtain ⟨-, hs1, hf1⟩ := single_facts (⟨a, ha⟩ : {i // i ∉ R}) t (fun _ => (0 : ℝ))
++    simp only [hs1, hf1, card_compl_subtype] at hw
++    have hp : ∀ w : {i // i ∉ R} → ℝ, w ⟨a, ha⟩ ^ t * ((M - ∑ i, z i) - ∑ i, w i) ^ p =
++        (∏ i, w i ^ (if i = ⟨a, ha⟩ then t else 0)) * ((M - ∑ i, z i) - ∑ i, w i) ^ p := by
++      intro w; rw [(single_facts (⟨a, ha⟩ : {i // i ∉ R}) t w).1]
++    simp_rw [hp]
++    rw [hw]
++    simp only [pow_zero, Finset.prod_const_one, one_mul]
++    ring
++  rw [setIntegral_congr_fun (simplexF_measurableSet _) hinner, MeasureTheory.integral_const_mul,
++    shifted_weighted (min c M) M hc']
++  rw [twoGroup, if_pos h, Fintype.card_coe]
++  simp only [Finset.sum_const_zero, add_zero, Finset.prod_const, Nat.factorial_zero, Nat.cast_one,
++    one_pow, mul_one, wsVal]
++
++
++/-! ## The support, its pieces, and inclusion–exclusion -/
++
++theorem mem_roughSet {N : ℕ} (g : ℝ) (x : Fin N → ℝ) (i : Fin N) : i ∈ roughSet g x ↔ g < x i := by
++  classical
++  unfold roughSet
++  simp
++
++theorem Qset_measurableSet {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin N)) :
++    MeasurableSet (Qset g L C R K) := by
++  have h1 : IsClosed {x : Fin N → ℝ | ∀ i, 0 ≤ x i} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun i => isClosed_le continuous_const (continuous_apply i)
++  have h2 : IsOpen {x : Fin N → ℝ | ∀ i ∈ R ∪ K, g < x i} := by
++    have : {x : Fin N → ℝ | ∀ i ∈ R ∪ K, g < x i} = ⋂ i ∈ R ∪ K, {x | g < x i} := by
++      ext x; simp
++    rw [this]
++    exact isOpen_biInter_finset fun i _ => isOpen_lt continuous_const (continuous_apply i)
++  have h3 : IsClosed {x : Fin N → ℝ | ∑ i, x i ≤ L} :=
++    isClosed_le (continuous_finsetSum _ fun i _ => continuous_apply i) continuous_const
++  have h4 : IsClosed {x : Fin N → ℝ | ∑ i ∈ R, x i ≤ C R.card} :=
++    isClosed_le (continuous_finsetSum _ fun i _ => continuous_apply i) continuous_const
++  have : Qset g L C R K = {x | ∀ i, 0 ≤ x i} ∩ ({x | ∀ i ∈ R ∪ K, g < x i} ∩
++      ({x | ∑ i, x i ≤ L} ∩ {x | ∑ i ∈ R, x i ≤ C R.card})) := by
++    ext x; simp [Qset]
++  rw [this]
++  exact h1.measurableSet.inter (h2.measurableSet.inter (h3.measurableSet.inter h4.measurableSet))
++
++theorem supportT_measurableSet (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) :
++    MeasurableSet (supportT N g L C) := by
++  classical
++  have hR : ∀ R : Finset (Fin N), MeasurableSet {x : Fin N → ℝ | roughSet g x = R} := by
++    intro R
++    have : {x : Fin N → ℝ | roughSet g x = R} =
++        ⋂ i, {x | (g < x i) ↔ i ∈ R} := by
++      ext x
++      simp only [Set.mem_setOf_eq, Set.mem_iInter, Finset.ext_iff, mem_roughSet]
++    rw [this]
++    refine MeasurableSet.iInter fun i => ?_
++    by_cases hi : i ∈ R
++    · simpa [hi] using measurableSet_lt measurable_const (measurable_pi_apply i)
++    · simpa [hi] using measurableSet_le (measurable_pi_apply i) measurable_const
++  have : supportT N g L C = {x | ∀ i, 0 ≤ x i} ∩ ({x | ∑ i, x i ≤ L} ∩
++      ⋃ R : Finset (Fin N), ({x | roughSet g x = R} ∩ {x | ∑ i ∈ R, x i ≤ C R.card})) := by
++    ext x
++    simp only [supportT, Set.mem_setOf_eq, Set.mem_inter_iff, Set.mem_iUnion]
++    constructor
++    · rintro ⟨h0, hL, hC⟩; exact ⟨h0, hL, roughSet g x, rfl, hC⟩
++    · rintro ⟨h0, hL, R, rfl, hC⟩; exact ⟨h0, hL, hC⟩
++  rw [this]
++  have h1 : MeasurableSet {x : Fin N → ℝ | ∀ i, 0 ≤ x i} := by
++    simp only [Set.ofPred_forall]
++    exact MeasurableSet.iInter fun i => measurableSet_le measurable_const (measurable_pi_apply i)
++  have h2 : MeasurableSet {x : Fin N → ℝ | ∑ i, x i ≤ L} :=
++    measurableSet_le (Finset.measurable_sum _ fun i _ => measurable_pi_apply i) measurable_const
++  refine h1.inter (h2.inter (MeasurableSet.iUnion fun R => (hR R).inter ?_))
++  exact measurableSet_le (Finset.measurable_sum _ fun i _ => measurable_pi_apply i) measurable_const
++
++/-- `Σ_{K ⊆ S} (−1)^{|K|} = [S = ∅]` over `ℝ`. -/
++theorem sum_powerset_neg_one {α : Type*} [DecidableEq α] (S : Finset α) :
++    ∑ K ∈ S.powerset, ((-1 : ℝ) ^ K.card) = if S = ∅ then 1 else 0 := by
++  have h := congrArg (Int.cast : ℤ → ℝ) (Finset.sum_powerset_neg_one_pow_card (x := S))
++  push_cast at h
++  rw [h]
++
++/-- **Pointwise inclusion–exclusion.** The indicator of the support is the signed sum of the
++indicators of the pieces `Qset R K`, `K ⊆ Rᶜ`. -/
++theorem indicator_supportT {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (F : (Fin N → ℝ) → ℝ) (x : Fin N → ℝ) :
++    (supportT N g L C).indicator F x =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator F x := by
++  classical
++  set R0 := roughSet g x with hR0
++  have hrow : ∀ R : Finset (Fin N),
++      ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator F x =
++        if R = R0 then (if (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card then F x else 0)
++        else 0 := by
++    intro R
++    have hmem : ∀ K, x ∈ Qset g L C R K ↔
++        ((∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card ∧ R ⊆ R0) ∧ K ⊆ R0 := by
++      intro K
++      simp only [Qset, Set.mem_setOf_eq, Finset.mem_union]
++      constructor
++      · rintro ⟨h0, hg, hL, hC⟩
++        exact ⟨⟨h0, hL, hC, fun i hi => (mem_roughSet g x i).mpr (hg i (Or.inl hi))⟩,
++          fun i hi => (mem_roughSet g x i).mpr (hg i (Or.inr hi))⟩
++      · rintro ⟨⟨h0, hL, hC, hRs⟩, hKs⟩
++        refine ⟨h0, fun i hi => ?_, hL, hC⟩
++        rcases hi with hi | hi
++        · exact (mem_roughSet g x i).mp (hRs hi)
++        · exact (mem_roughSet g x i).mp (hKs hi)
++    by_cases hb : (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card ∧ R ⊆ R0
++    · have hsum : ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator F x =
++          F x * ∑ K ∈ (Rᶜ ∩ R0).powerset, (-1 : ℝ) ^ K.card := by
++        rw [Finset.mul_sum]
++        have hfilt : (Rᶜ ∩ R0).powerset = Rᶜ.powerset.filter (· ⊆ R0) := by
++          ext K; simp [Finset.subset_inter_iff]
++        rw [hfilt, Finset.sum_filter]
++        refine Finset.sum_congr rfl fun K _ => ?_
++        by_cases hK : K ⊆ R0
++        · rw [Set.indicator_of_mem ((hmem K).mpr ⟨hb, hK⟩), if_pos hK]; ring
++        · rw [Set.indicator_of_notMem (fun h => hK ((hmem K).mp h).2), if_neg hK]; ring
++      rw [hsum, sum_powerset_neg_one]
++      have hiff : Rᶜ ∩ R0 = ∅ ↔ R = R0 := by
++        constructor
++        · intro h
++          refine Finset.Subset.antisymm hb.2.2.2 fun i hi => ?_
++          by_contra hiR
++          have : i ∈ Rᶜ ∩ R0 := Finset.mem_inter.mpr ⟨Finset.mem_compl.mpr hiR, hi⟩
++          rw [h] at this; simp at this
++        · rintro rfl; ext i; simp
++      by_cases hRR : R = R0
++      · rw [if_pos (hiff.mpr hRR), if_pos hRR, if_pos ⟨hb.1, hb.2.1, hb.2.2.1⟩, mul_one]
++      · rw [if_neg (fun h => hRR (hiff.mp h)), if_neg hRR, mul_zero]
++    · have hz : ∀ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator F x = 0 := by
++        intro K _
++        rw [Set.indicator_of_notMem (fun h => hb ((hmem K).mp h).1), mul_zero]
++      rw [Finset.sum_eq_zero hz]
++      by_cases hRR : R = R0
++      · subst hRR
++        rw [if_pos rfl, if_neg]
++        rintro ⟨h0, hL, hC⟩
++        exact hb ⟨h0, hL, hC, Finset.Subset.refl _⟩
++      · rw [if_neg hRR]
++  rw [Finset.sum_congr rfl fun R _ => hrow R, Finset.sum_ite_eq' Finset.univ R0]
++  simp only [Finset.mem_univ, if_true, Set.indicator_apply, supportT, Set.mem_setOf_eq, ← hR0]
++
++
++/-! ## Translation of a piece -/
++
++theorem sum_shiftV {N : ℕ} (g : ℝ) (S T : Finset (Fin N)) (hT : T ⊆ S) :
++    ∑ i ∈ T, shiftV g S i = T.card * g := by
++  classical
++  unfold shiftV
++  rw [Finset.sum_congr rfl fun i hi => if_pos (hT hi)]
++  simp
++
++theorem pieceSet_subset_simplexF (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) :
++    pieceSet N R c M ⊆ simplexF (Fin N) M := fun _ hy => ⟨hy.1, hy.2.2⟩
++
++theorem integrableOn_pieceSet (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) (G : (Fin N → ℝ) → ℝ)
++    (hG : Continuous G) : IntegrableOn G (pieceSet N R c M) :=
++  (hG.continuousOn.integrableOn_compact (simplexF_isCompact (ι := Fin N) M)).mono_set
++    (pieceSet_subset_simplexF N R c M)
++
++/-- **Translation**: a piece `Qset R K` (`K ⊆ Rᶜ`) is, after `x = y + g·1_{R∪K}`, the closed piece
++`pieceSet R (C|R| − |R|g) (L − (|R| + |K|)g)` up to the null faces `yᵢ = 0`. -/
++theorem integral_Qset {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (R K : Finset (Fin N))
++    (hRK : Disjoint R K) (F : (Fin N → ℝ) → ℝ) :
++    ∫ x, (Qset g L C R K).indicator F x =
++      ∫ y in pieceSet N R (C R.card - R.card * g) (L - (R.card + K.card) * g),
++        F (y + shiftV g (R ∪ K)) := by
++  classical
++  set v := shiftV g (R ∪ K) with hv
++  set S := R ∪ K
++  rw [← integral_add_right_eq_self (μ := volume) (fun x => (Qset g L C R K).indicator F x) v]
++  set Q' := {y : Fin N → ℝ | y + v ∈ Qset g L C R K} with hQ'
++  have hQ'meas : MeasurableSet Q' :=
++    (Qset_measurableSet g L C R K).preimage (measurable_id.add_const v)
++  have hfun : (fun y => (Qset g L C R K).indicator F (y + v)) = Q'.indicator (fun y => F (y + v)) := by
++    funext y
++    by_cases h : y + v ∈ Qset g L C R K
++    · rw [Set.indicator_of_mem h, Set.indicator_of_mem (show y ∈ Q' from h)]
++    · rw [Set.indicator_of_notMem h, Set.indicator_of_notMem (show y ∉ Q' from h)]
++  rw [hfun, integral_indicator hQ'meas]
++  have hcard : (S.card : ℝ) = R.card + K.card := by
++    rw [Finset.card_union_of_disjoint hRK]; push_cast; ring
++  have hsumAll : ∀ y : Fin N → ℝ, ∑ i, (y + v) i = ∑ i, y i + (R.card + K.card) * g := by
++    intro y
++    simp only [Pi.add_apply, Finset.sum_add_distrib]
++    rw [show ∑ i, v i = ∑ i ∈ Finset.univ, shiftV g S i from rfl]
++    rw [show (∑ i ∈ Finset.univ, shiftV g S i) = ∑ i ∈ S, shiftV g S i by
++      rw [← Finset.sum_subset (Finset.subset_univ S)]
++      intro i _ hi; simp [shiftV, hi]]
++    rw [sum_shiftV g S S (Finset.Subset.refl _), hcard]
++  have hsumR : ∀ y : Fin N → ℝ, ∑ i ∈ R, (y + v) i = ∑ i ∈ R, y i + R.card * g := by
++    intro y
++    simp only [Pi.add_apply, Finset.sum_add_distrib]
++    rw [sum_shiftV g S R Finset.subset_union_left]
++  have hvS : ∀ i, i ∈ S → v i = g := fun i hi => by simp [hv, shiftV, hi]
++  have hvS' : ∀ i, i ∉ S → v i = 0 := fun i hi => by simp [hv, shiftV, hi]
++  -- `Q' ⊆ pieceSet` and the difference lies in the null faces
++  have hsub : Q' ⊆ pieceSet N R (C R.card - R.card * g) (L - (R.card + K.card) * g) := by
++    rintro y ⟨h0, hgt, hL, hC⟩
++    refine ⟨fun i => ?_, ?_, ?_⟩
++    · by_cases hi : i ∈ S
++      · have := hgt i hi; simp only [Pi.add_apply, hvS i hi] at this; linarith
++      · have := h0 i; simp only [Pi.add_apply, hvS' i hi] at this; linarith
++    · rw [hsumR] at hC; linarith
++    · rw [hsumAll] at hL; linarith
++  have hdiff : pieceSet N R (C R.card - R.card * g) (L - (R.card + K.card) * g) \ Q' ⊆
++      ⋃ i, {y : Fin N → ℝ | y i = 0} := by
++    rintro y ⟨⟨h0, hC, hL⟩, hnot⟩
++    simp only [Set.mem_iUnion, Set.mem_setOf_eq]
++    by_contra hall
++    push_neg at hall
++    apply hnot
++    refine ⟨fun i => ?_, fun i hi => ?_, ?_, ?_⟩
++    · by_cases hi : i ∈ S
++      · simp only [Pi.add_apply, hvS i hi]; linarith [h0 i]
++      · simp only [Pi.add_apply, hvS' i hi]; linarith [h0 i]
++    · simp only [Pi.add_apply, hvS i hi]
++      have := lt_of_le_of_ne (h0 i) (Ne.symm (hall i))
++      linarith
++    · rw [hsumAll]; linarith
++    · rw [hsumR]; linarith
++  have hnull : volume (⋃ i, {y : Fin N → ℝ | y i = 0}) = 0 := by
++    refine measure_iUnion_null fun i => ?_
++    rw [volume_pi]
++    exact Measure.pi_hyperplane _ i 0
++  have hae : Q' =ᵐ[volume] pieceSet N R (C R.card - R.card * g) (L - (R.card + K.card) * g) := by
++    refine Filter.EventuallyLE.antisymm (Filter.Eventually.of_forall fun y hy => hsub hy) ?_
++    rw [ae_le_set]
++    exact measure_mono_null hdiff hnull
++  exact setIntegral_congr_set hae
++
++
++theorem sum_add_shiftV {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (hRK : Disjoint R K) (y : Fin N → ℝ) :
++    ∑ i, (y + shiftV g (R ∪ K)) i = ∑ i, y i + (R.card + K.card) * g := by
++  classical
++  simp only [Pi.add_apply, Finset.sum_add_distrib]
++  rw [show (∑ i, shiftV g (R ∪ K) i) = ∑ i ∈ R ∪ K, shiftV g (R ∪ K) i by
++    rw [← Finset.sum_subset (Finset.subset_univ (R ∪ K))]
++    intro i _ hi; simp [shiftV, hi]]
++  rw [sum_shiftV g _ _ (Finset.Subset.refl _), Finset.card_union_of_disjoint hRK]
++  push_cast; ring
++
++/-- The value of one inclusion–exclusion piece `(R, K)` for the integrand
++`(L − Σ x)^p x_a^e`. -/
++noncomputable def pieceTerm {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (a : Fin N) (e p : ℕ)
++    (R K : Finset (Fin N)) : ℝ := by
++  classical exact
++  ∑ t ∈ Finset.range (e + 1), (e.choose t : ℝ) * (if a ∈ R ∪ K then g else 0) ^ (e - t) *
++    (if a ∈ R then
++      twoGroup (N - R.card) R.card t 0 p (C R.card - R.card * g) (L - (R.card + K.card) * g)
++    else twoGroup (N - R.card) R.card 0 t p (C R.card - R.card * g) (L - (R.card + K.card) * g))
++
++theorem integral_Qset_term {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (a : Fin N) (e p : ℕ)
++    (R K : Finset (Fin N)) (hRK : Disjoint R K) :
++    ∫ x, (Qset g L C R K).indicator (fun x => (L - ∑ i, x i) ^ p * x a ^ e) x =
++      pieceTerm g L C a e p R K := by
++  classical
++  rw [integral_Qset g L C hg R K hRK]
++  set M := L - (R.card + K.card) * g
++  set c := C R.card - R.card * g
++  have hexp : ∀ y : Fin N → ℝ, (L - ∑ i, (y + shiftV g (R ∪ K)) i) ^ p *
++      (y + shiftV g (R ∪ K)) a ^ e =
++      ∑ t ∈ Finset.range (e + 1), (e.choose t : ℝ) * (if a ∈ R ∪ K then g else 0) ^ (e - t) *
++        (y a ^ t * (M - ∑ i, y i) ^ p) := by
++    intro y
++    rw [sum_add_shiftV g R K hRK, show L - (∑ i, y i + (R.card + K.card) * g) = M - ∑ i, y i by
++      simp only [M]; ring]
++    rw [Pi.add_apply, show shiftV g (R ∪ K) a = (if a ∈ R ∪ K then g else 0) by simp [shiftV],
++      add_pow, Finset.mul_sum]
++    refine Finset.sum_congr rfl fun t _ => ?_
++    ring
++  simp_rw [hexp]
++  rw [integral_finsetSum]
++  · unfold pieceTerm
++    refine Finset.sum_congr rfl fun t _ => ?_
++    rw [MeasureTheory.integral_const_mul]
++    congr 1
++    by_cases ha : a ∈ R
++    · rw [if_pos ha]; exact piece_integral_mem N R a ha t p c M
++    · rw [if_neg ha]; exact piece_integral_notMem N R a ha t p c M
++  · intro t _
++    exact integrableOn_pieceSet N R c M _ (by fun_prop)
++
++/-- **The integral over the support, unreduced**: a signed sum over all rough sets `R` and
++inclusion–exclusion sets `K ⊆ Rᶜ`. -/
++theorem integral_supportT_unreduced (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (a : Fin N)
++    (e p : ℕ) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) ^ p * x a ^ e =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * pieceTerm g L C a e p R K := by
++  classical
++  rw [← integral_indicator (supportT_measurableSet N g L C)]
++  simp_rw [indicator_supportT g L C]
++  have hint : ∀ R K, Integrable ((Qset g L C R K).indicator
++      (fun x : Fin N → ℝ => (L - ∑ i, x i) ^ p * x a ^ e)) := by
++    intro R K
++    rw [integrable_indicator_iff (Qset_measurableSet g L C R K)]
++    refine ((by fun_prop : Continuous fun x : Fin N → ℝ => (L - ∑ i, x i) ^ p * x a ^ e).continuousOn.integrableOn_compact
++      (simplexF_isCompact (ι := Fin N) L)).mono_set ?_
++    exact fun x hx => ⟨hx.1, hx.2.2.1⟩
++  rw [integral_finsetSum _ fun R _ => integrable_finset_sum _ fun K _ => (hint R K).const_mul _]
++  refine Finset.sum_congr rfl fun R _ => ?_
++  rw [integral_finsetSum _ fun K _ => (hint R K).const_mul _]
++  refine Finset.sum_congr rfl fun K hK => ?_
++  rw [MeasureTheory.integral_const_mul, integral_Qset_term g L C hg a e p R K]
++  exact Finset.disjoint_left.mpr fun i hiR hiK =>
++    (Finset.mem_compl.mp (Finset.mem_powerset.mp hK hiK)) hiR
++
++
++/-! ## Counting: the sum over `(R, K)` by cardinalities -/
++
++/-- Grouping a signed sum over rough sets `R` and `K ⊆ Rᶜ` by `|R|`, `|K|` and the position of a
++distinguished coordinate `a` (in `R`, in `K`, or in neither). -/
++theorem count_pieces (N : ℕ) (a : Fin N) (Hin Hk Hout : ℕ → ℕ → ℝ) :
++    ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card *
++        (if a ∈ R then Hin R.card K.card else if a ∈ K then Hk R.card K.card else Hout R.card K.card) =
++      ∑ r ∈ Finset.range (N - 1 + 1), ((N - 1).choose r : ℝ) *
++        ∑ k ∈ Finset.range (N - 1 - r + 1), ((N - 1 - r).choose k : ℝ) *
++          ((-1 : ℝ) ^ k * Hin (r + 1) k + (-1 : ℝ) ^ k * Hout r k - (-1 : ℝ) ^ k * Hk r (k + 1)) := by
++  classical
++  set E := (Finset.univ : Finset (Fin N)).erase a with hEdef
++  have haE : a ∉ E := Finset.notMem_erase a _
++  have hEcard : E.card = N - 1 := by
++    rw [Finset.card_erase_of_mem (Finset.mem_univ a), Finset.card_univ, Fintype.card_fin]
++  have huniv : (Finset.univ : Finset (Fin N)) = insert a E := (Finset.insert_erase (Finset.mem_univ a)).symm
++  rw [show (∑ R : Finset (Fin N), _) = ∑ R ∈ (Finset.univ : Finset (Fin N)).powerset, _ by
++    rw [Finset.powerset_univ]]
++  rw [huniv, Finset.sum_powerset_insert haE, ← Finset.sum_add_distrib]
++  -- each `R ⊆ E` contributes a function of `|R|`
++  have hrow : ∀ R ∈ E.powerset,
++      (∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card *
++          (if a ∈ R then Hin R.card K.card else if a ∈ K then Hk R.card K.card else Hout R.card K.card)) +
++        (∑ K ∈ (insert a R)ᶜ.powerset, (-1 : ℝ) ^ K.card *
++          (if a ∈ insert a R then Hin (insert a R).card K.card
++            else if a ∈ K then Hk (insert a R).card K.card else Hout (insert a R).card K.card)) =
++      ∑ k ∈ Finset.range (N - 1 - R.card + 1), ((N - 1 - R.card).choose k : ℝ) *
++        ((-1 : ℝ) ^ k * Hin (R.card + 1) k + (-1 : ℝ) ^ k * Hout R.card k -
++          (-1 : ℝ) ^ k * Hk R.card (k + 1)) := by
++    intro R hR
++    have hRE : R ⊆ E := Finset.mem_powerset.mp hR
++    have haR : a ∉ R := fun h => haE (hRE h)
++    have hD : (E \ R).card = N - 1 - R.card := by rw [Finset.card_sdiff_of_subset hRE, hEcard]
++    have haD : a ∉ E \ R := fun h => haE (Finset.mem_sdiff.mp h).1
++    have hc1 : Rᶜ = insert a (E \ R) := by
++      ext i
++      by_cases hi : i = a
++      · subst hi; simp [haR]
++      · simp [hEdef, hi]
++    have hc2 : (insert a R)ᶜ = E \ R := by
++      ext i
++      by_cases hi : i = a
++      · subst hi; simp [hEdef]
++      · simp [hEdef, hi]
++    rw [hc1, hc2, Finset.sum_powerset_insert haD]
++    have hcardI : (insert a R).card = R.card + 1 := Finset.card_insert_of_notMem haR
++    -- three sums over `K ⊆ E \ R`, each a function of `|K|`
++    have s1 : ∑ K ∈ (E \ R).powerset, (-1 : ℝ) ^ K.card *
++        (if a ∈ R then Hin R.card K.card else if a ∈ K then Hk R.card K.card else Hout R.card K.card) =
++        ∑ K ∈ (E \ R).powerset, (fun k => (-1 : ℝ) ^ k * Hout R.card k) K.card := by
++      refine Finset.sum_congr rfl fun K hK => ?_
++      have haK : a ∉ K := fun h => haD (Finset.mem_powerset.mp hK h)
++      simp [haR, haK]
++    have s2 : ∑ K ∈ (E \ R).powerset, (-1 : ℝ) ^ (insert a K).card *
++        (if a ∈ R then Hin R.card (insert a K).card
++          else if a ∈ insert a K then Hk R.card (insert a K).card else Hout R.card (insert a K).card) =
++        ∑ K ∈ (E \ R).powerset, (fun k => -((-1 : ℝ) ^ k * Hk R.card (k + 1))) K.card := by
++      refine Finset.sum_congr rfl fun K hK => ?_
++      have haK : a ∉ K := fun h => haD (Finset.mem_powerset.mp hK h)
++      simp only [haR, if_false, Finset.mem_insert_self, if_true, Finset.card_insert_of_notMem haK]
++      ring
++    have s3 : ∑ K ∈ (E \ R).powerset, (-1 : ℝ) ^ K.card *
++        (if a ∈ insert a R then Hin (insert a R).card K.card
++          else if a ∈ K then Hk (insert a R).card K.card else Hout (insert a R).card K.card) =
++        ∑ K ∈ (E \ R).powerset, (fun k => (-1 : ℝ) ^ k * Hin (R.card + 1) k) K.card := by
++      refine Finset.sum_congr rfl fun K _ => ?_
++      simp [hcardI]
++    rw [s1, s2, s3,
++      Finset.sum_powerset_apply_card (fun k => (-1 : ℝ) ^ k * Hout R.card k) (x := E \ R),
++      Finset.sum_powerset_apply_card (fun k => -((-1 : ℝ) ^ k * Hk R.card (k + 1))) (x := E \ R),
++      Finset.sum_powerset_apply_card (fun k => (-1 : ℝ) ^ k * Hin (R.card + 1) k) (x := E \ R),
++      hD, ← Finset.sum_add_distrib, ← Finset.sum_add_distrib]
++    refine Finset.sum_congr rfl fun k _ => ?_
++    simp only [nsmul_eq_mul]
++    ring
++  rw [Finset.sum_congr rfl hrow]
++  rw [Finset.sum_powerset_apply_card (fun r => ∑ k ∈ Finset.range (N - 1 - r + 1),
++    ((N - 1 - r).choose k : ℝ) * ((-1 : ℝ) ^ k * Hin (r + 1) k + (-1 : ℝ) ^ k * Hout r k -
++      (-1 : ℝ) ^ k * Hk r (k + 1))), hEcard]
++  simp only [nsmul_eq_mul]
++
++
++/-! ## The closed form -/
++
++theorem pieceTerm_eq {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (a : Fin N) (e p : ℕ) (R K : Finset (Fin N)) :
++    pieceTerm g L C a e p R K =
++      if a ∈ R then Hin N g L C e p R.card K.card
++      else if a ∈ K then Hk N g L C e p R.card K.card else Hout N g L C e p R.card K.card := by
++  classical
++  unfold pieceTerm Hin Hk Hout
++  by_cases ha : a ∈ R
++  · simp [ha]
++  · by_cases hK : a ∈ K
++    · simp [ha, hK]
++    · simp [ha, hK]
++
++/-- **The integral over the support in closed form**, for any cap function `C`, any `g ≥ 0`,
++any `L`, and any coordinate `a`. -/
++theorem integral_supportT (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (a : Fin N) (e p : ℕ) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) ^ p * x a ^ e = gramFormula N g L C e p := by
++  rw [integral_supportT_unreduced N g L C hg a e p]
++  simp_rw [pieceTerm_eq g L C a e p]
++  rw [count_pieces N a (Hin N g L C e p) (Hk N g L C e p) (Hout N g L C e p)]
++  rfl
++
++
++/-! ## Boundary cases (zero-dimensional blocks) -/
++
++/-- **Zero-dimensional simplex**: over an empty index type the simplex is the single point of
++`ℝ⁰`, of measure one. -/
++theorem simplexF_integral_isEmpty [IsEmpty ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ) :
++    ∫ z in simplexF ι R, ∏ i, z i ^ e i = 1 := by
++  rw [simplexF_integral R hR e]
++  simp [momentF, Fintype.card_eq_zero]
++
++/-- **Empty rough set** (`R = ∅`): the cap of `R` is vacuous and the piece is the full simplex
++of radius `M`; the value is the one-group weighted moment. -/
++theorem piece_integral_empty (N : ℕ) (a : Fin N) (t p : ℕ) (c M : ℝ) (hc : 0 ≤ c) (hM : 0 ≤ M) :
++    ∫ y in pieceSet N ∅ c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      M ^ (N + t + p) * (t.factorial : ℝ) * (p.factorial : ℝ) / ((N + t + p).factorial : ℝ) := by
++  rw [piece_integral_notMem N ∅ a (Finset.notMem_empty a), Finset.card_empty, Nat.sub_zero,
++    twoGroup, if_pos ⟨hc, hM⟩]
++  set c' := min c M
++  have hs : ∑ j ∈ Finset.range (N + t + p + 1), ((N + t + p).choose j : ℝ) *
++      (M - c') ^ (N + t + p - j) * wsVal 0 0 j c' = M ^ (N + t + p) := by
++    have h := add_pow c' (M - c') (N + t + p)
++    rw [show c' + (M - c') = M by ring] at h
++    rw [h]
++    refine Finset.sum_congr rfl fun j _ => ?_
++    have : (j.factorial : ℝ) ≠ 0 := by positivity
++    simp only [wsVal, zero_add, Nat.factorial_zero, Nat.cast_one, mul_one]
++    field_simp
++  rw [hs]
++  ring
++
++/-- **Full rough set** (`R = univ`): the complement block is `ℝ⁰`. -/
++theorem piece_integral_univ (N : ℕ) (a : Fin N) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N Finset.univ c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup 0 N t 0 p c M := by
++  rw [piece_integral_mem N Finset.univ a (Finset.mem_univ a), Finset.card_univ, Fintype.card_fin,
++    Nat.sub_self]
++
++/-- **Zero-dimensional support**: in `ℝ⁰` the support is everything or nothing. -/
++theorem supportT_zero_dim (g L : ℝ) (C : ℕ → ℝ) :
++    supportT 0 g L C = {_x | 0 ≤ L ∧ 0 ≤ C 0} := by
++  ext x
++  have : roughSet g x = ∅ := Finset.eq_empty_of_forall_notMem fun i => Fin.elim0 i
++  simp [supportT, this]
++
++theorem integral_supportT_zero_dim (g L : ℝ) (C : ℕ → ℝ) (p : ℕ) :
++    ∫ x in supportT 0 g L C, (L - ∑ i, x i) ^ p = if 0 ≤ L ∧ 0 ≤ C 0 then L ^ p else 0 := by
++  rw [supportT_zero_dim]
++  by_cases h : 0 ≤ L ∧ 0 ≤ C 0
++  · rw [if_pos h, show {_x : Fin 0 → ℝ | 0 ≤ L ∧ 0 ≤ C 0} = Set.univ from Set.eq_univ_of_forall
++      fun _ => h, Measure.restrict_univ]
++    simp [Measure.real, volume_pi, Measure.pi_empty_univ]
++  · rw [if_neg h, show {_x : Fin 0 → ℝ | 0 ≤ L ∧ 0 ≤ C 0} = ∅ from Set.eq_empty_of_forall_notMem
++      fun _ hx => h hx, Measure.restrict_empty, integral_zero_measure]
++
++/-- Smaller caps give a smaller support. -/
++theorem supportT_mono (N : ℕ) (g L : ℝ) (C C' : ℕ → ℝ) (h : ∀ m, C' m ≤ C m) :
++    supportT N g L C' ⊆ supportT N g L C :=
++  fun _ ⟨h0, hL, hC⟩ => ⟨h0, hL, hC.trans (h _)⟩
++
++/-! ## The Gram entry -/
++
++theorem supportT_subset_simplexF (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) :
++    supportT N g L C ⊆ simplexF (Fin N) L := fun _ hx => ⟨hx.1, hx.2.1⟩
++
++/-- **The Gram entry `∫_{T̃} (L − P₁) P₂` for any `N`, `g ≥ 0`, `L` and cap function `C`.** -/
++theorem gram_entry_integral_general (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) * ∑ i, x i ^ 2 = N * gramFormula N g L C 2 1 := by
++  have hfun : ∀ x : Fin N → ℝ, (L - ∑ i, x i) * ∑ i, x i ^ 2 = ∑ a, (L - ∑ i, x i) ^ 1 * x a ^ 2 := by
++    intro x; rw [Finset.mul_sum]; simp
++  simp_rw [hfun]
++  rw [integral_finsetSum]
++  · simp_rw [integral_supportT N g L C hg _ 2 1]
++    simp
++  · intro a _
++    exact ((by fun_prop : Continuous fun x : Fin N → ℝ => (L - ∑ i, x i) ^ 1 * x a ^ 2).continuousOn.integrableOn_compact
++      (simplexF_isCompact (ι := Fin N) L)).mono_set (supportT_subset_simplexF N g L C)
++
++/-! ## From `ℚ` to `ℝ` -/
++
++theorem twoGroup_ratCast (n r A B p : ℕ) (c M : ℚ) :
++    ((twoGroup n r A B p c M : ℚ) : ℝ) = twoGroup n r A B p (c : ℝ) (M : ℝ) := by
++  unfold twoGroup wsVal
++  by_cases h : 0 ≤ c ∧ 0 ≤ M
++  · have h' : (0 : ℝ) ≤ c ∧ (0 : ℝ) ≤ M := ⟨by exact_mod_cast h.1, by exact_mod_cast h.2⟩
++    rw [if_pos h, if_pos h']
++    push_cast [Rat.cast_min]
++    rfl
++  · have h' : ¬((0 : ℝ) ≤ c ∧ (0 : ℝ) ≤ M) := fun h' => h ⟨by exact_mod_cast h'.1, by exact_mod_cast h'.2⟩
++    rw [if_neg h, if_neg h', Rat.cast_zero]
++
++theorem gramFormula_ratCast (N : ℕ) (g L : ℚ) (C : ℕ → ℚ) (e p : ℕ) :
++    ((gramFormula N g L C e p : ℚ) : ℝ) = gramFormula N (g : ℝ) (L : ℝ) (fun m => (C m : ℝ)) e p := by
++  unfold gramFormula gramRow Hin Hk Hout
++  push_cast [twoGroup_ratCast]
++  rfl
++
++/-- **The Table 3 Gram entry as a Lebesgue integral**: `I_T[(1, ∅), (0, (2))]` over the rescaled
++support with Table 3's caps equals the rational `gramEntryQ`. -/
++theorem gram_entry_integral :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = (gramEntryQ : ℝ) := by
++  have h := gram_entry_integral_general 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ))
++    (by norm_num)
++  rw [h, gramEntryQ]
++  push_cast [gramFormula_ratCast]
++  norm_num [BGP212.Params.g, BGP212.Params.L]
++
++/-- The same integral, with the value written out. -/
++theorem gram_entry_integral_value :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 =
++        ((56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 /
++          475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  rw [gram_entry_integral, gramEntryQ_eq]
++
++/-- **The entry in V0's basis**: the generators `gen 1 ∅ = L − P₁` and `gen 0 {2} = P₂` of `B₂₁`,
++evaluated at `x` and integrated over the Table 3 support. -/
++theorem gram_entry_B21 :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 1 0) *
++        MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 {2}) = (gramEntryQ : ℝ) := by
++  rw [← gram_entry_integral]
++  congr 1
++  funext x
++  have e1 : MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 1 0) = 53 / 50 - ∑ i, x i := by
++    simp [BGP212.Var.gen, BGP212.Var.Plam, BGP212.Var.P, MvPolynomial.psum, BGP212.Params.L,
++      MvPolynomial.eval₂_sub, MvPolynomial.eval₂_C, MvPolynomial.eval₂_sum, MvPolynomial.eval₂_X]
++  have e2 : MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 {2}) = ∑ i, x i ^ 2 := by
++    simp [BGP212.Var.gen, BGP212.Var.Plam, BGP212.Var.P, MvPolynomial.psum,
++      MvPolynomial.eval₂_sum, MvPolynomial.eval₂_pow, MvPolynomial.eval₂_X]
++  rw [e1, e2]
++
++end BGP212.Gram
++
++/-! ## Comparator wrappers -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram MeasureTheory
++
++theorem simplexF_integral {ι : Type*} [Fintype ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ) :
++    ∫ z in simplexF ι R, ∏ i, z i ^ e i = momentF ι R e :=
++  BGP212.Gram.simplexF_integral R hR e
++
++theorem simplexF_integral_isEmpty {ι : Type*} [Fintype ι] [IsEmpty ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ) :
++    ∫ z in simplexF ι R, ∏ i, z i ^ e i = 1 :=
++  BGP212.Gram.simplexF_integral_isEmpty R hR e
++
++theorem weighted_simplexF {ι : Type*} [Fintype ι] (c : ℝ) (hc : 0 ≤ c) (e : ι → ℕ) (p : ℕ) :
++    ∫ z in simplexF ι c, (∏ i, z i ^ e i) * (c - ∑ i, z i) ^ p =
++      c ^ (Fintype.card ι + ∑ i, e i + p) * (∏ i, ((e i).factorial : ℝ)) *
++        (p.factorial : ℝ) / ((Fintype.card ι + ∑ i, e i + p).factorial : ℝ) :=
++  BGP212.Gram.weighted_simplexF c hc e p
++
++theorem indicator_supportT {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (F : (Fin N → ℝ) → ℝ) (x : Fin N → ℝ) :
++    (supportT N g L C).indicator F x =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator F x :=
++  BGP212.Gram.indicator_supportT g L C F x
++
++theorem integral_Qset {N : ℕ} (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (R K : Finset (Fin N)) (hRK : Disjoint R K) (F : (Fin N → ℝ) → ℝ) :
++    ∫ x, (Qset g L C R K).indicator F x =
++      ∫ y in pieceSet N R (C R.card - R.card * g) (L - (R.card + K.card) * g),
++        F (y + shiftV g (R ∪ K)) :=
++  BGP212.Gram.integral_Qset g L C hg R K hRK F
++
++theorem pieceSet_empty (N : ℕ) (R : Finset (Fin N)) (c M : ℝ) (h : ¬(0 ≤ c ∧ 0 ≤ M)) :
++    pieceSet N R c M = ∅ :=
++  BGP212.Gram.pieceSet_empty N R c M h
++
++theorem piece_integral_mem (N : ℕ) (R : Finset (Fin N)) (a : Fin N) (ha : a ∈ R) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N R c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup (N - R.card) R.card t 0 p c M :=
++  BGP212.Gram.piece_integral_mem N R a ha t p c M
++
++theorem piece_integral_notMem (N : ℕ) (R : Finset (Fin N)) (a : Fin N) (ha : a ∉ R) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N R c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup (N - R.card) R.card 0 t p c M :=
++  BGP212.Gram.piece_integral_notMem N R a ha t p c M
++
++theorem piece_integral_empty (N : ℕ) (a : Fin N) (t p : ℕ) (c M : ℝ) (hc : 0 ≤ c) (hM : 0 ≤ M) :
++    ∫ y in pieceSet N ∅ c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      M ^ (N + t + p) * (t.factorial : ℝ) * (p.factorial : ℝ) / ((N + t + p).factorial : ℝ) :=
++  BGP212.Gram.piece_integral_empty N a t p c M hc hM
++
++theorem piece_integral_univ (N : ℕ) (a : Fin N) (t p : ℕ) (c M : ℝ) :
++    ∫ y in pieceSet N Finset.univ c M, y a ^ t * (M - ∑ i, y i) ^ p =
++      twoGroup 0 N t 0 p c M :=
++  BGP212.Gram.piece_integral_univ N a t p c M
++
++theorem supportT_zero_dim (g L : ℝ) (C : ℕ → ℝ) :
++    supportT 0 g L C = {_x | 0 ≤ L ∧ 0 ≤ C 0} :=
++  BGP212.Gram.supportT_zero_dim g L C
++
++theorem integral_supportT_zero_dim (g L : ℝ) (C : ℕ → ℝ) (p : ℕ) :
++    ∫ x in supportT 0 g L C, (L - ∑ i, x i) ^ p = if 0 ≤ L ∧ 0 ≤ C 0 then L ^ p else 0 :=
++  BGP212.Gram.integral_supportT_zero_dim g L C p
++
++theorem count_pieces (N : ℕ) (a : Fin N) (Hin Hk Hout : ℕ → ℕ → ℝ) :
++    ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card *
++        (if a ∈ R then Hin R.card K.card else if a ∈ K then Hk R.card K.card else Hout R.card K.card) =
++      ∑ r ∈ Finset.range (N - 1 + 1), ((N - 1).choose r : ℝ) *
++        ∑ k ∈ Finset.range (N - 1 - r + 1), ((N - 1 - r).choose k : ℝ) *
++          ((-1 : ℝ) ^ k * Hin (r + 1) k + (-1 : ℝ) ^ k * Hout r k - (-1 : ℝ) ^ k * Hk r (k + 1)) :=
++  BGP212.Gram.count_pieces N a Hin Hk Hout
++
++theorem integral_supportT (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (a : Fin N) (e p : ℕ) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) ^ p * x a ^ e = gramFormula N g L C e p :=
++  BGP212.Gram.integral_supportT N g L C hg a e p
++
++theorem supportT_mono (N : ℕ) (g L : ℝ) (C C' : ℕ → ℝ) (h : ∀ m, C' m ≤ C m) :
++    supportT N g L C' ⊆ supportT N g L C :=
++  BGP212.Gram.supportT_mono N g L C C' h
++
++theorem gram_entry_integral_general (N : ℕ) (g L : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) :
++    ∫ x in supportT N g L C, (L - ∑ i, x i) * ∑ i, x i ^ 2 = N * gramFormula N g L C 2 1 :=
++  BGP212.Gram.gram_entry_integral_general N g L C hg
++
++theorem gramFormula_ratCast (N : ℕ) (g L : ℚ) (C : ℕ → ℚ) (e p : ℕ) :
++    ((gramFormula N g L C e p : ℚ) : ℝ) = gramFormula N (g : ℝ) (L : ℝ) (fun m => (C m : ℝ)) e p :=
++  BGP212.Gram.gramFormula_ratCast N g L C e p
++
++theorem gramEntryQ_eq :
++    gramEntryQ = (56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 /
++          475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) :=
++  BGP212.Gram.gramEntryQ_eq
++
++theorem gram_entry_integral :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = (gramEntryQ : ℝ) :=
++  BGP212.Gram.gram_entry_integral
++
++theorem gram_entry_integral_value :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = ((56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 /
++          475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) :=
++  BGP212.Gram.gram_entry_integral_value
++
++theorem gram_entry_B21 :
++    ∫ x in supportT 45 (41 / 625) (53 / 50) (fun m => (BGP212.Params.C m : ℝ)),
++      MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 1 0) *
++        MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 {2}) = (gramEntryQ : ℝ) :=
++  BGP212.Gram.gram_entry_B21
++
++end BGP212.Challenge
+diff --git a/Solution/GramEntryCert.lean b/Solution/GramEntryCert.lean
+new file mode 100644
+index 0000000..d44258c
+--- /dev/null
++++ b/Solution/GramEntryCert.lean
+@@ -0,0 +1,121 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), Proposition 10.2 (p. 42).
++-/
++import BGP212.GramEntry
++
++/-! # V2b: the kernel certificate for the Table 3 Gram entry
++
++COMPUTATIONAL CERTIFICATE (generated by `specs/checks/gram_entry_v2b_emit.py`). Each row of the
++closed form `gramFormula 45 g L C 2 1` (Table 3 data from `BGP212.Params`) is evaluated over `ℚ`
++by the Lean kernel (`decide +kernel`); the rows are then summed by `norm_num`. The integral
++identity that gives this closed form its meaning is proved in `Solution/GramEntry.lean`. -/
++
++namespace BGP212.Gram
++
++open BGP212.Params
++
++theorem gramRow_table3_0 : gramRow 45 g L C 2 1 0 = (80759965270955894074999559825793677426911672971911769461893867978756286818885948152730879057487813554259089073143975693847856556464856797437315311 / 484894797381984674557036523182005170207055269823353714903360433628342794024762563154240524454507976770401000976562500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_1 : gramRow 45 g L C 2 1 1 = (3449746993971460270456384914813655757748730365708169237061842022742780086499381027722419798166764624327506955934191260558693829510140562159380901 / 5142823608596807154392811609506115441589980134490115158065943993027878118444451427393460107850842177867889404296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_2 : gramRow 45 g L C 2 1 2 = (12372488660250231775782217543614952423700659273802571475196183648468212857310223432969536096544190655440472411239222766229188425169572337304401 / 13047332622232914556599099220734330930038004569530947546890344168358253154615944424676854396238923072814941406250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_3 : gramRow 45 g L C 2 1 3 = (36801711739883526654847861157634882409842294598589107381798363351944255887166087960924069715274177446365787349038861094723322104455271320309939 / 59703196150842577770152128130592362514682833409684023373047333806103613765541709978990070339932572096586227416992187500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_4 : gramRow 45 g L C 2 1 4 = (6086077344053624207830017981221632955882637541233598690001657710830180005365985592779966494860123251975711483577209482468607225102845758751727 / 30151398916924802546762624249596142905550010559840425003318022237802685861507434594841470243409276008605957031250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_5 : gramRow 45 g L C 2 1 5 = (60912616095167271329899135199032979296412039598505449699856789374028371299138279127009327737575238136176098939969654313581272055083625281437 / 1779770074957366816996404903621994546508160345546136198112522145981408540436202736501059007423464208841323852539062500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_6 : gramRow 45 g L C 2 1 6 = (58653654351880379558578733360865873585090302650092957318196152593069735506381298672353637735518840387921480049024031556700525487738838873241 / 19714376214912370895960177393966708822859622289126431732938706847794063832524091850473269005306065082550048828125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_7 : gramRow 45 g L C 2 1 7 = (2444623376149448448134678717345799630341186276943817520635444764498338198130122690837223066929604593985080458168168599003919769781246067 / 19214791632468197754347151456107903336120489560552077712415893613834370207138491082332620862871408462524414062500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_8 : gramRow 45 g L C 2 1 8 = (4425235718156776200308914346368535637750455578988731971548969095349091921678453260681273189459566453987891697989469689972349491974593 / 1784567871516702395858285810911249990430846450586900583610124763152184751424655928531137760728597640991210937500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_9 : gramRow 45 g L C 2 1 9 = (238933237392472975270307956207577267767373177661034191527814549495240619536015301875818437906755204132783939733734767677677650919343 / 12268904116677328971525714950014843684212069347784941512319607746671270166044509508651572105009108781814575195312500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_10 : gramRow 45 g L C 2 1 10 = (50786989949436152972424819527098358625931523170393639171792383921554024321681625508276802324819233143653057486547305645160069061 / 1001543193198149303798017546939987239527515865125301347944457775238471033962817102747067110612988471984863281250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_11 : gramRow 45 g L C 2 1 11 = (7223566677412606123657506643990657165724522766153882393738801180618076581940127108207541863388150099938223345703493689090073 / 226820076106639695271903973865820639540055063572494717034480143215771381220990932092718139756470918655395507812500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_12 : gramRow 45 g L C 2 1 12 = (3112896331156493841261702909986925385049546085604769317315557897723723925960587871062279011170469578776932967190047086113 / 1466311603113630353272914578526517265713487279660571908101689814728219030115496934740804135799407958984375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_13 : gramRow 45 g L C 2 1 13 = (32018998988381181153064539020637834570421363956714083901883635774824237227049089689466718919535155190855647613 / 1072240359776842195830818785547515750552987573251793207799360677020010165771957133529213024303317070007324218750000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_14 : gramRow 45 g L C 2 1 14 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_15 : gramRow 45 g L C 2 1 15 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_16 : gramRow 45 g L C 2 1 16 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_17 : gramRow 45 g L C 2 1 17 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_18 : gramRow 45 g L C 2 1 18 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_19 : gramRow 45 g L C 2 1 19 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_20 : gramRow 45 g L C 2 1 20 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_21 : gramRow 45 g L C 2 1 21 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_22 : gramRow 45 g L C 2 1 22 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_23 : gramRow 45 g L C 2 1 23 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_24 : gramRow 45 g L C 2 1 24 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_25 : gramRow 45 g L C 2 1 25 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_26 : gramRow 45 g L C 2 1 26 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_27 : gramRow 45 g L C 2 1 27 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_28 : gramRow 45 g L C 2 1 28 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_29 : gramRow 45 g L C 2 1 29 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_30 : gramRow 45 g L C 2 1 30 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_31 : gramRow 45 g L C 2 1 31 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_32 : gramRow 45 g L C 2 1 32 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_33 : gramRow 45 g L C 2 1 33 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_34 : gramRow 45 g L C 2 1 34 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_35 : gramRow 45 g L C 2 1 35 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_36 : gramRow 45 g L C 2 1 36 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_37 : gramRow 45 g L C 2 1 37 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_38 : gramRow 45 g L C 2 1 38 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_39 : gramRow 45 g L C 2 1 39 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_40 : gramRow 45 g L C 2 1 40 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_41 : gramRow 45 g L C 2 1 41 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_42 : gramRow 45 g L C 2 1 42 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_43 : gramRow 45 g L C 2 1 43 = (0 : ℚ) := by decide +kernel
++
++theorem gramRow_table3_44 : gramRow 45 g L C 2 1 44 = (0 : ℚ) := by decide +kernel
++
++/-- **The closed form at Table 3**, exactly. -/
++theorem gramFormula_table3 : gramFormula 45 g L C 2 1 = (56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 / 21409970284404554091979920331266997515296132682969617873425299146359135674631823942348773925914429128170013427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  rw [gramFormula, show 45 - 1 + 1 = 45 from rfl]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, gramRow_table3_0, gramRow_table3_1, gramRow_table3_2, gramRow_table3_3, gramRow_table3_4, gramRow_table3_5, gramRow_table3_6, gramRow_table3_7, gramRow_table3_8, gramRow_table3_9, gramRow_table3_10, gramRow_table3_11, gramRow_table3_12, gramRow_table3_13, gramRow_table3_14, gramRow_table3_15, gramRow_table3_16, gramRow_table3_17, gramRow_table3_18, gramRow_table3_19, gramRow_table3_20, gramRow_table3_21, gramRow_table3_22, gramRow_table3_23, gramRow_table3_24, gramRow_table3_25, gramRow_table3_26, gramRow_table3_27, gramRow_table3_28, gramRow_table3_29, gramRow_table3_30, gramRow_table3_31, gramRow_table3_32, gramRow_table3_33, gramRow_table3_34, gramRow_table3_35, gramRow_table3_36, gramRow_table3_37, gramRow_table3_38, gramRow_table3_39, gramRow_table3_40, gramRow_table3_41, gramRow_table3_42, gramRow_table3_43, gramRow_table3_44]
++  norm_num
++
++/-- **The Gram entry** `I_T[(1, ∅), (0, (2))]` as a rational. -/
++theorem gramEntryQ_eq : gramEntryQ = (56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 / 475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  rw [gramEntryQ, gramFormula_table3]
++  norm_num
++
++end BGP212.Gram
+diff --git a/specs/checks/gram_entry_v2b_controls.py b/specs/checks/gram_entry_v2b_controls.py
+new file mode 100644
+index 0000000..e853571
+--- /dev/null
++++ b/specs/checks/gram_entry_v2b_controls.py
+@@ -0,0 +1,91 @@
++#!/usr/bin/env python3
++"""Positive and negative controls for V2b (the Gram entry as a Lebesgue integral).
++
++Writes Lean files into the given directory (default /tmp/v2b_ctl). Each `ok_*` file must be
++accepted and each `nc_*` file rejected:
++
++  ok_N1 / nc_N1        ∫_{T̃₁} (L − x) x² = L·C(1)³/3 − C(1)⁴/4, an independent closed form
++                       (T̃₁ = [0, C(1)]); the nc file claims the uncapped value L⁴/12.
++  ok_N2 / nc_N2        the 2-dimensional entry equals V2a's exact polygon-clipping value; the nc file
++                       uses the two-level caps of Lemma 9.1's proof (31/50, 17/25) in place of
++                       Table 3's, which changes the value.
++  ok_entry / nc_entry  the 45-dimensional entry equals gramEntryQ's value; the nc file claims the
++                       value over the uncapped simplex {Σ x ≤ L} (relative difference 7·10⁻¹³).
++
++Usage: python3 -I specs/checks/gram_entry_v2b_controls.py [dir]
++Check: for f in DIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++"""
++import os
++import sys
++from fractions import Fraction as Fr
++from math import factorial as fact
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import gram_entry_v2b_emit as E  # noqa: E402
++
++OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/v2b_ctl"
++os.makedirs(OUT, exist_ok=True)
++
++HEAD = "import Solution.GramEntry\n\nopen BGP212.Gram MeasureTheory\n\n"
++SUPP = "supportT {N} (41 / 625) (53 / 50) (fun m => ({C} m : ℝ))"
++
++
++def q(x):
++    x = Fr(x)
++    return f"({x.numerator} / {x.denominator} : ℚ)"
++
++
++def two_cap(m):
++    if m == 0:
++        return Fr(0)
++    return Fr(31, 50) if m <= 2 else Fr(17, 25)
++
++
++L, G = E.L, E.G
++c1 = E.C(1)
++v1 = L * c1 ** 3 / 3 - c1 ** 4 / 4
++assert v1 == E.gram_formula(1, G, L, E.C, 2, 1)
++v1_uncapped = L ** 4 / 12
++
++v2 = E.gram_formula(2, G, L, E.C, 2, 1)
++assert 2 * v2 == Fr(9366843779443, 610351562500000)   # V2a's polygon-clipping value
++v2_two = E.gram_formula(2, G, L, two_cap, 2, 1)
++assert v2_two != v2
++
++entry = 45 * E.gram_formula(45, G, L, E.C, 2, 1)
++entry_uncapped = 45 * L ** 48 * fact(2) * fact(1) / Fr(fact(48))
++
++N1 = f"""theorem ctl : ∫ x in {SUPP.format(N=1, C='BGP212.Params.C')},
++    ((53 / 50 : ℝ) - ∑ i, x i) ^ 1 * x 0 ^ 2 = (({{V}} : ℚ) : ℝ) := by
++  have hc := gramFormula_ratCast 1 (41 / 625 : ℚ) (53 / 50) BGP212.Params.C 2 1
++  rw [integral_supportT 1 _ _ _ (by norm_num) 0 2 1]
++  have hq : gramFormula 1 (41 / 625 : ℚ) (53 / 50) BGP212.Params.C 2 1 = {{V}} := by decide +kernel
++  rw [hq] at hc
++  push_cast at hc
++  rw [← hc]
++  all_goals norm_num
++"""
++
++N2 = """def twoCap (m : ℕ) : ℚ := if m = 0 then 0 else if m ≤ 2 then 31 / 50 else 17 / 25
++
++theorem ctl : gramFormula 2 (41 / 625 : ℚ) (53 / 50) {CAP} 2 1 = {V} := by decide +kernel
++"""
++
++ENTRY = f"""theorem ctl : ∫ x in {SUPP.format(N=45, C='BGP212.Params.C')},
++    ((53 / 50 : ℝ) - ∑ i, x i) * ∑ i, x i ^ 2 = (({{V}} : ℚ) : ℝ) := by
++  rw [gram_entry_integral, gramEntryQ_eq]
++  all_goals norm_num
++"""
++
++files = {
++    "ok_N1": N1.replace("{V}", q(v1)),
++    "nc_N1": N1.replace("{V}", q(v1_uncapped)),
++    "ok_N2": N2.replace("{CAP}", "BGP212.Params.C").replace("{V}", q(v2)),
++    "nc_N2": N2.replace("{CAP}", "twoCap").replace("{V}", q(v2)),
++    "ok_entry": ENTRY.replace("{V}", q(entry)),
++    "nc_entry": ENTRY.replace("{V}", q(entry_uncapped)),
++}
++for name, body in files.items():
++    open(os.path.join(OUT, name + ".lean"), "w").write(HEAD + body)
++print("wrote", len(files), "control files to", OUT)
++print("uncapped/capped − 1 =", float(entry_uncapped / entry - 1))
+diff --git a/specs/checks/gram_entry_v2b_emit.py b/specs/checks/gram_entry_v2b_emit.py
+new file mode 100644
+index 0000000..7e3031d
+--- /dev/null
++++ b/specs/checks/gram_entry_v2b_emit.py
+@@ -0,0 +1,129 @@
++#!/usr/bin/env python3
++"""Emit Solution/GramEntryCert.lean: the kernel certificate for V2b's Gram entry.
++
++The closed form `gramFormula` (BGP212/GramEntry.lean) is mirrored here in exact rational
++arithmetic (Python Fractions, standard library only). The emitted Lean file states one
++`decide +kernel` lemma per row `r` (the undivided evaluation exceeds 8 GB of kernel memory) and
++assembles them into `gramFormula_table3` and `gramEntryQ_eq`.
++
++Usage: python3 -I specs/checks/gram_entry_v2b_emit.py [output path]
++"""
++import sys
++from fractions import Fraction as Fr
++from math import comb, factorial as fact
++
++L = Fr(53, 50)
++G = Fr(41, 625)
++BNUM = [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
++
++
++def C(m):
++    """Table 3: C(m) = 4 B_{1,m}, C(0) = 0, constant from m = 10 on."""
++    if m == 0:
++        return Fr(0)
++    return 4 * Fr(BNUM[min(m, 10) - 1], 5000)
++
++
++def ws_val(r, A, j, c):
++    return c ** (r + A + j) * fact(A) * fact(j) / Fr(fact(r + A + j))
++
++
++def two_group(n, r, A, B, p, c, M):
++    if not (c >= 0 and M >= 0):
++        return Fr(0)
++    q = n + B + p
++    cp = min(c, M)
++    return Fr(fact(B) * fact(p), fact(q)) * sum(
++        comb(q, j) * (M - cp) ** (q - j) * ws_val(r, A, j, cp) for j in range(q + 1))
++
++
++def H(kind, N, g, Lv, Cf, e, p, r, k):
++    c = Cf(r) - r * g
++    M = Lv - (r + k) * g
++    tot = Fr(0)
++    for t in range(e + 1):
++        if kind == "in":
++            v, A, B = g, t, 0
++        elif kind == "k":
++            v, A, B = g, 0, t
++        else:
++            v, A, B = Fr(0), 0, t
++        tot += comb(e, t) * v ** (e - t) * two_group(N - r, r, A, B, p, c, M)
++    return tot
++
++
++def gram_row(N, g, Lv, Cf, e, p, r):
++    s = Fr(0)
++    for k in range(N - 1 - r + 1):
++        sg = (-1) ** k
++        s += comb(N - 1 - r, k) * (sg * H("in", N, g, Lv, Cf, e, p, r + 1, k)
++                                   + sg * H("out", N, g, Lv, Cf, e, p, r, k)
++                                   - sg * H("k", N, g, Lv, Cf, e, p, r, k + 1))
++    return comb(N - 1, r) * s
++
++
++def gram_formula(N, g, Lv, Cf, e, p):
++    return sum(gram_row(N, g, Lv, Cf, e, p, r) for r in range(N - 1 + 1))
++
++
++def lit(x):
++    x = Fr(x)
++    if x.denominator == 1:
++        return f"({x.numerator} : ℚ)"
++    return f"({x.numerator} / {x.denominator} : ℚ)"
++
++
++HEADER = '''/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), Proposition 10.2 (p. 42).
++-/
++import BGP212.GramEntry
++
++/-! # V2b: the kernel certificate for the Table 3 Gram entry
++
++COMPUTATIONAL CERTIFICATE (generated by `specs/checks/gram_entry_v2b_emit.py`). Each row of the
++closed form `gramFormula 45 g L C 2 1` (Table 3 data from `BGP212.Params`) is evaluated over `ℚ`
++by the Lean kernel (`decide +kernel`); the rows are then summed by `norm_num`. The integral
++identity that gives this closed form its meaning is proved in `Solution/GramEntry.lean`. -/
++
++namespace BGP212.Gram
++
++open BGP212.Params
++'''
++
++
++def main():
++    out = sys.argv[1] if len(sys.argv) > 1 else "Solution/GramEntryCert.lean"
++    N, e, p = 45, 2, 1
++    rows = [gram_row(N, G, L, C, e, p, r) for r in range(N)]
++    total = sum(rows)
++    entry = 45 * total
++    lines = [HEADER]
++    names = []
++    for r, v in enumerate(rows):
++        nm = f"gramRow_table3_{r}"
++        names.append(nm)
++        lines.append(f"theorem {nm} : gramRow 45 g L C 2 1 {r} = {lit(v)} := by decide +kernel\n")
++    lines.append("/-- **The closed form at Table 3**, exactly. -/\n"
++                 f"theorem gramFormula_table3 : gramFormula 45 g L C 2 1 = {lit(total)} := by\n"
++                 "  rw [gramFormula, show 45 - 1 + 1 = 45 from rfl]\n"
++                 "  simp only [Finset.sum_range_succ, Finset.sum_range_zero, "
++                 + ", ".join(names) + "]\n  norm_num\n")
++    lines.append("/-- **The Gram entry** `I_T[(1, ∅), (0, (2))]` as a rational. -/\n"
++                 f"theorem gramEntryQ_eq : gramEntryQ = {lit(entry)} := by\n"
++                 "  rw [gramEntryQ, gramFormula_table3]\n  norm_num\n")
++    lines.append("end BGP212.Gram\n")
++    open(out, "w").write("\n".join(lines))
++    print("rows", len(rows), "nonzero", sum(1 for v in rows if v != 0))
++    print("gramEntryQ =", entry.numerator, "/", entry.denominator)
++    print("≈", float(entry))
++    # agreement with V2a's exploratory value (I_T entry via moments m(2), m(3), m(2,1))
++    v2a = Fr(56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531,
++             475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000)
++    print("equals V2a entry_45:", entry == v2a)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/specs/results/V2b_gram_entry.yaml b/specs/results/V2b_gram_entry.yaml
+new file mode 100644
+index 0000000..5b66c34
+--- /dev/null
++++ b/specs/results/V2b_gram_entry.yaml
+@@ -0,0 +1,114 @@
++# Result record: thirteenth Challenge/Solution pair (V2b, the first Gram entry as a Lebesgue integral)
++
++identity:
++  id: V2b
++  statement: "I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx over Lemma 9.1's rescaled support with Table 3's caps, proved as a Lebesgue integral and evaluated exactly; the integral identity behind it holds for every dimension, g ≥ 0, L and cap function"
++  source: "Source/bgp212.pdf: Table 3 (p. 39), §9.3 and Lemma 9.1 (pp. 40–41), (10.1), Lemma 10.1, Proposition 10.2 (pp. 41–42), §11 (p. 42)"
++  builds_on: "V1 (simplex_integral), V0 (gen, Plam, P), A1 (BGP212.Params: Bnum, B, C, g, L); exploratory V2a (bd312a9) for the decomposition and the value; A0–V1 unchanged"
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++scope:
++  proved_integral_identities: >
++    integral_supportT: ∫_{supportT N g L C} (L − Σx)^p x_a^e = gramFormula N g L C e p for all
++    N, g ≥ 0, L, C : ℕ → ℝ, a : Fin N, e, p. gram_entry_integral_general: the entry
++    ∫ (L − P₁)P₂ = N · gramFormula N g L C 2 1. Every intermediate step is a theorem:
++    simplexF_integral, weighted_simplexF, indicator_supportT, integral_Qset,
++    piece_integral_mem/notMem/empty/univ, count_pieces, supportT_zero_dim,
++    integral_supportT_zero_dim, supportT_mono, gramFormula_ratCast.
++  computational_certificate: >
++    gramEntryQ_eq: gramFormula 45 g L C 2 1 at Table 3 is evaluated over ℚ by the kernel
++    (decide +kernel), one lemma per row r = 0…44 (Solution/GramEntryCert.lean, generated by
++    specs/checks/gram_entry_v2b_emit.py), summed by norm_num. The certificate is a Lean proof;
++    "computational" records that its content is exact arithmetic.
++  unproved_assumptions: "none for this entry (axioms: propext, Quot.sound, Classical.choice)"
++  outside_V2b: >
++    other Gram entries (general monomials P_Λ with several distinguished coordinates); J_T and
++    the marginal fibres of Lemma 9.2; the §9.3 rescaling to the physical support; P⋆ and
++    Theorem 11.1. The cap question of V2a (which caps Axiom's certificate used) is untouched:
++    every statement is parametrized by C, and supportT_mono records the inclusion.
++
++verification:
++  definitions: BGP212/GramEntry.lean
++  challenge: Challenge/GramEntry.lean
++  solution: [Solution/GramEntry.lean, Solution/GramEntryCert.lean]
++  comparator_config: Comparator/gram_entry_v2b.json
++  certificate_generator: specs/checks/gram_entry_v2b_emit.py
++  controls_script: specs/checks/gram_entry_v2b_controls.py
++  transcription:
++    supportT: "{x : Fin N → ℝ | (∀ i, 0 ≤ xᵢ) ∧ Σ xᵢ ≤ L ∧ Σ_{i ∈ roughSet g x} xᵢ ≤ C |roughSet g x|}, roughSet g x = {i | g < xᵢ} (Lemma 9.1)"
++    table3_instance: "N = 45, g = 41/625, L = 53/50, C = BGP212.Params.C (C(m) = 4B₁,ₘ, C(0) = 0)"
++    entry: "(53/50 − Σ xᵢ) · Σ xᵢ² = gen 1 ∅ · gen 0 {2} evaluated at x (gram_entry_B21)"
++  proof_outline: >
++    (1) indicator_supportT: 1_{T̃} = Σ_R Σ_{K⊆Rᶜ} (−1)^{|K|} 1_{Qset R K} pointwise, where the rough
++    set picks out R and Σ_{K⊆S}(−1)^{|K|} = [S = ∅] removes the smooth upper bounds; no null set
++    is discarded here. (2) integral_Qset: translate by g·1_{R∪K} (integral_add_right_eq_self); the
++    strict faces yᵢ > 0 differ from the closed piece by hyperplanes yᵢ = 0 (Measure.pi_hyperplane).
++    (3) piece integrals: split y = (y|_R, y|_{Rᶜ}) (volume_preserving_piEquivPiSubtypeProd), Fubini
++    (integral_fibred), the inner block by weighted_simplexF (V1's (10.1) on ι ⊕ Unit plus Fubini),
++    the outer block by expanding (M − Σz)^q around min(c, M) and weighted_simplexF again.
++    (4) count_pieces: Σ_{R,K} grouped by |R|, |K| and the position of a (sum_powerset_insert,
++    sum_powerset_apply_card). (5) linearity over a and the cast ℚ → ℝ.
++  boundary_cases:
++    - "simplexF_integral_isEmpty: ℝ⁰ is a point of measure one"
++    - "piece_integral_empty (R = ∅): the full simplex of radius M"
++    - "piece_integral_univ (R = univ): the complement block is ℝ⁰"
++    - "supportT_zero_dim, integral_supportT_zero_dim (N = 0)"
++    - "pieceSet_empty: negative cap or radius gives the empty piece"
++  value:
++    gramEntryQ: "56548202531757829081…729132412243771531 / 475777117431212313155…000 (149 / 207 digits)"
++    decimal: "1.18854397279696 × 10⁻⁵⁸"
++    agreement: "equals V2a's exploratory entry_45 exactly (checked by the emitter)"
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  controls:
++    - change: "N = 1: ∫_{T̃₁} (L − x) x² = L·C(1)³/3 − C(1)⁴/4 (independent closed form); N = 2: V2a's polygon-clipping value; N = 45: gramEntryQ's value"
++      result: "accepted (positive controls)"
++    - change: "N = 1 uncapped value L⁴/12; N = 2 with the two-level caps of Lemma 9.1's proof; N = 45 uncapped simplex value (relative difference 7.4·10⁻¹³)"
++      result: "rejected (decide refutes the N = 1 and N = 2 claims; norm_num reduces the N = 45 claim to False)"
++    - change: "gram_entry_integral_general claimed with (N − 1) in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.gram_entry_integral_general'"
++  resources:
++    new_mathlib_modules: "2 beyond V1 (Mathlib.MeasureTheory.Group.Integral, Mathlib.Algebra.MvPolynomial.CommRing); both in the Mathlib cache"
++    certificate_build: "Solution.GramEntryCert: 86 s, peak 4.2 GB (45 row lemmas); the undivided evaluation exceeds 8 GB"
++    comparator_suite: "about 3 minutes 15 seconds in the build container"
++    scaling: >
++      This route costs one row lemma per rough count r and about 86 s per entry of this degree.
++      Beyond this entry: (a) general Gram entries need monomials with several distinguished
++      coordinates (the counting extends to 3^d placements); (b) the 22,609 distinct I-entries at
++      this cost would take about 22 CPU-days, and higher degrees cost more; (c) recommended:
++      certify I_T(P⋆) and J_T(P⋆) − 4I_T(P⋆) directly (two numbers), with integer arithmetic over
++      a common denominator, rather than all matrix entries.
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
++    the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 3 minutes 15 seconds for the V2b comparator suite in the build container"
++  run_date: 2026-10-18
++  commit_hash: PENDING_VPS
++
++next_development:
++  V2c: >
++    General monomial bridge: ∫_{T̃} (L − Σx)^p ∏_{a ∈ D} x_a^{e_a} for a set D of distinguished
++    coordinates (counting over the placements of D in R, K and the rest), which covers every
++    I_T entry (L − P₁)^A P_Λ after expanding P_Λ into monomial symmetric functions.
++  V2d: >
++    J_T: the marginal endpoint of Lemma 9.2 (cells where U = L − S, g, or C(s+1) − ρ₁) as a
++    second piecewise bridge on the same pieces.
++  V3: >
++    With P⋆ (from Axiom, or reconstructed): I_T(P⋆) > 0 and J_T(P⋆) − 4I_T(P⋆) > 0 exactly.
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 2bfc479..ea6d57a 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
