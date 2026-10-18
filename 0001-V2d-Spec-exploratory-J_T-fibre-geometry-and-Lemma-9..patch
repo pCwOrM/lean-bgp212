@@ -1,0 +1,379 @@
+From 34dc97a34cef62b0c92b9034a64f03e812ff76f4 Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sun, 18 Oct 2026 12:22:12 -0600
+Subject: [PATCH] V2d-Spec (exploratory): J_T fibre geometry and Lemma 9.2
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Exploratory specification, isolated from A0–V2c (no lean_lib, no Comparator
+suite). FibreSpec.lean defines T̂, the endpoint U, Definition 4.6's marginal
+and §9.4's J_T, and states as type-checked Props the fibre equivalence
+(Lemma 9.2), the empty-fibre cases, the marginal identity J(1_T̃ P) = J_T(P)
+and the inner u-integral, all cap-parametric, with Table 3 instances. Proved:
+Table 3's hypotheses (cap step from m = 1, C(0) = 0, τ ≤ L, g ≥ 0), the
+finding that the step 0 → 1 is not a cap step, and the reduction of the
+Table 3 instances to the general statements. ROADMAP.md plans the fifteenth
+pair and the J_T integral bridge.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ Exploratory/V2d/FibreSpec.lean | 187 +++++++++++++++++++++++++++++++++
+ Exploratory/V2d/ROADMAP.md     | 150 ++++++++++++++++++++++++++
+ 2 files changed, 337 insertions(+)
+ create mode 100644 Exploratory/V2d/FibreSpec.lean
+ create mode 100644 Exploratory/V2d/ROADMAP.md
+
+diff --git a/Exploratory/V2d/FibreSpec.lean b/Exploratory/V2d/FibreSpec.lean
+new file mode 100644
+index 0000000..44847b6
+--- /dev/null
++++ b/Exploratory/V2d/FibreSpec.lean
+@@ -0,0 +1,187 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.1 (p. 4), Definition 4.6 (p. 6), §9.3 dictionary (p. 40),
++§9.4, Lemma 9.1, Lemma 9.2 and the display of `J_T` (p. 41), Proposition 10.2 (p. 42).
++-/
++import BGP212.GramEntry
++
++/-! # V2d-Spec (exploratory): the `J_T` fibre geometry and Lemma 9.2
++
++EXPLORATORY: this file belongs to no `lean_lib`, no Challenge/Solution pair and no Comparator
++suite; check it with `lake env lean Exploratory/V2d/FibreSpec.lean`.
++
++Four kinds of content, labelled in each docstring:
++
++* **Definition** — the objects: `hatSupport` (`T̂`), `roughCount`, `roughMass`, `endpoint` (`U`),
++  `CapStep`, `marginalJ` (Definition 4.6's marginal on a supported `F`) and `jT` (§9.4's `J_T`).
++* **Statement (type-checked `Prop`, unproved)** — the obligations of V2d and its successor:
++  `FibreEquiv`, `EmptyFibreCap`, `EmptyFibreNeg`, `MarginalAgrees`, `InnerIntegral`.
++* **Proved theorem** — small Table 3 facts (`g_nonneg`, `tau_le_L`, `capStep_table3`,
++  `C_zero_table3`, `capStep_zero_fails_table3`) and the reduction `table3_of_general`; they
++  discharge the hypotheses of the statements at Table 3.
++* **Remaining obligation** — every `Prop` above; `ROADMAP.md` gives the proof plan.
++
++Geometry. Write the `N = n + 1` coordinates as `(x̂, u)` with `x̂ ∈ ℝⁿ` and `u` last
++(`Fin.snoc x̂ u`). For `x̂` put `S = Σ x̂ᵢ`, `s = #{i : x̂ᵢ > g}`, `ρ₁ = Σ_{x̂ᵢ > g} x̂ᵢ`. Then
++
++  `T̂ = {x̂ ≥ 0 : S ≤ τ, ρ₁ ≤ C(s)}`,   `U(x̂) = min (L − S) (max g (C(s+1) − ρ₁))`,
++
++and Lemma 9.2 says the fibre `{u : (x̂, u) ∈ T̃}` is the interval `[0, U(x̂)]` for `x̂ ∈ T̂`.
++Every statement is parametric in the cap function `C : ℕ → ℝ`; Table 3 is instantiated
++separately (`table3_*`). -/
++
++namespace BGP212.V2d
++
++open BGP212.Gram MeasureTheory
++
++/-! ## Definitions -/
++
++/-- **Definition.** `s(x̂) = #{i : x̂ᵢ > g}`. -/
++noncomputable def roughCount {n : ℕ} (g : ℝ) (x : Fin n → ℝ) : ℕ := (roughSet g x).card
++
++/-- **Definition.** `ρ₁(x̂) = Σ_{x̂ᵢ > g} x̂ᵢ`. -/
++noncomputable def roughMass {n : ℕ} (g : ℝ) (x : Fin n → ℝ) : ℝ := ∑ i ∈ roughSet g x, x i
++
++/-- **Definition.** Lemma 9.2's outer support `T̂ = {x̂ ≥ 0 : S ≤ τ, ρ₁ ≤ C(s)}`, with marginal
++cutoff `τ` (rescaled `A₁ − ε`). -/
++def hatSupport (n : ℕ) (g τ : ℝ) (C : ℕ → ℝ) : Set (Fin n → ℝ) :=
++  {x | (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ τ ∧ roughMass g x ≤ C (roughCount g x)}
++
++/-- **Definition.** Lemma 9.2's moving endpoint `U(x̂) = min{L − S, max{g, C(s+1) − ρ₁}}`. -/
++noncomputable def endpoint {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (x : Fin n → ℝ) : ℝ :=
++  min (L - ∑ i, x i) (max g (C (roughCount g x + 1) - roughMass g x))
++
++/-- **Definition.** The cap-step condition: from `m ≥ 1` rough coordinates, one more raises the cap
++by at most `g` (Definition 4.1's `B_{m+1} ≤ B_m + δ`, which it imposes "whenever both sides are
++defined", i.e. from `m = 1`, rescaled by 4). The step `0 → 1` is excluded: Table 3 has
++`C(1) = 777/1250 > C(0) + g` (see `capStep_zero_fails_table3`), and it is not needed, because
++with no rough coordinate the rough mass is `0`. -/
++def CapStep (g : ℝ) (C : ℕ → ℝ) : Prop := ∀ m, 1 ≤ m → C (m + 1) ≤ C m + g
++
++/-- **Definition.** Definition 4.6's marginal functional on a function `F` supported on `T̃`
++(one band, `k = n + 1` coordinates, marginal in the last coordinate, cutoff `S ≤ τ`), multiplied
++by `k` as in §9.4 (`J_T = k · J` for symmetric `F`). -/
++noncomputable def marginalJ (n : ℕ) (g L τ : ℝ) (C : ℕ → ℝ) (F : (Fin (n + 1) → ℝ) → ℝ) : ℝ :=
++  (n + 1 : ℝ) * ∫ x in {x : Fin n → ℝ | ∑ i, x i ≤ τ},
++    (∫ u, (supportT (n + 1) g L C).indicator F (Fin.snoc x u)) ^ 2
++
++/-- **Definition.** §9.4's `J_T(F) = 45 ∫_{T̂} (∫₀^{U(x̂)} F(x̂, u) du)² dx̂`, for any `n`. -/
++noncomputable def jT (n : ℕ) (g L τ : ℝ) (C : ℕ → ℝ) (F : (Fin (n + 1) → ℝ) → ℝ) : ℝ :=
++  (n + 1 : ℝ) * ∫ x in hatSupport n g τ C,
++    (∫ u in (0 : ℝ)..(endpoint g L C x), F (Fin.snoc x u)) ^ 2
++
++/-! ## Statements (type-checked, unproved obligations) -/
++
++/-- **Statement (obligation, V2d).** Lemma 9.2, fibre equivalence: for `x̂ ∈ T̂` (and `τ ≤ L`),
++`(x̂, u) ∈ T̃ ↔ 0 ≤ u ≤ U(x̂)`. No cap-step hypothesis is needed in this direction: `ρ₁ ≤ C(s)`
++is part of `T̂`. -/
++def FibreEquiv : Prop :=
++  ∀ (n : ℕ) (g L τ : ℝ) (C : ℕ → ℝ), 0 ≤ g → τ ≤ L →
++    ∀ x ∈ hatSupport n g τ C, ∀ u : ℝ,
++      Fin.snoc x u ∈ supportT (n + 1) g L C ↔ 0 ≤ u ∧ u ≤ endpoint g L C x
++
++/-- **Statement (obligation, V2d).** Empty fibre, cap side: if the rough mass of `x̂` already
++exceeds its cap, no `u` completes it to a point of `T̃`. This direction needs `CapStep`: a rough
++`u > g` raises the mass by more than `g` while the cap rises by at most `g`. The case `s = 0`
++needs only `0 ≤ C 0` (the mass is `0`, so it cannot exceed a nonnegative cap). -/
++def EmptyFibreCap : Prop :=
++  ∀ (n : ℕ) (g L : ℝ) (C : ℕ → ℝ), CapStep g C → 0 ≤ C 0 →
++    ∀ x : Fin n → ℝ, C (roughCount g x) < roughMass g x →
++      ∀ u : ℝ, Fin.snoc x u ∉ supportT (n + 1) g L C
++
++/-- **Statement (obligation, V2d).** Empty fibre, sign side: a negative coordinate of `x̂` leaves
++the fibre empty. -/
++def EmptyFibreNeg : Prop :=
++  ∀ (n : ℕ) (g L : ℝ) (C : ℕ → ℝ) (x : Fin n → ℝ), (∃ i, x i < 0) →
++    ∀ u : ℝ, Fin.snoc x u ∉ supportT (n + 1) g L C
++
++/-- **Statement (obligation, V2d).** Definition 4.6's marginal of `1_{T̃} · P` is §9.4's `J_T(P)`:
++the consequence of the three fibre statements (and `CapStep`, `0 ≤ g`, `τ ≤ L`) used in
++Theorem 11.1's `J_T(F⋆) = J_T(P⋆)`. Stated for continuous `P`. -/
++def MarginalAgrees : Prop :=
++  ∀ (n : ℕ) (g L τ : ℝ) (C : ℕ → ℝ), 0 ≤ g → τ ≤ L → CapStep g C → 0 ≤ C 0 →
++    ∀ P : (Fin (n + 1) → ℝ) → ℝ, Continuous P →
++      marginalJ n g L τ C P = jT n g L τ C P
++
++/-- **Statement (obligation, J_T bridge).** The inner integral of a monomial in `u` with the
++weight `(M − u)^p`: the one-variable building block of `∫₀^{U} F du` for `F` in `B₂₁`
++(the weight `L − S − u` with `M = L − S`). -/
++def InnerIntegral : Prop :=
++  ∀ (U M : ℝ) (p t : ℕ),
++    ∫ u in (0 : ℝ)..U, (M - u) ^ p * u ^ t =
++      ∑ j ∈ Finset.range (p + 1), (p.choose j : ℝ) * M ^ (p - j) * (-1) ^ j * U ^ (t + j + 1) /
++        (t + j + 1)
++
++/-! ## Table 3 instances -/
++
++/-- **Proved.** `g = 41/625 ≥ 0`. -/
++theorem g_nonneg : (0 : ℝ) ≤ (BGP212.Params.g : ℝ) := by
++  norm_num [BGP212.Params.g]
++
++/-- **Proved.** `τ = 249/250 ≤ L = 53/50` (so `L − S ≥ L − τ = 8/125 > 0` on `T̂`). -/
++theorem tau_le_L : (BGP212.Params.τ : ℝ) ≤ (BGP212.Params.L : ℝ) := by
++  norm_num [BGP212.Params.τ, BGP212.Params.L]
++
++/-- **Proved.** Table 3's caps satisfy the cap-step condition (rescaled `B_{m+1} ≤ B_m + δ`;
++the tightest step is `C(3) − C(2) = 81/1250 < g = 82/1250`). -/
++theorem capStep_table3 :
++    CapStep (BGP212.Params.g : ℝ) (fun m => (BGP212.Params.C m : ℝ)) := by
++  intro m hm
++  have key : BGP212.Params.C (m + 1) ≤ BGP212.Params.C m + BGP212.Params.g := by
++    rcases Nat.lt_or_ge m 10 with h10 | h10
++    · interval_cases m <;> decide +kernel
++    · have h1 : BGP212.Params.C (m + 1) = 4 * (1081 / 5000) := by
++        simp only [BGP212.Params.C, BGP212.Params.B]
++        rw [if_neg (by omega), if_neg (by omega)]
++      have h2 : BGP212.Params.C m = 4 * (1081 / 5000) := by
++        rcases Nat.lt_or_ge m 11 with h11 | h11
++        · have : m = 10 := by omega
++          subst this; decide +kernel
++        · simp only [BGP212.Params.C, BGP212.Params.B]
++          rw [if_neg (by omega), if_neg (by omega)]
++      rw [h1, h2]
++      norm_num [BGP212.Params.g]
++  show ((BGP212.Params.C (m + 1) : ℚ) : ℝ) ≤ (BGP212.Params.C m : ℝ) + (BGP212.Params.g : ℝ)
++  exact_mod_cast key
++
++/-- **Proved.** The step `0 → 1` is not a cap step at Table 3: `C(1) = 777/1250 > 0 + g`. -/
++theorem capStep_zero_fails_table3 :
++    (BGP212.Params.C 0 : ℝ) + (BGP212.Params.g : ℝ) < (BGP212.Params.C 1 : ℝ) := by
++  have : BGP212.Params.C 0 + BGP212.Params.g < BGP212.Params.C 1 := by decide +kernel
++  exact_mod_cast this
++
++/-- **Proved.** `C(0) = 0` at Table 3. -/
++theorem C_zero_table3 : (0 : ℝ) ≤ (BGP212.Params.C 0 : ℝ) := by
++  have : (0 : ℚ) ≤ BGP212.Params.C 0 := by decide +kernel
++  exact_mod_cast this
++
++/-- **Statement (obligation).** Lemma 9.2 at Table 3 (`g = 41/625`, `L = 53/50`, `τ = 249/250`,
++`C = 4B₁,ₘ`); follows from `FibreEquiv` with `g_nonneg` and `tau_le_L`. -/
++def FibreEquivTable3 : Prop :=
++  ∀ x ∈ hatSupport 44 (BGP212.Params.g : ℝ) (BGP212.Params.τ : ℝ) (fun m => (BGP212.Params.C m : ℝ)),
++    ∀ u : ℝ, Fin.snoc x u ∈ supportT 45 (BGP212.Params.g : ℝ) (BGP212.Params.L : ℝ)
++        (fun m => (BGP212.Params.C m : ℝ)) ↔
++      0 ≤ u ∧ u ≤ endpoint (BGP212.Params.g : ℝ) (BGP212.Params.L : ℝ)
++        (fun m => (BGP212.Params.C m : ℝ)) x
++
++/-- **Statement (obligation).** The Table 3 marginal identity (`J_T(1_{T̃} P) = J_T(P)` with
++`k = 45`); follows from `MarginalAgrees` with the three proved facts above. -/
++def MarginalAgreesTable3 : Prop :=
++  ∀ P : (Fin 45 → ℝ) → ℝ, Continuous P →
++    marginalJ 44 (BGP212.Params.g : ℝ) (BGP212.Params.L : ℝ) (BGP212.Params.τ : ℝ)
++        (fun m => (BGP212.Params.C m : ℝ)) P =
++      jT 44 (BGP212.Params.g : ℝ) (BGP212.Params.L : ℝ) (BGP212.Params.τ : ℝ)
++        (fun m => (BGP212.Params.C m : ℝ)) P
++
++/-- **Proved (reduction).** The general statements imply their Table 3 instances. -/
++theorem table3_of_general (hF : FibreEquiv) (hM : MarginalAgrees) :
++    FibreEquivTable3 ∧ MarginalAgreesTable3 :=
++  ⟨fun x hx u => hF 44 _ _ _ _ g_nonneg tau_le_L x hx u,
++   fun P hP => hM 44 _ _ _ _ g_nonneg tau_le_L capStep_table3 C_zero_table3 P hP⟩
++
++end BGP212.V2d
++
++#print axioms BGP212.V2d.capStep_table3
++#print axioms BGP212.V2d.table3_of_general
+diff --git a/Exploratory/V2d/ROADMAP.md b/Exploratory/V2d/ROADMAP.md
+new file mode 100644
+index 0000000..d001fec
+--- /dev/null
++++ b/Exploratory/V2d/ROADMAP.md
+@@ -0,0 +1,150 @@
++# V2d-Spec: the `J_T` fibre geometry (Lemma 9.2) and the road to the `J_T` bridge
++
++Status: **exploratory specification**, on branch `v2d-spec` from `08e5f42`.
++- It adds two files under `Exploratory/V2d/`.
++- No `lean_lib`, Challenge/Solution pair or Comparator suite changes.
++- A0–V2c and the 14 published suites are untouched.
++
++Check it with:
++
++```text
++lake env lean Exploratory/V2d/FibreSpec.lean
++```
++
++## 1. Geometry (paper, §9.4 and Lemma 9.2)
++
++**Coordinates.** A point of ℝ⁴⁵ is `(x̂, u)`:
++- `x̂ ∈ ℝ⁴⁴`, with `u` the last coordinate (`Fin.snoc x̂ u`);
++- `S = Σ x̂ᵢ`;
++- `s = #{i : x̂ᵢ > g}`;
++- `ρ₁ = Σ_{x̂ᵢ > g} x̂ᵢ`.
++
++**Sets and the endpoint.**
++- `T̂ = {x̂ ≥ 0 : S ≤ τ, ρ₁ ≤ C(s)}`, where `τ = A₁ − ε` rescaled is `249/250`.
++- `U(x̂) = min{L − S, max{g, C(s+1) − ρ₁}}`.
++
++**The functional.**
++- `J_T(F) = 45 ∫_{T̂} (∫₀^{U(x̂)} F(x̂, u) du)² dx̂`.
++- For symmetric `F`, this is `k = 45` times Definition 4.6's single marginal, which is B3's finding F3.
++
++**Fibre theorem.**
++- For `x̂ ∈ T̂`: `(x̂, u) ∈ T̃ ⇔ 0 ≤ u ≤ U(x̂)`.
++  - When `u ≤ g`, the rough set of `(x̂, u)` is that of `x̂`, and `ρ₁ ≤ C(s)` holds.
++  - When `u > g`, the count becomes `s + 1` and the mass `ρ₁ + u`.
++  - Intersecting with `S + u ≤ L` gives the minimum.
++  - This direction is exact: no null sets and no cap-step hypothesis.
++- **Empty-fibre cases** (needed for Definition 4.6's form):
++  - If some `x̂ᵢ < 0`, the fibre is empty.
++  - If `ρ₁ > C(s)`, no `u` completes `x̂`:
++    - `u ≤ g` keeps the violated cap;
++    - `u > g` adds more than `g` to the mass while the cap grows by at most `g`.
++  - This second case is where the **cap-step hypothesis** enters.
++
++## 2. Finding: the cap step holds from `m = 1`, not from `m = 0`
++
++Table 3 has `C(0) = 0` and `C(1) = 777/1250`, so `C(1) > C(0) + g`. This is `capStep_zero_fails_table3`, proved.
++
++Definition 4.1 imposes `B_{m+1} ≤ B_m + δ` only "whenever both sides are defined", that is, from `m = 1`. The empty-fibre argument needs nothing more:
++- with `s = 0` the rough mass is `0`, so `ρ₁ > C(0)` is impossible once `C(0) ≥ 0`;
++- with `s ≥ 1` the step from `s` applies.
++
++The specification therefore states:
++- `CapStep g C := ∀ m ≥ 1, C(m+1) ≤ C(m) + g`;
++- and separately `0 ≤ C 0`.
++
++Both are proved at Table 3. The tightest step is `C(3) − C(2) = 81/1250 < g = 82/1250`.
++
++## 3. What the patch contains
++
++| kind | name | content |
++|---|---|---|
++| **definition** | `roughCount`, `roughMass` | `s(x̂)`, `ρ₁(x̂)` (via V2b's `roughSet`) |
++| **definition** | `hatSupport n g τ C` | `T̂` |
++| **definition** | `endpoint g L C x̂` | `U(x̂)` |
++| **definition** | `CapStep g C` | `∀ m ≥ 1, C(m+1) ≤ C(m) + g` |
++| **definition** | `marginalJ n g L τ C F` | Definition 4.6's marginal of `F` supported on `T̃` (indicator form, cutoff `S ≤ τ`), times `k = n + 1` |
++| **definition** | `jT n g L τ C F` | §9.4's `J_T` (integral over `T̂` of the squared fibre integral `∫₀^U`) |
++| **statement** (type-checked, unproved) | `FibreEquiv` | Lemma 9.2: fibre `= [0, U]` on `T̂` (cap-parametric; `0 ≤ g`, `τ ≤ L`) |
++| **statement** | `EmptyFibreCap` | `ρ₁ > C(s)` ⇒ empty fibre (`CapStep`, `0 ≤ C 0`) |
++| **statement** | `EmptyFibreNeg` | a negative coordinate ⇒ empty fibre |
++| **statement** | `MarginalAgrees` | `marginalJ (1_{T̃} P) = jT P` for continuous `P` (Theorem 11.1's `J_T(F⋆) = J_T(P⋆)`) |
++| **statement** | `InnerIntegral` | `∫₀^U (M − u)^p u^t du` in closed form (first block of the bridge) |
++| **statement** | `FibreEquivTable3`, `MarginalAgreesTable3` | the Table 3 instances (`N = 45`, `g`, `L`, `τ`, `C` from `BGP212.Params`) |
++| **proved** | `g_nonneg`, `tau_le_L`, `C_zero_table3` | Table 3 hypotheses |
++| **proved** | `capStep_table3` | `CapStep` at Table 3 (kernel `decide` for `m ≤ 9`, constant caps from `m = 10`) |
++| **proved** | `capStep_zero_fails_table3` | the finding of §2 |
++| **proved** | `table3_of_general` | `FibreEquiv ∧ MarginalAgrees ⇒` their Table 3 instances |
++
++**Remaining obligations:** `FibreEquiv`, `EmptyFibreCap`, `EmptyFibreNeg`, `MarginalAgrees`, `InnerIntegral`.
++
++Each statement was also checked by hand as true as stated, not merely well-typed:
++- `FibreEquiv` does not need `τ ≤ L`, but it is kept to match the paper.
++- `EmptyFibreCap` holds with no sign hypothesis on `x̂`.
++
++## 4. Roadmap
++
++### V2d (fifteenth pair): the fibre theorem
++
++All of it is elementary set algebra plus one integral identity. No kernel arithmetic and no certificate are needed.
++
++1. **`roughSet_snoc`:** `roughSet g (Fin.snoc x̂ u) = (roughSet g x̂).map castSucc ∪ (if g < u then {last} else ∅)`.
++   - Corollaries: `roughCount` is `s` or `s + 1`, and `roughMass` is `ρ₁` or `ρ₁ + u`.
++   - Uses `Fin.sum_univ_castSucc`, `Finset.card_map` and `Finset.sum_map`.
++2. **`FibreEquiv`:** case split on `u ≤ g`, then `min`/`max` order lemmas.
++3. **`EmptyFibreNeg`:** immediate.
++4. **`EmptyFibreCap`:**
++   - case `s = 0` via `0 ≤ C 0`;
++   - case `s ≥ 1` via `CapStep` and `linarith`.
++5. **`MarginalAgrees`:**
++   - Show `T̂` is measurable, by the same unions as V2b's `supportT_measurableSet`.
++   - Show `U(x̂) ≥ 0` on `T̂`, from `L − S ≥ L − τ ≥ 0` and `g ≥ 0`.
++   - The inner integral of `1_{T̃} P` over `ℝ` equals `∫₀^U P` on `T̂` (fibre theorem plus `integral_Icc_eq_integral_Ioc` and `intervalIntegral.integral_of_le`).
++   - It is `0` on `{S ≤ τ} \ T̂` (empty fibres).
++   - Finish with `setIntegral_indicator`.
++6. **`InnerIntegral`:** `add_pow`, `intervalIntegral.integral_finsetSum` and `integral_pow`, as in V1's Beta step.
++7. **Table 3 instances:** `table3_of_general`, already proved.
++
++**Estimate.** About the size of V2b's translation and inclusion–exclusion steps:
++- no new Mathlib modules;
++- seconds to elaborate;
++- the Comparator suite in minutes.
++
++The Challenge statements are the five obligations plus their Table 3 instances. The controls would be:
++- **dimension 1 (`n = 0`):** the fibre is `[0, min(L, max(g, C(1)))]`, which can be checked against the definition;
++- **a negative control:** `U` with `C(s)` in place of `C(s+1)`;
++- **a statement-level control:** the usual altered-statement check.
++
++### After V2d: the `J_T` integral bridge (V2e and later)
++
++1. **Inner integral of `B₂₁` generators.**
++   - The factor is `(L − S − u)^a ∏_{q ∈ λ} (P̂_q + u^q)`.
++   - Its integral `∫₀^U` is a polynomial in `U`, `M = L − S` and the `P̂_q`, built from `InnerIntegral`.
++   - The product of two such polynomials expands into monomials of `x̂` times powers of `U` and `M`.
++2. **Cells by branch of `U`.** On a V2b/V2c piece (rough set `R`, inclusion–exclusion set `K` among the 44 coordinates), put `u₁ = Σ_R y` and `u₂ = Σ_{Rᶜ} y`. Then:
++   - `S = (|R| + |K|) g + u₁ + u₂`;
++   - `ρ₁ = |R| g + u₁`.
++
++   So the three branches `U = L − S`, `U = g` and `U = C(s+1) − ρ₁` are separated by lines in the `(u₁, u₂)` plane, and every cell is a rational polygon.
++3. **A Dirichlet lemma with a function of the aggregates.** For `h` continuous on the plane:
++   - `∫_{piece} yᵗ h(u₁, u₂) = const · ∫∫ u₁^{r−1+A} u₂^{n−1+B} h(u₁, u₂) du₁ du₂`.
++   - This generalizes V2b's `weighted_simplexF`.
++   - It follows from the fibred Fubini plus a one-variable "Dirichlet with a function of the sum" lemma, proved by induction like V1's `simplex_integral`.
++   - It is the main new piece of machinery.
++4. **Polygon integrals.** Integrals of `u₁^a u₂^b` times affine powers over rational polygons are rational, via iterated interval integrals. The incomplete Beta forms are already available from `InnerIntegral`.
++5. **Counting.** V2c's `Sig`, `sig_union` and `sig_card` over the 44 outer coordinates.
++   - The placements now also track the branch of `U`.
++   - Symmetry gives the factor 45 (B3's finding F3).
++6. **Certificates.** Only after the symmetry-collapsed placement sums and integer arithmetic. Then certify `J_T(P⋆) − 4 I_T(P⋆)` directly; the full 846 × 846 matrix stays uncertified.
++
++**Size.** Steps 1–5 are about two to three times V2c's proof. Step 3 is the critical path. Splitting into two verified milestones is recommended:
++- V2e: the aggregate Dirichlet lemma, plus the cells for one branch;
++- V2f: all three branches and the counting.
++
++## 5. Dependencies and costs of this patch
++
++- **Imports:** `BGP212.GramEntry` (V2b's `supportT` and `roughSet`) and `BGP212.Params`.
++- **Mathlib:** no new modules; interval integrals are already in the build.
++- **Verification:** one `lake env lean` of `FibreSpec.lean`, about 3 s with cached imports. The memory is that of loading the imports, about 2.9 GB.
++- **Not run:** no certificates, no numerical tables, and no Comparator suites.
++
++Admissible generalizations trail leading specifications.
+-- 
+2.43.0
+
