@@ -89,8 +89,9 @@ verification:
       arithmetic over a common denominator, and (c) certifying I_T(P⋆), J_T(P⋆) − 4 I_T(P⋆)
       directly rather than all entries.
   sandbox: >
-    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
-    the real landrun sandbox is recorded below.
+    Comparator ran on the VPS using the real landrun sandbox via ./verify.sh.
+    All fourteen Comparator suites passed Lean kernel verification.
+    Three positive controls passed and three negative controls were rejected.
 
 result:
   toolchain: leanprover/lean4:v4.34.0-rc2
@@ -103,7 +104,7 @@ result:
     - "Your solution is okay!"
   verify_time: "about 21 minutes 40 seconds for the V2c comparator suite in the build container"
   run_date: 2026-10-18
-  commit_hash: PENDING_VPS
+  commit_hash: 932500b
 
 next_development:
   V2d: >
