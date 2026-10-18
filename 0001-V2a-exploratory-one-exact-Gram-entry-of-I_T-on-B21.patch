@@ -1,0 +1,1431 @@
+From 64b6441bd12af6380b0b3c843c40dcab31250939 Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sat, 17 Oct 2026 21:33:20 -0600
+Subject: [PATCH] V2a (exploratory): one exact Gram entry of I_T on B21
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Exploratory branch, isolated from A0–V1 (no lean_lib, no Comparator suite).
+I_T[(1,∅),(0,(2))] = ∫_{T̃} (L − P₁) P₂ computed exactly via Proposition 10.2's
+stratification (rough set, inclusion–exclusion, Dirichlet aggregates); the
+rational arithmetic is kernel-checked row by row (decide +kernel, standard
+axioms), with kernel refutations as negative controls and exact (N = 1, 2)
+and Monte Carlo (N = 3, 45) cross-checks. NOTES.md records the cap-sequence
+discrepancy in Lemma 9.1's proof, symmetry counts and complexity estimates.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ Exploratory/V2a/GramEntry.head.lean   | 110 +++++
+ Exploratory/V2a/GramEntry.lean        | 561 ++++++++++++++++++++++++++
+ Exploratory/V2a/NOTES.md              | 119 ++++++
+ Exploratory/V2a/NegativeControls.lean | 132 ++++++
+ Exploratory/V2a/cross_checks.py       | 162 ++++++++
+ Exploratory/V2a/gen_lean.py           |  75 ++++
+ Exploratory/V2a/gram_entry.py         | 192 +++++++++
+ 7 files changed, 1351 insertions(+)
+ create mode 100644 Exploratory/V2a/GramEntry.head.lean
+ create mode 100644 Exploratory/V2a/GramEntry.lean
+ create mode 100644 Exploratory/V2a/NOTES.md
+ create mode 100644 Exploratory/V2a/NegativeControls.lean
+ create mode 100644 Exploratory/V2a/cross_checks.py
+ create mode 100644 Exploratory/V2a/gen_lean.py
+ create mode 100644 Exploratory/V2a/gram_entry.py
+
+diff --git a/Exploratory/V2a/GramEntry.head.lean b/Exploratory/V2a/GramEntry.head.lean
+new file mode 100644
+index 0000000..37ce4a9
+--- /dev/null
++++ b/Exploratory/V2a/GramEntry.head.lean
+@@ -0,0 +1,110 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3, §9.3–§9.4 (Lemma 9.1), (10.1), Lemma 10.1, Proposition 10.2.
++-/
++import BGP212.Params
++import Mathlib.Data.Rat.Defs
++import Mathlib.Data.Nat.Factorial.Basic
++import Mathlib.Algebra.BigOperators.Group.Finset.Basic
++import Mathlib.Tactic.NormNum
++
++/-! # V2a (exploratory): one exact Gram entry of `I_T` on `B₂₁`
++
++EXPLORATORY, isolated from A0–V1: this file belongs to no `lean_lib`, no Challenge/Solution pair
++and no Comparator suite. Check it with `lake env lean Exploratory/V2a/GramEntry.lean`.
++
++The entry is `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx` over the rescaled support
++`T̃ = {x ∈ [0, ∞)⁴⁵ : P₁ ≤ L, R_g(x) ≤ C(s(x))}` (Lemma 9.1, Table 3 caps). By symmetry,
++`∫ (L − P₁) P₂ = 45 L m(2) − 45 m(3) − 45·44 m(2,1)` with `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}`.
++
++`moment N α` is Proposition 10.2's decomposition made explicit, as a rational number:
++* rough set `R`, `|R| = r` (stratum), shift `xᵢ = g + zᵢ` on `R`;
++* inclusion–exclusion over `K`, `|K| = k`, for the smooth bounds `xⱼ ≤ g`, shift `xⱼ = g + wⱼ`;
++* each piece `{z ≥ 0, (w, y) ≥ 0 : Σz ≤ C(r) − rg, Σz + Σw + Σy ≤ L − (r + k) g}` integrates a
++  monomial by (10.1) applied to each group (Dirichlet form) and the one-variable integral
++  `incBeta c M p q = ∫₀^c u^p (M − u)^q du`;
++* the coordinates of `α` are assigned to the groups (rough / in `K` / smooth); binomial
++  multiplicities count the remaining coordinates.
++
++What the kernel checks here: the arithmetic of the decomposition (`moment_*`, `entry_45`), and
++two controls in dimension 2 against an independent exact polygon integration
++(`Exploratory/V2a/cross_checks.py`). What remains for V2 proper: the measure-theoretic proof that
++the decomposition equals the integral (stratification, inclusion–exclusion, Dirichlet). -/
++
++namespace BGP212.V2a
++
++open BGP212.Params
++
++/-- `n choose k` through factorials (linear-time in the kernel). -/
++def chooseF (n k : ℕ) : ℕ :=
++  if k ≤ n then n.factorial / (k.factorial * (n - k).factorial) else 0
++
++/-- `∫₀^c u^p (M − u)^q du`, expanded binomially. -/
++def incBeta (c M : ℚ) (p q : ℕ) : ℚ :=
++  (List.range (q + 1)).foldl
++    (fun acc j => acc + (chooseF q j : ℚ) * M ^ (q - j) * (-1) ^ j * c ^ (p + j + 1) / (p + j + 1)) 0
++
++/-- The nonempty pieces `(r, k, c_r, M)` with `r` rough coordinates, in dimension `N`. -/
++def piecesRow (N r : ℕ) : List (ℕ × ℕ × ℚ × ℚ) :=
++  let cr : ℚ := C r - (r : ℚ) * g
++  if 0 < r ∧ cr ≤ 0 then [] else
++    (List.range (N - r + 1)).filterMap fun k : ℕ =>
++      let M : ℚ := L - ((r + k : ℕ) : ℚ) * g
++      if M ≤ 0 then none else some (r, k, cr, M)
++
++/-- All nonempty pieces in dimension `N`. -/
++def pieces (N : ℕ) : List (ℕ × ℕ × ℚ × ℚ) :=
++  (List.range (N + 1)).flatMap (piecesRow N)
++
++/-- A partial assignment: coordinates sent to the rough group (`nA`) and to `K` (`nB`), the
++exponent totals on the `z` group (`sa`) and on the `(w, y)` group (`sb`), and the weight. -/
++structure Acc where
++  nA : ℕ
++  nB : ℕ
++  sa : ℕ
++  sb : ℕ
++  w : ℚ
++
++/-- Assign each exponent to a group, expanding `(g + ·)^e` on shifted coordinates. -/
++def expand (r k : ℕ) : List ℕ → List Acc
++  | [] => [⟨0, 0, 0, 0, 1⟩]
++  | e :: es => (expand r k es).flatMap fun s =>
++      [⟨s.nA, s.nB, s.sa, s.sb + e, s.w * e.factorial⟩] ++
++      (if s.nA < r then (List.range (e + 1)).map fun t =>
++          ⟨s.nA + 1, s.nB, s.sa + t, s.sb, s.w * chooseF e t * g ^ (e - t) * t.factorial⟩ else []) ++
++      (if s.nB < k then (List.range (e + 1)).map fun t =>
++          ⟨s.nA, s.nB + 1, s.sa, s.sb + t, s.w * chooseF e t * g ^ (e - t) * t.factorial⟩ else [])
++
++/-- The signed, counted contribution of one assignment on one piece. -/
++def pieceTerm (N d r k : ℕ) (cr M : ℚ) (s : Acc) : ℚ :=
++  let n := N - r
++  let nC := d - s.nA - s.nB
++  if N - d < r - s.nA ∨ n < s.nB + nC then 0 else
++    let mult : ℚ := chooseF (N - d) (r - s.nA) * chooseF (N - d - (r - s.nA)) (k - s.nB)
++    let val : ℚ :=
++      if n = 0 then
++        s.w / (r - 1 + s.sa).factorial * (min cr M) ^ (r + s.sa) / (r + s.sa)
++      else if r = 0 then
++        s.w / (n - 1 + s.sb).factorial * M ^ (n + s.sb) / (n + s.sb)
++      else
++        s.w / (r - 1 + s.sa).factorial / (n - 1 + s.sb).factorial *
++          incBeta (min cr M) M (r - 1 + s.sa) (n + s.sb) / (n + s.sb)
++    (-1) ^ k * mult * val
++
++/-- The contribution of the strata with `r` rough coordinates to `m(α)`. -/
++def momentRow (N : ℕ) (α : List ℕ) (r : ℕ) : ℚ :=
++  (piecesRow N r).foldl (fun acc pc =>
++    let (r, k, cr, M) := pc
++    (expand r k α).foldl (fun acc' s => acc' + pieceTerm N α.length r k cr M s) acc) 0
++
++/-- `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}` in dimension `N` (support of `α` = its first coordinates),
++by Proposition 10.2's decomposition, summed over the number `r` of rough coordinates. -/
++def moment (N : ℕ) (α : List ℕ) : ℚ :=
++  ∑ r ∈ Finset.range (N + 1), momentRow N α r
++
++/-- `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂` in dimension `N`. -/
++def entry (N : ℕ) : ℚ :=
++  L * N * moment N [2] - (N * moment N [3] + N * (N - 1) * moment N [2, 1])
++
+diff --git a/Exploratory/V2a/GramEntry.lean b/Exploratory/V2a/GramEntry.lean
+new file mode 100644
+index 0000000..195c93d
+--- /dev/null
++++ b/Exploratory/V2a/GramEntry.lean
+@@ -0,0 +1,561 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3, §9.3–§9.4 (Lemma 9.1), (10.1), Lemma 10.1, Proposition 10.2.
++-/
++import BGP212.Params
++import Mathlib.Data.Rat.Defs
++import Mathlib.Data.Nat.Factorial.Basic
++import Mathlib.Algebra.BigOperators.Group.Finset.Basic
++import Mathlib.Tactic.NormNum
++
++/-! # V2a (exploratory): one exact Gram entry of `I_T` on `B₂₁`
++
++EXPLORATORY, isolated from A0–V1: this file belongs to no `lean_lib`, no Challenge/Solution pair
++and no Comparator suite. Check it with `lake env lean Exploratory/V2a/GramEntry.lean`.
++
++The entry is `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx` over the rescaled support
++`T̃ = {x ∈ [0, ∞)⁴⁵ : P₁ ≤ L, R_g(x) ≤ C(s(x))}` (Lemma 9.1, Table 3 caps). By symmetry,
++`∫ (L − P₁) P₂ = 45 L m(2) − 45 m(3) − 45·44 m(2,1)` with `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}`.
++
++`moment N α` is Proposition 10.2's decomposition made explicit, as a rational number:
++* rough set `R`, `|R| = r` (stratum), shift `xᵢ = g + zᵢ` on `R`;
++* inclusion–exclusion over `K`, `|K| = k`, for the smooth bounds `xⱼ ≤ g`, shift `xⱼ = g + wⱼ`;
++* each piece `{z ≥ 0, (w, y) ≥ 0 : Σz ≤ C(r) − rg, Σz + Σw + Σy ≤ L − (r + k) g}` integrates a
++  monomial by (10.1) applied to each group (Dirichlet form) and the one-variable integral
++  `incBeta c M p q = ∫₀^c u^p (M − u)^q du`;
++* the coordinates of `α` are assigned to the groups (rough / in `K` / smooth); binomial
++  multiplicities count the remaining coordinates.
++
++What the kernel checks here: the arithmetic of the decomposition (`moment_*`, `entry_45`), and
++two controls in dimension 2 against an independent exact polygon integration
++(`Exploratory/V2a/cross_checks.py`). What remains for V2 proper: the measure-theoretic proof that
++the decomposition equals the integral (stratification, inclusion–exclusion, Dirichlet). -/
++
++namespace BGP212.V2a
++
++open BGP212.Params
++
++/-- `n choose k` through factorials (linear-time in the kernel). -/
++def chooseF (n k : ℕ) : ℕ :=
++  if k ≤ n then n.factorial / (k.factorial * (n - k).factorial) else 0
++
++/-- `∫₀^c u^p (M − u)^q du`, expanded binomially. -/
++def incBeta (c M : ℚ) (p q : ℕ) : ℚ :=
++  (List.range (q + 1)).foldl
++    (fun acc j => acc + (chooseF q j : ℚ) * M ^ (q - j) * (-1) ^ j * c ^ (p + j + 1) / (p + j + 1)) 0
++
++/-- The nonempty pieces `(r, k, c_r, M)` with `r` rough coordinates, in dimension `N`. -/
++def piecesRow (N r : ℕ) : List (ℕ × ℕ × ℚ × ℚ) :=
++  let cr : ℚ := C r - (r : ℚ) * g
++  if 0 < r ∧ cr ≤ 0 then [] else
++    (List.range (N - r + 1)).filterMap fun k : ℕ =>
++      let M : ℚ := L - ((r + k : ℕ) : ℚ) * g
++      if M ≤ 0 then none else some (r, k, cr, M)
++
++/-- All nonempty pieces in dimension `N`. -/
++def pieces (N : ℕ) : List (ℕ × ℕ × ℚ × ℚ) :=
++  (List.range (N + 1)).flatMap (piecesRow N)
++
++/-- A partial assignment: coordinates sent to the rough group (`nA`) and to `K` (`nB`), the
++exponent totals on the `z` group (`sa`) and on the `(w, y)` group (`sb`), and the weight. -/
++structure Acc where
++  nA : ℕ
++  nB : ℕ
++  sa : ℕ
++  sb : ℕ
++  w : ℚ
++
++/-- Assign each exponent to a group, expanding `(g + ·)^e` on shifted coordinates. -/
++def expand (r k : ℕ) : List ℕ → List Acc
++  | [] => [⟨0, 0, 0, 0, 1⟩]
++  | e :: es => (expand r k es).flatMap fun s =>
++      [⟨s.nA, s.nB, s.sa, s.sb + e, s.w * e.factorial⟩] ++
++      (if s.nA < r then (List.range (e + 1)).map fun t =>
++          ⟨s.nA + 1, s.nB, s.sa + t, s.sb, s.w * chooseF e t * g ^ (e - t) * t.factorial⟩ else []) ++
++      (if s.nB < k then (List.range (e + 1)).map fun t =>
++          ⟨s.nA, s.nB + 1, s.sa, s.sb + t, s.w * chooseF e t * g ^ (e - t) * t.factorial⟩ else [])
++
++/-- The signed, counted contribution of one assignment on one piece. -/
++def pieceTerm (N d r k : ℕ) (cr M : ℚ) (s : Acc) : ℚ :=
++  let n := N - r
++  let nC := d - s.nA - s.nB
++  if N - d < r - s.nA ∨ n < s.nB + nC then 0 else
++    let mult : ℚ := chooseF (N - d) (r - s.nA) * chooseF (N - d - (r - s.nA)) (k - s.nB)
++    let val : ℚ :=
++      if n = 0 then
++        s.w / (r - 1 + s.sa).factorial * (min cr M) ^ (r + s.sa) / (r + s.sa)
++      else if r = 0 then
++        s.w / (n - 1 + s.sb).factorial * M ^ (n + s.sb) / (n + s.sb)
++      else
++        s.w / (r - 1 + s.sa).factorial / (n - 1 + s.sb).factorial *
++          incBeta (min cr M) M (r - 1 + s.sa) (n + s.sb) / (n + s.sb)
++    (-1) ^ k * mult * val
++
++/-- The contribution of the strata with `r` rough coordinates to `m(α)`. -/
++def momentRow (N : ℕ) (α : List ℕ) (r : ℕ) : ℚ :=
++  (piecesRow N r).foldl (fun acc pc =>
++    let (r, k, cr, M) := pc
++    (expand r k α).foldl (fun acc' s => acc' + pieceTerm N α.length r k cr M s) acc) 0
++
++/-- `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}` in dimension `N` (support of `α` = its first coordinates),
++by Proposition 10.2's decomposition, summed over the number `r` of rough coordinates. -/
++def moment (N : ℕ) (α : List ℕ) : ℚ :=
++  ∑ r ∈ Finset.range (N + 1), momentRow N α r
++
++/-- `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂` in dimension `N`. -/
++def entry (N : ℕ) : ℚ :=
++  L * N * moment N [2] - (N * moment N [3] + N * (N - 1) * moment N [2, 1])
++
++
++/-! ## Controls in dimension 2 (an independent exact polygon integration agrees;
++see `cross_checks.py`) -/
++
++theorem row_vol_2_0 : momentRow 2 [] 0 = (1681 / 390625 : ℚ) := by decide +kernel
++
++theorem row_vol_2_1 : momentRow 2 [] 1 = (5699 / 78125 : ℚ) := by decide +kernel
++
++theorem row_vol_2_2 : momentRow 2 [] 2 = (3969 / 31250 : ℚ) := by decide +kernel
++
++theorem vol_2 : moment 2 [] = (159577 / 781250 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_vol_2_0, row_vol_2_1, row_vol_2_2]
++  norm_num
++
++theorem row_m2_2_0 : momentRow 2 [2] 0 = (2825761 / 457763671875 : ℚ) := by decide +kernel
++
++theorem row_m2_2_1 : momentRow 2 [2] 1 = (3880397809 / 732421875000 : ℚ) := by decide +kernel
++
++theorem row_m2_2_2 : momentRow 2 [2] 2 = (212964633 / 24414062500 : ℚ) := by decide +kernel
++
++theorem m2_2 : moment 2 [2] = (51369290083 / 3662109375000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_m2_2_0, row_m2_2_1, row_m2_2_2]
++  norm_num
++
++theorem row_m3_2_0 : momentRow 2 [3] 0 = (115856201 / 381469726562500 : ℚ) := by decide +kernel
++
++theorem row_m3_2_1 : momentRow 2 [3] 1 = (598315778201 / 244140625000000 : ℚ) := by decide +kernel
++
++theorem row_m3_2_2 : momentRow 2 [3] 2 = (11427020892 / 3814697265625 : ℚ) := by decide +kernel
++
++theorem m3_2 : moment 2 [3] = (33242981581441 / 6103515625000000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_m3_2_0, row_m3_2_1, row_m3_2_2]
++  norm_num
++
++theorem row_m21_2_0 : momentRow 2 [2, 1] 0 = (115856201 / 572204589843750 : ℚ) := by decide +kernel
++
++theorem row_m21_2_1 : momentRow 2 [2, 1] 1 = (34796731939 / 183105468750000 : ℚ) := by decide +kernel
++
++theorem row_m21_2_2 : momentRow 2 [2, 1] 2 = (23785212843 / 15258789062500 : ℚ) := by decide +kernel
++
++theorem m21_2 : moment 2 [2, 1] = (8006409000983 / 4577636718750000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_m21_2_0, row_m21_2_1, row_m21_2_2]
++  norm_num
++
++/-- The same entry in dimension 2 (control). -/
++theorem entry_2 : entry 2 = (9366843779443 / 610351562500000 : ℚ) := by
++  rw [entry, m2_2, m3_2, m21_2]
++  norm_num [L]
++
++/-! ## Dimension 45: one lemma per number `r` of rough coordinates -/
++
++theorem row_vol_45_0 : momentRow 45 [] 0 = (18387634850178000547297280469563559081426474709864991178164980245173465460780685060285351001280730550761429072737010350931470462441387557 / 6698515856525721066961219931715643424383618898577319280811146292491445319861043117271037772297859191894531250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_1 : momentRow 45 [] 1 = (1079192225213931609450147391856179039363609224515582560103034832721749243231741293963744536591257307869306962185435426680232089480890401 / 62023294967830750620011295664033735410959434246086289637140243448994864072787436271028127521276473999023437500000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_2 : momentRow 45 [] 2 = (1260083933271541203593703283425638697277986227006685428504811499563332939951442226877947046239241556545965548819520806776497374694570961 / 33830888164271318520006161271291128405977873225137976165712860063088107676065874329651705920696258544921875000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_3 : momentRow 45 [] 3 = (1254701051910775944609124609409568408332915104897569166524551440051611029261632659462640294802689526024114692020749765370041101639 / 35050408718275863393683730535730995509747003983745770680247608522273061737450916552916169166564941406250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_4 : momentRow 45 [] 4 = (96683717341593594566601429100130605031571810570030955630408300516343983146923623214621576356755419422961396400193774406051601389 / 5653532166467249842447444893429443932832132381003969603608253283177909054302290314808487892150878906250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_5 : momentRow 45 [] 5 = (2365883090547022866166983640649406802353934263702967576572765413666549885078346581316378685415800783271695757636560557341678622772127 / 561974886449689676412062479589553628006276963872723856573303323307111423190463028731755912303924560546875000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_6 : momentRow 45 [] 6 = (44925675733100965178209656355614362714957666479031032027345811530037294176176317629521971122619773812721162177732111603554780549073 / 84296232967453451461809371938433044200941544580908578485995498496066713478569454309763386845588684082031250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_7 : momentRow 45 [] 7 = (1015613278515091252224454015805054446587642297527685936402677759774524947801805755232900213022395181075319793368628021826504951377 / 30260186193444828729880287362514426123414913439300515353947102024229076633332624624017626047134399414062500000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_8 : momentRow 45 [] 8 = (83543205251640686919326312100115267780760837684465314257599686217704467648720935579890932675533983813454217749640587560017527 / 84940873525459168364576245228110669820112037724352323800553268839941267742688069120049476623535156250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_9 : momentRow 45 [] 9 = (4649760563603862110327230057969285006650979553974409665312785781051622785171114279022350533875820864761258326676565703746017 / 387399254254627963824925442763342581949835307188769044360631462614596998150773288216441869735717773437500000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_10 : momentRow 45 [] 10 = (784612892699752373582706688181347971307136325529158967730659881442478288871795461023451065449399683667002759040712684877 / 15372986279945554120036723919180261188485528063046390649231407246610991990110051119700074195861816406250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_11 : momentRow 45 [] 11 = (634563956098899344450563276198326327743320612336727515840118770837868601694322606946712379681149944378519703921003043 / 11273523271960073021360264207398858204889387246234019809436365314181394126080704154446721076965332031250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_12 : momentRow 45 [] 12 = (310166146894563227237273860994178926190163197367305590684140523485997091925033733267389419230420309393274186842789 / 47746686798889721031643471937218693573649169513461730957612841330650610416341805830597877502441406250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_13 : momentRow 45 [] 13 = (35727161091844713358495598766284412290707606660093098640921296351327045994399525368234087432110646353 / 327118275829020486646305736592275634496674152134388670592340941922770980454515665769577026367187500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_vol_45_14 : momentRow 45 [] 14 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_15 : momentRow 45 [] 15 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_16 : momentRow 45 [] 16 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_17 : momentRow 45 [] 17 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_18 : momentRow 45 [] 18 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_19 : momentRow 45 [] 19 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_20 : momentRow 45 [] 20 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_21 : momentRow 45 [] 21 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_22 : momentRow 45 [] 22 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_23 : momentRow 45 [] 23 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_24 : momentRow 45 [] 24 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_25 : momentRow 45 [] 25 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_26 : momentRow 45 [] 26 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_27 : momentRow 45 [] 27 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_28 : momentRow 45 [] 28 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_29 : momentRow 45 [] 29 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_30 : momentRow 45 [] 30 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_31 : momentRow 45 [] 31 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_32 : momentRow 45 [] 32 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_33 : momentRow 45 [] 33 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_34 : momentRow 45 [] 34 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_35 : momentRow 45 [] 35 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_36 : momentRow 45 [] 36 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_37 : momentRow 45 [] 37 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_38 : momentRow 45 [] 38 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_39 : momentRow 45 [] 39 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_40 : momentRow 45 [] 40 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_41 : momentRow 45 [] 41 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_42 : momentRow 45 [] 42 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_43 : momentRow 45 [] 43 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_44 : momentRow 45 [] 44 = (0 : ℚ) := by decide +kernel
++
++theorem row_vol_45_45 : momentRow 45 [] 45 = (0 : ℚ) := by decide +kernel
++
++theorem vol_45 : moment 45 [] = (3901481064070268982164144295485804059291697330718545702633407630231575487589574452141214650600437300978639647086255217778273862061283991329 / 33906067915747477005606174963005108691324490721193838334969999752117192359790465161495376378297805786132812500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_vol_45_0, row_vol_45_1, row_vol_45_2, row_vol_45_3, row_vol_45_4, row_vol_45_5, row_vol_45_6, row_vol_45_7, row_vol_45_8, row_vol_45_9, row_vol_45_10, row_vol_45_11, row_vol_45_12, row_vol_45_13, row_vol_45_14, row_vol_45_15, row_vol_45_16, row_vol_45_17, row_vol_45_18, row_vol_45_19, row_vol_45_20, row_vol_45_21, row_vol_45_22, row_vol_45_23, row_vol_45_24, row_vol_45_25, row_vol_45_26, row_vol_45_27, row_vol_45_28, row_vol_45_29, row_vol_45_30, row_vol_45_31, row_vol_45_32, row_vol_45_33, row_vol_45_34, row_vol_45_35, row_vol_45_36, row_vol_45_37, row_vol_45_38, row_vol_45_39, row_vol_45_40, row_vol_45_41, row_vol_45_42, row_vol_45_43, row_vol_45_44, row_vol_45_45]
++  norm_num
++
++theorem row_m2_45_0 : momentRow 45 [2] 0 = (14134391377412746527345826515158488200928656151672095624769466229218405908444790928444338584807691771171737815980946235573465459290312362117041 / 6285673299396097633146769744951918873054420164376807415413931547034073255876551744592006798484362661838531494140625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_1 : momentRow 45 [2] 1 = (25352368650074263937510126380920350295552726036153612250189386173813659213963051155963388857832899218727636622247948764874947804910526975902777 / 1571418324849024408286692436237979718263605041094201853853482886758518313969137936148001699621090665459632873535156250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_2 : momentRow 45 [2] 2 = (26673193102855613198966176942671005974851818152311384460139801437377635427667970695482990968716565425082650264622067899769521120188660543817 / 708963828039262083594266833403103865672729547076111822176170939209798472352419551612001669127494096755981445312500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_3 : momentRow 45 [2] 3 = (5192445469897859877066440136037206952589843085649835453524941033440898787833987627324040884502051637149802505420554498633333302673040983719 / 134685302969746678042971181895718506222239161284572469046353027263457943600577504383863924886099994182586669921875000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_4 : momentRow 45 [2] 4 = (1082368590677320162406689930180915196613166998744928958293846969030618214400376529782216600643428370688013273179256865578538351319568807411 / 55862639673302996744001991233302795335375750558768676840278207070038469020389904073908837744966149330139160156250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_5 : momentRow 45 [2] 5 = (14161531191056122933637368279371766966348592212416241860297253713253683995716335414767555954087550900393192920675418273088330547319819546523 / 2847632119931786907194247845795191274413056552873817916980035433570253664697924378401694411877542734146118164062500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_6 : momentRow 45 [2] 6 = (278629475380249232785330063453902419899631931130160605162394825054801346621883167106298435403258937105304788767985236904176046022520371873 / 427144817989768036079137176869278691161958482931072687547005315035538049704688656760254161781631410121917724609375000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_7 : momentRow 45 [2] 7 = (8859768198450827453857731019715485244403568304534258232681801111997366016933557800094320926143278218489291771090974732983221246052946853 / 209091868946040297381395820845101457212147509127098518379652951415997646708588852959564974298700690269470214843750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_8 : momentRow 45 [2] 8 = (596671798609094355413472567975242895293229475411459822485961160894888430785298634260116230029032855835726547147306795463620399380241 / 467386823492469675105741521905327378446174070391807295707413628444619815849314647948631318286061286926269531250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_9 : momentRow 45 [2] 9 = (52275970124355831353533108047561396340340479578063607012953516895964791196341463500875625679840802360558728510680046921869465017139 / 3271707764447287725740190653337291649123218492742651069951895399112338710945202535640419228002429008483886718750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_10 : momentRow 45 [2] 10 = (5418883899163082305253464945457205729740408915632070324891824055567910380784835161869965928862238274063781665571915786492039373 / 77897803915411612517623586984221229741029011731967882617902271407436635974885774658105219714343547821044921875000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_11 : momentRow 45 [2] 11 = (1244057707616980512345734106869407982661906399597434294013240337249200416693667368628343787943976620122576814266297352813947 / 15868071167954217364701101052341361613913317204660124236980092323737092513402657800725137349218130111694335937500000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_12 : momentRow 45 [2] 12 = (2739688508385309064881519954388007308744391388081477054859618423565749719226621992139875423482164814691191798667627586789 / 302426768142186260362538631821094186053406751429992956045973524287695174961321242790290853008627891540527343750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_13 : momentRow 45 [2] 13 = (9191724833510412515155214979310803766075331381185095235596410130489176763179386031719399205305971293968662181 / 63540169468257315308492965069482414847584448785291449351073225304889491305004867172101512551307678222656250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m2_45_14 : momentRow 45 [2] 14 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_15 : momentRow 45 [2] 15 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_16 : momentRow 45 [2] 16 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_17 : momentRow 45 [2] 17 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_18 : momentRow 45 [2] 18 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_19 : momentRow 45 [2] 19 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_20 : momentRow 45 [2] 20 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_21 : momentRow 45 [2] 21 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_22 : momentRow 45 [2] 22 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_23 : momentRow 45 [2] 23 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_24 : momentRow 45 [2] 24 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_25 : momentRow 45 [2] 25 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_26 : momentRow 45 [2] 26 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_27 : momentRow 45 [2] 27 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_28 : momentRow 45 [2] 28 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_29 : momentRow 45 [2] 29 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_30 : momentRow 45 [2] 30 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_31 : momentRow 45 [2] 31 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_32 : momentRow 45 [2] 32 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_33 : momentRow 45 [2] 33 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_34 : momentRow 45 [2] 34 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_35 : momentRow 45 [2] 35 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_36 : momentRow 45 [2] 36 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_37 : momentRow 45 [2] 37 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_38 : momentRow 45 [2] 38 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_39 : momentRow 45 [2] 39 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_40 : momentRow 45 [2] 40 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_41 : momentRow 45 [2] 41 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_42 : momentRow 45 [2] 42 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_43 : momentRow 45 [2] 43 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_44 : momentRow 45 [2] 44 = (0 : ℚ) := by decide +kernel
++
++theorem row_m2_45_45 : momentRow 45 [2] 45 = (0 : ℚ) := by decide +kernel
++
++theorem m2_45 : moment 45 [2] = (26419645387663101662352677000167693527668948174938059322350427302064088708297247497562432832165728787022984203957950762204765975981354494058339631 / 220896518807348573964872193894024577538769622919527803455975308652911717277947389881376238918164744973182678222656250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_m2_45_0, row_m2_45_1, row_m2_45_2, row_m2_45_3, row_m2_45_4, row_m2_45_5, row_m2_45_6, row_m2_45_7, row_m2_45_8, row_m2_45_9, row_m2_45_10, row_m2_45_11, row_m2_45_12, row_m2_45_13, row_m2_45_14, row_m2_45_15, row_m2_45_16, row_m2_45_17, row_m2_45_18, row_m2_45_19, row_m2_45_20, row_m2_45_21, row_m2_45_22, row_m2_45_23, row_m2_45_24, row_m2_45_25, row_m2_45_26, row_m2_45_27, row_m2_45_28, row_m2_45_29, row_m2_45_30, row_m2_45_31, row_m2_45_32, row_m2_45_33, row_m2_45_34, row_m2_45_35, row_m2_45_36, row_m2_45_37, row_m2_45_38, row_m2_45_39, row_m2_45_40, row_m2_45_41, row_m2_45_42, row_m2_45_43, row_m2_45_44, row_m2_45_45]
++  norm_num
++
++theorem row_m3_45_0 : momentRow 45 [3] 0 = (5273508053975483877344679187580569238006408112568926746309224470579392284271395413017981435456548542268504266614554129671852142017510305796778097 / 53877199709109408284115169242445018911895029980372634989262270403149199336084729239360058272723108530044555664062500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_1 : momentRow 45 [3] 1 = (263560443835325436726525844866117377172564808705620502004226894962903668760067017451019140728484821053716310511428117157828593604666978081859708733 / 282855298472824393491604638522836349287448907396956333693626919616533296514444828506640305931796319782733917236328125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_2 : momentRow 45 [3] 2 = (399155472367785604053891738908661651910180735314093944466013699973339898734329341873120487068527055547784047126300653935484002651533955768160961 / 163264241542755782679136876492257633066348575698098893906855364858027876776014331028363812947645783424377441406250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_3 : momentRow 45 [3] 3 = (2387091816056289790672350704420998429771607835276919746313790454383012053070241226430948704024523678742435139183044914522485276926263756175893 / 897902019798311186953141212638123374814927741897149793642353515089719624003850029225759499240666627883911132812500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_4 : momentRow 45 [3] 4 = (28257556994102623742118838897533038124426636054189273464358071611767243221385972792182373851782891871416783897904153011301410407275796008542267 / 20482967880211098806134063452211024956304441871548514841435342592347438640809631493766573839820921421051025390625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_5 : momentRow 45 [3] 5 = (1578041498070021480257347731175851757086970088878202662209458026004759765422406955546216810041353478559781119604111857330641854264493971615243 / 4380972492202749087991150531992601960635471619805873718430823743954236407227575966771837556734681129455566406250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_6 : momentRow 45 [3] 6 = (34650419226206196918198712028692459171775462250485034014471839365737884907622511671784886504391481216693810853814727069280347938225181631 / 727438849418021485514292097735449669037208540559397618397801929589294861466797215143742505460977554321289062500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_7 : momentRow 45 [3] 7 = (142658905941304810981480589926647546560373482860170051568927295364697299522788136775047256037148804918623149789137743448152005358550774100447 / 46000211168128865423907080585922320586672452007961674043523649311519482275889547651104294345714151859283447265625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_8 : momentRow 45 [3] 8 = (781309085271657979958905315370024501966436363365718959146725032938367675213087699835174659609425811244350985633523802451327884290524823 / 8377383203083020474213636967022822907789556002178414504375095485616369017645155281570623628795146942138671875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_9 : momentRow 45 [3] 9 = (5846300185638962196919009855225104159012997787601555838427502066527298029916103067072111082276878541715981576682612813606190570549139 / 5033396560688134962677216389749679460189566911911770876849069844788213401454157747139106504619121551513671875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_10 : momentRow 45 [3] 10 = (164193680301656009139265110203583925330305142885094890536534671719815754563624081375136480904408951071241447461259610815409787197881 / 32717077644472877257401906533372916491232184927426510699518953991123387109452025356404192280024290084838867187500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_11 : momentRow 45 [3] 11 = (287728614642094786849886418828438478971010822387848694611708305961359943111099202087580602903246572223165689059096765814244447553 / 51412550584171664261631567409586011629079147743098802527815499128908179743424611274349445011466741561889648437500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_12 : momentRow 45 [3] 12 = (1265218246332858354766722067505934628642411635455077179213493891283287123777523208187085201480808765749308863342495805869971 / 2016178454281241735750257545473961240356045009533286373639823495251301166408808285268605686724185943603515625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_13 : momentRow 45 [3] 13 = (106945068440251153943726066917011334269620353363646893916295914791125261077592453445161075389457832157094673942777 / 11437230504286316755528733712506834672565200781352460883193180554880108434900876090978272259235382080078125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m3_45_14 : momentRow 45 [3] 14 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_15 : momentRow 45 [3] 15 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_16 : momentRow 45 [3] 16 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_17 : momentRow 45 [3] 17 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_18 : momentRow 45 [3] 18 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_19 : momentRow 45 [3] 19 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_20 : momentRow 45 [3] 20 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_21 : momentRow 45 [3] 21 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_22 : momentRow 45 [3] 22 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_23 : momentRow 45 [3] 23 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_24 : momentRow 45 [3] 24 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_25 : momentRow 45 [3] 25 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_26 : momentRow 45 [3] 26 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_27 : momentRow 45 [3] 27 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_28 : momentRow 45 [3] 28 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_29 : momentRow 45 [3] 29 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_30 : momentRow 45 [3] 30 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_31 : momentRow 45 [3] 31 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_32 : momentRow 45 [3] 32 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_33 : momentRow 45 [3] 33 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_34 : momentRow 45 [3] 34 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_35 : momentRow 45 [3] 35 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_36 : momentRow 45 [3] 36 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_37 : momentRow 45 [3] 37 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_38 : momentRow 45 [3] 38 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_39 : momentRow 45 [3] 39 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_40 : momentRow 45 [3] 40 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_41 : momentRow 45 [3] 41 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_42 : momentRow 45 [3] 42 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_43 : momentRow 45 [3] 43 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_44 : momentRow 45 [3] 44 = (0 : ℚ) := by decide +kernel
++
++theorem row_m3_45_45 : momentRow 45 [3] 45 = (0 : ℚ) := by decide +kernel
++
++theorem m3_45 : moment 45 [3] = (23713762351852655889341565809086253938399233521256765743916349294254862085436277466350007582068117693813668950468667446021705743064300240605071068561 / 2992791545131819389201494239854526534396233600845215401661600955942674879249609798392839365988038480281829833984375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_m3_45_0, row_m3_45_1, row_m3_45_2, row_m3_45_3, row_m3_45_4, row_m3_45_5, row_m3_45_6, row_m3_45_7, row_m3_45_8, row_m3_45_9, row_m3_45_10, row_m3_45_11, row_m3_45_12, row_m3_45_13, row_m3_45_14, row_m3_45_15, row_m3_45_16, row_m3_45_17, row_m3_45_18, row_m3_45_19, row_m3_45_20, row_m3_45_21, row_m3_45_22, row_m3_45_23, row_m3_45_24, row_m3_45_25, row_m3_45_26, row_m3_45_27, row_m3_45_28, row_m3_45_29, row_m3_45_30, row_m3_45_31, row_m3_45_32, row_m3_45_33, row_m3_45_34, row_m3_45_35, row_m3_45_36, row_m3_45_37, row_m3_45_38, row_m3_45_39, row_m3_45_40, row_m3_45_41, row_m3_45_42, row_m3_45_43, row_m3_45_44, row_m3_45_45]
++  norm_num
++
++theorem row_m21_45_0 : momentRow 45 [2, 1] 0 = (171001155773237882848390350185107079913432971088756812202245687633642979224901827978219641106080667826706109855389638914590829747170110076058060741 / 3394263581673892721899255662274036191449386888763476004323523035398399558173337942079683671181555837392807006835937500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_1 : momentRow 45 [2, 1] 1 = (192729363784671101225536195986751834583759321322725062818477063519871068817904587463156697227803456057368103640401570494629801718383006755141787 / 538771997091094082841151692424450189118950299803726349892622704031491993360847292393600582727231085300445556640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_2 : momentRow 45 [2, 1] 2 = (12049888491026202004295906973326416613939476395544063983395881468560300393823678156107615185155365104210221108111957314866573343920897505880717909 / 14505399921683302230338699411427505091664046533177247881724457416232476744330504025981554150348529219627380371093750000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_3 : momentRow 45 [2, 1] 3 = (15112661196575896472005189718966348730285585843408320101282092326314848376576562269569546738354843470350534690338136955689230323447450248569953 / 17778459992006561501672196010234842821335569289563565914118599598776448555276230578670038084965199232101440429687500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_4 : momentRow 45 [2, 1] 4 = (288774164525249820987161035159927435885135786313826802212981920500396481023558409010052961499376662696087946914964180115810643880196455036821689 / 675937940046966260602424093922963823558046581761100989767366305547465475146717839294296936714090406894683837890625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_5 : momentRow 45 [2, 1] 5 = (3618392359058031337093325505821314353835127103752610823481224556410922570592766309530302236236325089356097564370916875056215117004942062077997 / 32972582441315427346459711898681162124782760085907365354505673441339779275449650697282777400687336921691894531250000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_6 : momentRow 45 [2, 1] 6 = (2257209177516170072041596393430119953164942175330473008594396634907799413343615224534934168234793606146684789211503761188470066570424801095091 / 156619766596248279895683631518735520092718110408059985433901948846363951558385840812093192653264850378036499023437500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_7 : momentRow 45 [2, 1] 7 = (3567158576780806471983805601162387739856532837057738027877963770332018989852189259795100792673556081504774963619259382367131721073385244971 / 3804528743228703155360735988309364860551856932989311387058346935539205301013421234301858930848538875579833984375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_8 : momentRow 45 [2, 1] 8 = (2260822135512437493578364012412396477041751567188576476078515091292497094265714078305089908098299978384606021930033304854060079905701017553 / 79895103607802766262575455754496662071588995592775539128225285646323311321281845920339037547819316387176513671875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_9 : momentRow 45 [2, 1] 9 = (766219203279464384344154692225639025527432818699150922713795777138044315931489787793995935482243097624056219371497521927354430536861117 / 2159327124535209898988525831202612488421324205210149706168250963414143549223833673522676690481603145599365234375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_10 : momentRow 45 [2, 1] 10 = (7428123685132876817562493039026809055204288753979680668183423139306423457089786728000659753140703937462898288522061496666455222627 / 4798504721189355331085612958228027752047387122689221569262779918698096776052963718939281534403562545776367187500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_11 : momentRow 45 [2, 1] 11 = (24516711419697279520718086614781628529664478635068358623118618406111573994934840769968459455291425986893301203804915067880902703 / 14021604704774090253172245657159821353385222111754218871222408853338594475479439438458939548581838607788085937500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_12 : momentRow 45 [2, 1] 12 = (3678126406237225822062581324766624137809132750074728702817374893186057540234137653936488326456323500037406691146833877783533 / 18145606088531175621752317909265651163204405085799577362758411457261710497679274567417451180517673492431640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_13 : momentRow 45 [2, 1] 13 = (136418426738532695250708356829095948944539531854676761233645872519385970063923770711016640565601017874870239961339 / 41936511849049828103605356945858393799405736198292356571708328701227064261303212333586998283863067626953125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++theorem row_m21_45_14 : momentRow 45 [2, 1] 14 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_15 : momentRow 45 [2, 1] 15 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_16 : momentRow 45 [2, 1] 16 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_17 : momentRow 45 [2, 1] 17 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_18 : momentRow 45 [2, 1] 18 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_19 : momentRow 45 [2, 1] 19 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_20 : momentRow 45 [2, 1] 20 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_21 : momentRow 45 [2, 1] 21 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_22 : momentRow 45 [2, 1] 22 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_23 : momentRow 45 [2, 1] 23 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_24 : momentRow 45 [2, 1] 24 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_25 : momentRow 45 [2, 1] 25 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_26 : momentRow 45 [2, 1] 26 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_27 : momentRow 45 [2, 1] 27 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_28 : momentRow 45 [2, 1] 28 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_29 : momentRow 45 [2, 1] 29 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_30 : momentRow 45 [2, 1] 30 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_31 : momentRow 45 [2, 1] 31 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_32 : momentRow 45 [2, 1] 32 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_33 : momentRow 45 [2, 1] 33 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_34 : momentRow 45 [2, 1] 34 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_35 : momentRow 45 [2, 1] 35 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_36 : momentRow 45 [2, 1] 36 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_37 : momentRow 45 [2, 1] 37 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_38 : momentRow 45 [2, 1] 38 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_39 : momentRow 45 [2, 1] 39 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_40 : momentRow 45 [2, 1] 40 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_41 : momentRow 45 [2, 1] 41 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_42 : momentRow 45 [2, 1] 42 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_43 : momentRow 45 [2, 1] 43 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_44 : momentRow 45 [2, 1] 44 = (0 : ℚ) := by decide +kernel
++
++theorem row_m21_45_45 : momentRow 45 [2, 1] 45 = (0 : ℚ) := by decide +kernel
++
++theorem m21_45 : moment 45 [2, 1] = (735126632911992950101704792842948265159431353218295440230350999171170754415456770541970665412341205605964357996812400326537200433645810481061082562671 / 278329613697259203195738964306470967698849724878605032354528888902668763770213711250534061036887578666210174560546875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,
++    row_m21_45_0, row_m21_45_1, row_m21_45_2, row_m21_45_3, row_m21_45_4, row_m21_45_5, row_m21_45_6, row_m21_45_7, row_m21_45_8, row_m21_45_9, row_m21_45_10, row_m21_45_11, row_m21_45_12, row_m21_45_13, row_m21_45_14, row_m21_45_15, row_m21_45_16, row_m21_45_17, row_m21_45_18, row_m21_45_19, row_m21_45_20, row_m21_45_21, row_m21_45_22, row_m21_45_23, row_m21_45_24, row_m21_45_25, row_m21_45_26, row_m21_45_27, row_m21_45_28, row_m21_45_29, row_m21_45_30, row_m21_45_31, row_m21_45_32, row_m21_45_33, row_m21_45_34, row_m21_45_35, row_m21_45_36, row_m21_45_37, row_m21_45_38, row_m21_45_39, row_m21_45_40, row_m21_45_41, row_m21_45_42, row_m21_45_43, row_m21_45_44, row_m21_45_45]
++  norm_num
++
++/-- **The Gram entry** `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂`, exactly. -/
++theorem entry_45 : entry 45 = (56548202531757829081112222776094322482195301797337957431658942826121654659702465348240408258861490443138056811762103934848460333484729132412243771531 / 475777117431212313155109340694822167006580726288213730520562203252425237214040532052194976131431758403778076171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  rw [entry, m2_45, m3_45, m21_45]
++  norm_num [L]
++
++end BGP212.V2a
++
++#print axioms BGP212.V2a.entry_45
+diff --git a/Exploratory/V2a/NOTES.md b/Exploratory/V2a/NOTES.md
+new file mode 100644
+index 0000000..27c9390
+--- /dev/null
++++ b/Exploratory/V2a/NOTES.md
+@@ -0,0 +1,119 @@
++# V2a (exploratory): one exact Gram entry of I_T on B₂₁
++
++Status: **exploratory**, on branch `v2a` and kept apart from the verified pairs. A0–V1, the
++twelve Comparator suites and `verify.sh` are unchanged. Nothing here is a Challenge/Solution
++pair. The Lean file is checked directly with `lake env lean`.
++
++## 1. Setup (§9.3–§10, as used here)
++
++| item | choice |
++|---|---|
++| basis pair | i = `(a = 1, λ = ∅)`, i.e. `L − P₁`; j = `(a = 0, λ = (2))`, i.e. `P₂` (V0's `gen 1 ∅`, `gen 0 {2}`) |
++| entry | `I_T[i, j] = ∫_{T̃} (L − P₁) P₂ dx` |
++| domain | `T̃ = {x ∈ [0, ∞)⁴⁵ : P₁ ≤ L, R_g(x) ≤ C(s(x))}` (Lemma 9.1), Lebesgue measure on ℝ⁴⁵ |
++| constants | `L = 53/50`, `g = 41/625`, `C(0) = 0`, `C(m) = 4B₁,ₘ` from Table 3 (`BGP212.Params`) |
++| normalization | rescaled coordinates `x = 4t`; physical `I(F) = 4⁻⁴⁵ I(F̃)` (§9.3); the Gram matrix uses the generators of B₂₁ unnormalized |
++| symmetry | `∫ (L − P₁)P₂ = 45L·m(2) − 45·m(3) − 45·44·m(2,1)`, with `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}` |
++
++The decomposition follows Proposition 10.2 and is written out in full:
++
++1. **Stratum** (rough set R, |R| = r). Put `xᵢ = g + zᵢ` for i ∈ R. Then `Σ_R z ≤ c_r = C(r) − rg`. The stratum is empty once `rg ≥ C(r)`, so **r ≤ 13**.
++2. **Inclusion–exclusion** over K (|K| = k) handles the smooth bounds `xⱼ ≤ g`. Put `xⱼ = g + wⱼ` for j ∈ K. The total-mass condition becomes `Σz + Σw + Σy ≤ M = L − (r+k)g`, so **r + k ≤ 16**. That leaves **147 pieces** (r, k).
++3. **Dirichlet / (10.1)**:
++   - Each piece is `{Σz ≤ c_r, Σz + Σ(w,y) ≤ M}`.
++   - A monomial `z^a (w,y)^b` integrates to `∏a!·∏b!/((r−1+|a|)!(n−1+|b|)!) · ∫₀^{min(c_r,M)} u^{r−1+|a|}(M−u)^{n+|b|}/(n+|b|) du`, where n = 45 − r.
++   - In other words, every piece reduces to a **two-dimensional integral in the aggregates** `u₁ = Σz` and `u₂ = Σ(w, y)`.
++4. **Counting.** The support coordinates of α are assigned to the three groups (rough, in K, other smooth), and binomial multiplicities count the remaining coordinates.
++
++## 2. The entry
++
++```
++I_T[(1,∅),(0,(2))] = 56548202531757829081…729132412243771531 / 475777117431212313155…000   (149 / 207 digits)
++                   ≈ 1.18854397279696 × 10⁻⁵⁸      (physical: × 4⁻⁴⁵ ≈ 9.6010 × 10⁻⁸⁶)
++```
++
++The full numerator and denominator are in `GramEntry.lean` (`entry_45`).
++
++**Kernel certificate** (`GramEntry.lean`, generated by `gen_lean.py`):
++- 184 row lemmas, one for each (moment, r) with r = 0…45, cover the four moments m(), m(2), m(3) and m(2,1). Each row is proved by `decide +kernel`.
++- The rows are assembled by `simp` and `norm_num`, and `entry_45` follows.
++- Dimension-2 controls (`volume_2`, `entry_2`) are included.
++- Axioms: `[propext, Classical.choice, Quot.sound]`.
++- Cost in the build container: **7 min 19 s**, with peak memory **5.8 GB**. Without the row split, one combined evaluation ran out of memory at 8 GB.
++
++**Negative controls** (`NegativeControls.lean`, each proved by the kernel):
++- `refute_row_m2_45_1`: one row with its numerator shifted by 1 is false.
++- `refute_volume_2_uncapped`: the capped 2-D volume differs from the uncapped area `L²/2`.
++- `refute_entry_2_sign`: the entry with the sign of `P₁P₂` flipped is false.
++
++**Independent cross-checks** (`cross_checks.py`, outside the kernel):
++- **N = 1:** closed form, exact agreement.
++- **N = 2:** exact rational polygon clipping of each stratum, integrated over a triangle fan. This method uses no inclusion–exclusion and no Dirichlet step. It agrees exactly: volume `159577/781250`, entry `9366843779443/610351562500000`.
++- **N = 3:** Monte Carlo with 4·10⁶ samples. Volume and entry agree (z = +0.74 and +1.04).
++- **N = 45:** Monte Carlo with 4·10⁶ uniform simplex samples. The entry agrees (z = −1.41).
++
++What this certifies: the kernel checks the **rational arithmetic of the decomposition**. The statement that the decomposition equals the Lebesgue integral is checked numerically here. Its proof in Lean is V2 proper: it needs stratification, inclusion–exclusion and the Dirichlet step, built on V1's `simplex_integral`.
++
++## 3. Findings and discrepancies
++
++- **F1. Cap sequence.**
++  - The proof of Lemma 9.1 says that "the two physical rough caps" become `C(1) = C(2) = 31/50` and `C(s) = 17/25` for s ≥ 3.
++  - Table 3, and the statement of Lemma 9.1, use the ten-rung sequence `C(m) = 4B₁,ₘ` (777/1250, …, 1081/1250). A1–A4 and V2a use this sequence.
++  - The difference matters at the size of Theorem 11.1's margin:
++    - for m(40), the two cap sequences differ by **0.98 %**;
++    - for m(20), by 8.2·10⁻⁵;
++    - the margin is `4.00438/4 − 1 ≈ 1.1·10⁻³`.
++  - **Which caps P⋆'s certificate used must be confirmed before V3.**
++- **F2. The caps cut little at low degree and a lot at high degree.**
++  - The relative cap corrections against the full simplex `{P₁ ≤ L}` are:
++
++    | quantity | correction |
++    |---|---|
++    | `vol(T̃)` | 7.4·10⁻¹³ |
++    | this entry | 7.4·10⁻¹³ |
++    | m(10) | 2.7·10⁻⁸ |
++    | m(20) | 3.5·10⁻⁵ |
++    | m(20,20) | 2.0 % |
++    | m(40) | 3.1 % |
++    | m(42) | 4.6 % |
++
++  - The rough-cap geometry therefore enters the Gram matrices mainly through the high-degree generators, `P_λ` with large parts.
++- **F3. Lemma 9.2's outer domain is consistent.** It needs every `x̂` with a nonempty fiber to satisfy `ρ₁ ≤ C(s)`. That holds because every cap increment satisfies `C(m+1) − C(m) < g`. The tightest case is m = 2 → 3: `81/1250` against `82/1250`. This is Table 4's "B₃ ≤ B₂ + δ", with slack 1/5000.
++- **F4.** `L − τ = 8/125 < g`, so the moving endpoint `U = L − S` can fall below g. All three branches of `U` occur.
++
++## 4. Symmetry and complexity
++
++| quantity | count |
++|---|---|
++| upper-triangle Gram entries (I or J) | 358,281 |
++| **distinct I entries** (`I_ij` depends only on `(a+a′, λ ∪ λ′)`) | **22,609** |
++| even-part Λ with \|Λ\| ≤ 40 (the only non-aggregate factor) | **2,714** |
++| monomial types \|μ\| ≤ 42 (naive expansion) | 313,065 |
++| pieces (r, k) | 147 |
++| J base moments (naive expansion of `∫₀^U b du`) | 801,813 |
++| J base moments with U, S, ρ₁ treated as aggregates | ≈ 2.4·10⁵ (`(Λ, e, f)` triples) |
++
++- **Main structural reduction.** On every piece, `P₁`, S, ρ₁ and U are affine in the two aggregates `u₁, u₂`.
++  - For I, the factor `(L − P₁)^A` becomes `(M − u₁ − u₂)^A`. Each Gram entry is then a sum of 2-D integrals of `(M − u₁ − u₂)^A · E[P_Λ | u₁, u₂] · u₁^{r−1} u₂^{n−1}`.
++  - For J, the cells of Lemma 9.2 are polygons in the same `(u₁, u₂)` plane.
++  - So the hard algebra is **2,714 conditional power-sum polynomials per piece type**, plus the 2-D integrals.
++- **Timing of the naive Python implementation** (exact `Fraction`, one moment):
++  - about 1 s at degree 2–3;
++  - 56 s for m(20,20);
++  - 70–380 s at degree 42.
++  - The monomial route over 313k types is therefore out of reach in Python. The aggregate route with integer arithmetic over a common denominator is the planned design.
++- **Kernel scaling.** One low-degree entry costs 7 min and 5.8 GB. Kernel-checking all 22,609 distinct I entries plus J this way is out of reach.
++  - **Recommendation.** Theorem 11.1 needs only two numbers, `I_T(P⋆)` and `J_T(P⋆) − 4I_T(P⋆)`. Compute the Gram matrices outside the kernel, as exploratory work that also recovers P⋆, and have the kernel check the two quadratic forms at P⋆ directly.
++  - Use the aggregate route with Nat arithmetic over one common denominator rather than gcd-normalized `ℚ` at every step.
++
++## 5. Dependencies before expanding
++
++1. **P⋆'s coefficient vector.** The paper calls it "the exact rational coefficient vector used in the certificate" but does not print it. V3 needs it, or a recomputation by generalized-eigenvector search over the exploratory Gram matrices.
++2. **Confirmation of the cap sequence** (F1).
++3. **Measure theory for V2 proper:**
++   - stratification of T̃ by rough set, up to measure-zero faces;
++   - inclusion–exclusion for box bounds;
++   - the Dirichlet aggregate formula, from V1's `simplex_integral` and Fubini.
++4. **Resources.** Up to 6 GB RAM for the row-split kernel check, while the current suites peak at 2.6 GB.
++
++Admissible generalizations trail leading specifications.
+diff --git a/Exploratory/V2a/NegativeControls.lean b/Exploratory/V2a/NegativeControls.lean
+new file mode 100644
+index 0000000..ebfdb81
+--- /dev/null
++++ b/Exploratory/V2a/NegativeControls.lean
+@@ -0,0 +1,132 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3, §9.3–§9.4 (Lemma 9.1), (10.1), Lemma 10.1, Proposition 10.2.
++-/
++import BGP212.Params
++import Mathlib.Data.Rat.Defs
++import Mathlib.Data.Nat.Factorial.Basic
++import Mathlib.Algebra.BigOperators.Group.Finset.Basic
++import Mathlib.Tactic.NormNum
++
++/-! # V2a (exploratory): one exact Gram entry of `I_T` on `B₂₁`
++
++EXPLORATORY, isolated from A0–V1: this file belongs to no `lean_lib`, no Challenge/Solution pair
++and no Comparator suite. Check it with `lake env lean Exploratory/V2a/GramEntry.lean`.
++
++The entry is `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx` over the rescaled support
++`T̃ = {x ∈ [0, ∞)⁴⁵ : P₁ ≤ L, R_g(x) ≤ C(s(x))}` (Lemma 9.1, Table 3 caps). By symmetry,
++`∫ (L − P₁) P₂ = 45 L m(2) − 45 m(3) − 45·44 m(2,1)` with `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}`.
++
++`moment N α` is Proposition 10.2's decomposition made explicit, as a rational number:
++* rough set `R`, `|R| = r` (stratum), shift `xᵢ = g + zᵢ` on `R`;
++* inclusion–exclusion over `K`, `|K| = k`, for the smooth bounds `xⱼ ≤ g`, shift `xⱼ = g + wⱼ`;
++* each piece `{z ≥ 0, (w, y) ≥ 0 : Σz ≤ C(r) − rg, Σz + Σw + Σy ≤ L − (r + k) g}` integrates a
++  monomial by (10.1) applied to each group (Dirichlet form) and the one-variable integral
++  `incBeta c M p q = ∫₀^c u^p (M − u)^q du`;
++* the coordinates of `α` are assigned to the groups (rough / in `K` / smooth); binomial
++  multiplicities count the remaining coordinates.
++
++What the kernel checks here: the arithmetic of the decomposition (`moment_*`, `entry_45`), and
++two controls in dimension 2 against an independent exact polygon integration
++(`Exploratory/V2a/cross_checks.py`). What remains for V2 proper: the measure-theoretic proof that
++the decomposition equals the integral (stratification, inclusion–exclusion, Dirichlet). -/
++
++namespace BGP212.V2a
++
++open BGP212.Params
++
++/-- `n choose k` through factorials (linear-time in the kernel). -/
++def chooseF (n k : ℕ) : ℕ :=
++  if k ≤ n then n.factorial / (k.factorial * (n - k).factorial) else 0
++
++/-- `∫₀^c u^p (M − u)^q du`, expanded binomially. -/
++def incBeta (c M : ℚ) (p q : ℕ) : ℚ :=
++  (List.range (q + 1)).foldl
++    (fun acc j => acc + (chooseF q j : ℚ) * M ^ (q - j) * (-1) ^ j * c ^ (p + j + 1) / (p + j + 1)) 0
++
++/-- The nonempty pieces `(r, k, c_r, M)` with `r` rough coordinates, in dimension `N`. -/
++def piecesRow (N r : ℕ) : List (ℕ × ℕ × ℚ × ℚ) :=
++  let cr : ℚ := C r - (r : ℚ) * g
++  if 0 < r ∧ cr ≤ 0 then [] else
++    (List.range (N - r + 1)).filterMap fun k : ℕ =>
++      let M : ℚ := L - ((r + k : ℕ) : ℚ) * g
++      if M ≤ 0 then none else some (r, k, cr, M)
++
++/-- All nonempty pieces in dimension `N`. -/
++def pieces (N : ℕ) : List (ℕ × ℕ × ℚ × ℚ) :=
++  (List.range (N + 1)).flatMap (piecesRow N)
++
++/-- A partial assignment: coordinates sent to the rough group (`nA`) and to `K` (`nB`), the
++exponent totals on the `z` group (`sa`) and on the `(w, y)` group (`sb`), and the weight. -/
++structure Acc where
++  nA : ℕ
++  nB : ℕ
++  sa : ℕ
++  sb : ℕ
++  w : ℚ
++
++/-- Assign each exponent to a group, expanding `(g + ·)^e` on shifted coordinates. -/
++def expand (r k : ℕ) : List ℕ → List Acc
++  | [] => [⟨0, 0, 0, 0, 1⟩]
++  | e :: es => (expand r k es).flatMap fun s =>
++      [⟨s.nA, s.nB, s.sa, s.sb + e, s.w * e.factorial⟩] ++
++      (if s.nA < r then (List.range (e + 1)).map fun t =>
++          ⟨s.nA + 1, s.nB, s.sa + t, s.sb, s.w * chooseF e t * g ^ (e - t) * t.factorial⟩ else []) ++
++      (if s.nB < k then (List.range (e + 1)).map fun t =>
++          ⟨s.nA, s.nB + 1, s.sa, s.sb + t, s.w * chooseF e t * g ^ (e - t) * t.factorial⟩ else [])
++
++/-- The signed, counted contribution of one assignment on one piece. -/
++def pieceTerm (N d r k : ℕ) (cr M : ℚ) (s : Acc) : ℚ :=
++  let n := N - r
++  let nC := d - s.nA - s.nB
++  if N - d < r - s.nA ∨ n < s.nB + nC then 0 else
++    let mult : ℚ := chooseF (N - d) (r - s.nA) * chooseF (N - d - (r - s.nA)) (k - s.nB)
++    let val : ℚ :=
++      if n = 0 then
++        s.w / (r - 1 + s.sa).factorial * (min cr M) ^ (r + s.sa) / (r + s.sa)
++      else if r = 0 then
++        s.w / (n - 1 + s.sb).factorial * M ^ (n + s.sb) / (n + s.sb)
++      else
++        s.w / (r - 1 + s.sa).factorial / (n - 1 + s.sb).factorial *
++          incBeta (min cr M) M (r - 1 + s.sa) (n + s.sb) / (n + s.sb)
++    (-1) ^ k * mult * val
++
++/-- The contribution of the strata with `r` rough coordinates to `m(α)`. -/
++def momentRow (N : ℕ) (α : List ℕ) (r : ℕ) : ℚ :=
++  (piecesRow N r).foldl (fun acc pc =>
++    let (r, k, cr, M) := pc
++    (expand r k α).foldl (fun acc' s => acc' + pieceTerm N α.length r k cr M s) acc) 0
++
++/-- `m(α) = ∫_{T̃} ∏ xᵢ^{αᵢ}` in dimension `N` (support of `α` = its first coordinates),
++by Proposition 10.2's decomposition, summed over the number `r` of rough coordinates. -/
++def moment (N : ℕ) (α : List ℕ) : ℚ :=
++  ∑ r ∈ Finset.range (N + 1), momentRow N α r
++
++/-- `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂` in dimension `N`. -/
++def entry (N : ℕ) : ℚ :=
++  L * N * moment N [2] - (N * moment N [3] + N * (N - 1) * moment N [2, 1])
++
++
++/-! ## Negative controls (each altered value is refuted by the kernel) -/
++
++/-- Row `r = 1` of `m(2)` with the numerator increased by one is false. -/
++theorem refute_row_m2_45_1 : momentRow 45 [2] 1 ≠ (25352368650074263937510126380920350295552726036153612250189386173813659213963051155963388857832899218727636622247948764874947804910526975902778 / 1571418324849024408286692436237979718263605041094201853853482886758518313969137936148001699621090665459632873535156250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by decide +kernel
++
++/-- The dimension-2 volume differs from the uncapped triangle `L²/2 = 2809/5000`: the cap
++`C(1) = 777/1250` removes area. -/
++theorem refute_volume_2_uncapped : moment 2 [] ≠ (2809 / 5000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero]
++  decide +kernel
++
++/-- The dimension-2 entry with the sign of the `P₁ P₂` term flipped is false. -/
++theorem refute_entry_2_sign :
++    L * 2 * moment 2 [2] + (2 * moment 2 [3] + 2 * 1 * moment 2 [2, 1]) ≠
++      (9366843779443 / 610351562500000 : ℚ) := by
++  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero]
++  decide +kernel
++
++end BGP212.V2a
++
++#print axioms BGP212.V2a.refute_row_m2_45_1
+diff --git a/Exploratory/V2a/cross_checks.py b/Exploratory/V2a/cross_checks.py
+new file mode 100644
+index 0000000..34f00d9
+--- /dev/null
++++ b/Exploratory/V2a/cross_checks.py
+@@ -0,0 +1,162 @@
++#!/usr/bin/env python3
++"""Independent cross-checks of gram_entry.py.
++
++* N = 1: T~ = [0, C(1)] directly; integrals in closed form.
++* N = 2: exact rational polygon clipping of each stratum (no inclusion-exclusion, no Dirichlet
++  formula) and exact integration over a triangle fan (Fractions).
++* N = 3 and N = 45: Monte Carlo, uniform samples from the simplex {x >= 0, sum x <= L}
++  (Dirichlet(1,...,1)), testing the rough-cap condition directly.
++"""
++import sys
++from fractions import Fraction as Fr
++import numpy as np
++import gram_entry as G
++
++L, g, C = G.L, G.g, G.C
++
++
++def check_N1():
++    c1 = C(1)
++    vol = c1
++    ent = sum(Fr(1)) if False else None
++    # (L - x) x^2 integrated over [0, C(1)]
++    ent = L * c1 ** 3 / 3 - c1 ** 4 / 4
++    e, _ = G.entry_LmP1_P2(1)
++    assert G.volume(1) == vol, (G.volume(1), vol)
++    assert e == ent, (e, ent)
++    print("N=1 exact: volume and entry agree")
++
++
++def clip(poly, a, b, c):
++    """Clip convex polygon (list of (x,y) Fractions) to a*x + b*y <= c."""
++    out = []
++    n = len(poly)
++    for i in range(n):
++        P, Q = poly[i], poly[(i + 1) % n]
++        fP = a * P[0] + b * P[1] - c
++        fQ = a * Q[0] + b * Q[1] - c
++        if fP <= 0:
++            out.append(P)
++        if (fP < 0 < fQ) or (fQ < 0 < fP):
++            t = fP / (fP - fQ)
++            out.append((P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])))
++    return out
++
++
++# Exact polynomial arithmetic over Fractions: a polynomial is {(i, j): coeff} in (x, y) or (u, v).
++def pmul(p, q):
++    out = {}
++    for (a, b), c in p.items():
++        for (d, e), f in q.items():
++            out[(a + d, b + e)] = out.get((a + d, b + e), 0) + c * f
++    return out
++
++
++def padd(p, q):
++    out = dict(p)
++    for k, v in q.items():
++        out[k] = out.get(k, 0) + v
++    return out
++
++
++def ppow(p, n):
++    out = {(0, 0): Fr(1)}
++    for _ in range(n):
++        out = pmul(out, p)
++    return out
++
++
++def tri_integral(f, A, B, Cc):
++    """Integral of f (dict in x, y) over the triangle ABC, exact."""
++    from math import factorial
++    xs = {(0, 0): A[0], (1, 0): B[0] - A[0], (0, 1): Cc[0] - A[0]}
++    ys = {(0, 0): A[1], (1, 0): B[1] - A[1], (0, 1): Cc[1] - A[1]}
++    jac = abs((B[0] - A[0]) * (Cc[1] - A[1]) - (Cc[0] - A[0]) * (B[1] - A[1]))
++    h = {}
++    for (i, j), c in f.items():
++        h = padd(h, {k: c * v for k, v in pmul(ppow(xs, i), ppow(ys, j)).items()})
++    tot = sum(c * Fr(factorial(i) * factorial(j), factorial(i + j + 2)) for (i, j), c in h.items())
++    return jac * tot
++
++
++def poly_integral(f, poly):
++    if len(poly) < 3:
++        return Fr(0)
++    return sum(tri_integral(f, poly[0], poly[i], poly[i + 1]) for i in range(1, len(poly) - 1))
++
++
++def check_N2():
++    big = Fr(10)
++    box = [(Fr(0), Fr(0)), (big, Fr(0)), (big, big), (Fr(0), big)]
++    strata = []
++    for R in [(), (0,), (1,), (0, 1)]:
++        P = list(box)
++        for i in range(2):
++            a, b = (1, 0) if i == 0 else (0, 1)
++            if i in R:
++                P = clip(P, -a, -b, -g)       # x_i >= g
++            else:
++                P = clip(P, a, b, g)          # x_i <= g
++        P = clip(P, 1, 1, L)                  # x1 + x2 <= L
++        ca = 1 if 0 in R else 0
++        cb = 1 if 1 in R else 0
++        if R:
++            P = clip(P, ca, cb, C(len(R)))    # rough mass <= C(|R|)
++        strata.append(P)
++    f_vol = {(0, 0): Fr(1)}
++    # (L - x - y)(x^2 + y^2)
++    f_ent = pmul({(0, 0): L, (1, 0): Fr(-1), (0, 1): Fr(-1)}, {(2, 0): Fr(1), (0, 2): Fr(1)})
++    vol = sum(poly_integral(f_vol, P) for P in strata)
++    ent = sum(poly_integral(f_ent, P) for P in strata)
++    e, _ = G.entry_LmP1_P2(2)
++    v = G.volume(2)
++    assert v == vol, (v, vol)
++    assert e == ent, (e, ent)
++    print("N=2 exact polygon integration: volume", vol, "and entry", ent, "agree")
++
++
++def mc(N, samples, batch=500_000, seed=1):
++    rng = np.random.default_rng(seed)
++    Lf, gf = float(L), float(g)
++    caps = np.array([float(C(m)) for m in range(N + 1)])
++    s_vol = s_ent = s_ent2 = 0.0
++    done = 0
++    while done < samples:
++        b = min(batch, samples - done)
++        E = rng.exponential(size=(b, N + 1))
++        x = Lf * E[:, :N] / E.sum(axis=1, keepdims=True)   # uniform on {x >= 0, sum x <= L}
++        rough = x > gf
++        s = rough.sum(axis=1)
++        rho = np.where(rough, x, 0.0).sum(axis=1)
++        ok = rho <= caps[s]
++        f = (Lf - x.sum(axis=1)) * (x ** 2).sum(axis=1) * ok
++        s_vol += ok.sum()
++        s_ent += f.sum()
++        s_ent2 += (f ** 2).sum()
++        done += b
++    simplex_vol = Lf ** N / float(np.prod(np.arange(1, N + 1, dtype=float)))
++    mean = s_ent / samples
++    se = np.sqrt(max(s_ent2 / samples - mean ** 2, 0) / samples)
++    vol_hat = simplex_vol * s_vol / samples
++    p = s_vol / samples
++    vol_se = simplex_vol * np.sqrt(p * (1 - p) / samples)
++    return vol_hat, vol_se, simplex_vol * mean, simplex_vol * se, p
++
++
++def check_mc(N, samples):
++    vol_hat, vol_se, ent_hat, ent_se, p = mc(N, samples)
++    e, _ = G.entry_LmP1_P2(N)
++    v = G.volume(N)
++    zv = (vol_hat - float(v)) / vol_se
++    ze = (ent_hat - float(e)) / ent_se
++    print(f"N={N} Monte Carlo ({samples} samples, acceptance {p:.4f}): "
++          f"volume exact {float(v):.6e} est {vol_hat:.6e} (z={zv:+.2f}); "
++          f"entry exact {float(e):.6e} est {ent_hat:.6e} (z={ze:+.2f})")
++    assert abs(zv) < 4 and abs(ze) < 4
++
++
++if __name__ == "__main__":
++    check_N1()
++    check_N2()
++    check_mc(3, 4_000_000)
++    check_mc(45, int(sys.argv[1]) if len(sys.argv) > 1 else 4_000_000)
+diff --git a/Exploratory/V2a/gen_lean.py b/Exploratory/V2a/gen_lean.py
+new file mode 100644
+index 0000000..9d7c3ca
+--- /dev/null
++++ b/Exploratory/V2a/gen_lean.py
+@@ -0,0 +1,75 @@
++#!/usr/bin/env python3
++"""Emit Exploratory/V2a/GramEntry.lean: the definitions (GramEntry.head.lean) plus one
++kernel-checked row lemma per (moment, r), assembled into the moments and the Gram entry.
++Row lemmas keep each kernel evaluation small (the undivided evaluation exceeds 8 GB)."""
++from fractions import Fraction as Fr
++import os
++import gram_entry as G
++
++HERE = os.path.dirname(os.path.abspath(__file__))
++MOMENTS = {"vol": [], "m2": [2], "m3": [3], "m21": [2, 1]}
++
++
++def rows(N, alpha):
++    terms = []
++    G.moment(N, tuple(alpha), terms)
++    out = [Fr(0)] * (N + 1)
++    for t in terms:
++        out[t["r"]] += Fr(t["value"])
++    return out
++
++
++def q(x):
++    x = Fr(x)
++    if x.denominator == 1:
++        return f"({x.numerator} : ℚ)"
++    return f"({x.numerator} / {x.denominator} : ℚ)"
++
++
++def lst(alpha):
++    return "[" + ", ".join(map(str, alpha)) + "]"
++
++
++def emit_moment(N, name, alpha):
++    rs = rows(N, alpha)
++    total = sum(rs)
++    lines = []
++    names = []
++    for r, v in enumerate(rs):
++        nm = f"row_{name}_{N}_{r}"
++        names.append(nm)
++        lines.append(f"theorem {nm} : momentRow {N} {lst(alpha)} {r} = {q(v)} := by decide +kernel\n")
++    lines.append(f"theorem {name}_{N} : moment {N} {lst(alpha)} = {q(total)} := by\n"
++                 f"  simp only [moment, Finset.sum_range_succ, Finset.sum_range_zero,\n    "
++                 + ", ".join(names) + "]\n  norm_num\n")
++    return "\n".join(lines), total
++
++
++def main():
++    head = open(os.path.join(HERE, "GramEntry.head.lean")).read()
++    out = [head, "/-! ## Controls in dimension 2 (an independent exact polygon integration agrees;\n"
++                 "see `cross_checks.py`) -/\n"]
++    vals = {}
++    for N in (2, 45):
++        if N == 45:
++            out.append("/-! ## Dimension 45: one lemma per number `r` of rough coordinates -/\n")
++        for name, alpha in MOMENTS.items():
++            text, total = emit_moment(N, name, alpha)
++            out.append(text)
++            vals[(N, name)] = total
++        e, _ = G.entry_LmP1_P2(N)
++        assert e == G.L * N * vals[(N, "m2")] - (N * vals[(N, "m3")] + N * (N - 1) * vals[(N, "m21")])
++        doc = ("/-- **The Gram entry** `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂`, exactly. -/\n"
++               if N == 45 else "/-- The same entry in dimension 2 (control). -/\n")
++        out.append(doc + f"theorem entry_{N} : entry {N} = {q(e)} := by\n"
++                   f"  rw [entry, m2_{N}, m3_{N}, m21_{N}]\n  norm_num [L]\n")
++    out.append("end BGP212.V2a\n")
++    out.append("#print axioms BGP212.V2a.entry_45\n")
++    open(os.path.join(HERE, "GramEntry.lean"), "w").write("\n".join(out))
++    e45, _ = G.entry_LmP1_P2(45)
++    print("entry_45 =", e45.numerator, "/", e45.denominator)
++    print("≈", float(e45))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/Exploratory/V2a/gram_entry.py b/Exploratory/V2a/gram_entry.py
+new file mode 100644
+index 0000000..5da41bd
+--- /dev/null
++++ b/Exploratory/V2a/gram_entry.py
+@@ -0,0 +1,192 @@
++#!/usr/bin/env python3
++"""V2a (exploratory): exact Gram-matrix entries of I_T on B21 via Proposition 10.2.
++
++Rescaled support (Lemma 9.1, Table 3 caps):
++    T~ = {x in [0,oo)^N : P1(x) <= L, R_g(x) <= C(s(x))},
++    L = 53/50, g = 41/625, C(0) = 0, C(m) = 4 B_{1,m}.
++
++Decomposition (Proposition 10.2, made explicit):
++  * stratum = rough set R (|R| = r): x_i = g + z_i (i in R), 0 <= x_j <= g (j not in R);
++  * smooth upper bounds x_j <= g by inclusion-exclusion over K (|K| = k): x_j = g + w_j (j in K);
++  * the piece is {z >= 0 (r vars), (w, y) >= 0 (n = N - r vars) : sum z <= c_r, sum z + sum w + sum y <= M}
++    with c_r = C(r) - r g and M = L - (r + k) g, sign (-1)^k;
++  * a monomial z^a w^b y^c integrates (Dirichlet / (10.1) twice) to
++        prod a! / (r-1+|a|)!  *  prod b! prod c! / (n-1+|b|+|c|)!  *  int_0^{min(c_r,M)} u^p (M-u)^(q+1)/(q+1) du,
++    p = r-1+|a|, q = n-1+|b|+|c|   (r = 0: the z-factor is absent and the integral is M^(q+1)/(q+1)).
++
++Symmetry: the integral of x^alpha depends only on the multiset of exponents; each piece type
++(r, k, and how the support of alpha meets the three groups) carries a binomial multiplicity.
++"""
++from fractions import Fraction as Fr
++from itertools import product
++from math import comb, factorial
++import json, sys
++
++L = Fr(53, 50)
++g = Fr(41, 625)
++BNUM = [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
++
++
++def C(m):
++    if m == 0:
++        return Fr(0)
++    return Fr(4 * BNUM[min(m, 10) - 1], 5000)
++
++
++def inc_beta(c, M, p, q1):
++    """int_0^c u^p (M - u)^q1 du, exact (binomial expansion)."""
++    return sum(comb(q1, j) * M ** (q1 - j) * (-1) ** j * c ** (p + j + 1) / (p + j + 1)
++               for j in range(q1 + 1))
++
++
++def pieces(N):
++    """(r, k, c_r, M) for the nonempty pieces."""
++    out = []
++    for r in range(N + 1):
++        cr = C(r) - r * g
++        if r > 0 and cr <= 0:
++            continue
++        for k in range(N - r + 1):
++            M = L - (r + k) * g
++            if M <= 0:
++                continue
++            out.append((r, k, cr, M))
++    return out
++
++
++def piece_monomial(r, n, cr, M, a, bc):
++    """Integral of z^a (w,y)^bc over the piece (a: exponents on z group, bc: on w/y group)."""
++    if n == 0:  # every coordinate rough: only the z-simplex of radius min(c_r, M)
++        assert not bc and r > 0
++        p = r - 1 + sum(a)
++        Da = Fr(1)
++        for e in a:
++            Da *= factorial(e)
++        Da /= factorial(p)
++        R = min(cr, M)
++        return Da * R ** (p + 1) / (p + 1)
++    sb = sum(bc)
++    q = n - 1 + sb
++    Dn = Fr(1)
++    for e in bc:
++        Dn *= factorial(e)
++    Dn /= factorial(q)
++    if r == 0:
++        assert not a
++        return Dn * M ** (q + 1) / (q + 1)
++    sa = sum(a)
++    p = r - 1 + sa
++    Da = Fr(1)
++    for e in a:
++        Da *= factorial(e)
++    Da /= factorial(p)
++    return Da * Dn * inc_beta(min(cr, M), M, p, q + 1) / (q + 1)
++
++
++def moment(N, alpha, terms=None):
++    """int_{T~} prod_{i<d} x_i^alpha_i in dimension N (support of alpha = first d coordinates)."""
++    d = len(alpha)
++    total = Fr(0)
++    for (r, k, cr, M) in pieces(N):
++        n = N - r
++        for assign in product("ABC", repeat=d):
++            dA, dB = assign.count("A"), assign.count("B")
++            if dA > r or dB > k or r - dA > N - d:
++                continue
++            mult = comb(N - d, r - dA) * comb(N - d - (r - dA), k - dB)
++            if mult == 0:
++                continue
++            # expand (g + .)^e on A and B coordinates
++            choices = []
++            for e, grp in zip(alpha, assign):
++                if grp == "C":
++                    choices.append([(Fr(1), e, grp)])
++                else:
++                    choices.append([(comb(e, t) * g ** (e - t), t, grp) for t in range(e + 1)])
++            val = Fr(0)
++            for combo in product(*choices):
++                coef = Fr(1)
++                a, bc = [], []
++                for (cf, t, grp) in combo:
++                    coef *= cf
++                    (a if grp == "A" else bc).append(t)
++                val += coef * piece_monomial(r, n, cr, M, a, bc)
++            term = (-1) ** k * mult * val
++            if terms is not None:
++                terms.append({"r": r, "k": k, "assign": "".join(assign), "mult": mult,
++                              "value": str(term)})
++            total += term
++    return total
++
++
++def entry_LmP1_P2(N):
++    """I_T[(a=1, lam=()), (a=0, lam=(2))] = int (L - P1) P2 over T~ in dimension N."""
++    m2 = moment(N, (2,))
++    m3 = moment(N, (3,))
++    m21 = moment(N, (2, 1))
++    return L * N * m2 - (N * m3 + N * (N - 1) * m21), {"m2": m2, "m3": m3, "m21": m21}
++
++
++def volume(N):
++    return moment(N, ())
++
++
++if __name__ == "__main__":
++    N = int(sys.argv[1]) if len(sys.argv) > 1 else 45
++    vol = volume(N)
++    e, ms = entry_LmP1_P2(N)
++    print("N", N, "pieces", len(pieces(N)))
++    print("vol", float(vol))
++    for kname, v in ms.items():
++        print(kname, float(v))
++    print("entry", float(e))
++    print("entry digits num/den", len(str(e.numerator)), len(str(e.denominator)))
++
++
++def moment_dp(N, alpha):
++    """Same value as moment(N, alpha), by dynamic programming over the parts of alpha.
++
++    Each part chooses a group (A rough, B smooth-in-K, C smooth) and, on A/B, an expansion
++    exponent t of (g + .)^e; only (#A, #B, |a|, |b|+|c|) and the product of the per-part
++    weights binom(e,t) g^(e-t) t! enter the Dirichlet formula."""
++    d = len(alpha)
++    total = Fr(0)
++    for (r, k, cr, M) in pieces(N):
++        n = N - r
++        states = {(0, 0, 0, 0): Fr(1)}
++        for e in alpha:
++            new = {}
++            for (nA, nB, sa, sb), w in states.items():
++                # C: exponent e on an unshifted coordinate
++                key = (nA, nB, sa, sb + e)
++                new[key] = new.get(key, 0) + w * factorial(e)
++                for t in range(e + 1):
++                    wt = w * comb(e, t) * g ** (e - t) * factorial(t)
++                    if nA < r:
++                        key = (nA + 1, nB, sa + t, sb)
++                        new[key] = new.get(key, 0) + wt
++                    if nB < k:
++                        key = (nA, nB + 1, sa, sb + t)
++                        new[key] = new.get(key, 0) + wt
++            states = new
++        for (nA, nB, sa, sb), w in states.items():
++            if r - nA > N - d:
++                continue
++            nC = d - nA - nB
++            if nB + nC > n:
++                continue
++            mult = comb(N - d, r - nA) * comb(N - d - (r - nA), k - nB)
++            if mult == 0:
++                continue
++            if n == 0:
++                p = r - 1 + sa
++                R = min(cr, M)
++                val = w / factorial(p) * R ** (p + 1) / (p + 1)
++            elif r == 0:
++                q = n - 1 + sb
++                val = w / factorial(q) * M ** (q + 1) / (q + 1)
++            else:
++                p, q = r - 1 + sa, n - 1 + sb
++                val = w / factorial(p) / factorial(q) * inc_beta(min(cr, M), M, p, q + 1) / (q + 1)
++            total += (-1) ** k * mult * val
++    return total
+-- 
+2.43.0
+
