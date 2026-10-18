@@ -11,3 +11,4 @@ import BGP212.Theorem711
 import BGP212.Gap
 import BGP212.Variational
 import BGP212.SimplexMoment
+import BGP212.GramEntry

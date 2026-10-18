@@ -162,6 +162,21 @@ in `BGP212/SimplexMoment.lean`): **the simplex moment identity (10.1) as a Lebes
 - `poly_integral` (Lemma 10.1 on the simplex): a rational polynomial integrates to the explicit
   rational `polyIntegralQ R G`, the step Proposition 10.2's Gram matrices build on (V2).
 
+The thirteenth pair is V2b (`Challenge/GramEntry.lean`, `Solution/GramEntry.lean`,
+`Solution/GramEntryCert.lean`, objects in `BGP212/GramEntry.lean`): **the first Gram entry as a
+Lebesgue integral**, `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx`.
+
+- `integral_supportT`: for every dimension `N`, `g ≥ 0`, `L`, **cap function `C`** and coordinate
+  `a`, `∫_{T̃} (L − Σ x)^p x_a^e` equals the closed form `gramFormula` (Proposition 10.2 made
+  explicit): pointwise stratification and inclusion–exclusion (`indicator_supportT`), translation
+  with null faces (`integral_Qset`), two-group Dirichlet integrals from V1 by Fubini
+  (`piece_integral_mem`, `piece_integral_notMem`), and binomial counting (`count_pieces`).
+- Boundary cases: `R = ∅`, `R = univ`, `N = 0`, empty index types.
+- `gramEntryQ_eq` (computational certificate): the closed form at Table 3, evaluated over `ℚ` by
+  the kernel row by row; it equals V2a's exploratory value exactly.
+- `gram_entry_integral`, `gram_entry_B21`: the Table 3 entry, in V0's generators `gen 1 ∅`,
+  `gen 0 {2}`, equals `gramEntryQ ≈ 1.18854 × 10⁻⁵⁸`.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -169,7 +184,8 @@ in `BGP212/SimplexMoment.lean`): **the simplex moment identity (10.1) as a Lebes
   multi-shift GDT counting theorem (B1); density, positivity, minimal period and the
   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
-  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1).
+  W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1); the Gram entry
+  `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -245,6 +261,13 @@ For V1's controls:
 ```text
 python3 -I specs/checks/simplex_moment_v1_controls.py /tmp/v1_ctl
 for f in /tmp/v1_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V2b's controls:
+
+```text
+python3 -I specs/checks/gram_entry_v2b_controls.py /tmp/v2b_ctl
+for f in /tmp/v2b_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

@@ -10,3 +10,5 @@ import Solution.Theorem711
 import Solution.Gap
 import Solution.Variational
 import Solution.SimplexMoment
+import Solution.GramEntryCert
+import Solution.GramEntry
