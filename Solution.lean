@@ -12,3 +12,5 @@ import Solution.Variational
 import Solution.SimplexMoment
 import Solution.GramEntryCert
 import Solution.GramEntry
+import Solution.GramGeneralCert
+import Solution.GramGeneral

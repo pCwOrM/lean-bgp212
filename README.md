@@ -177,6 +177,22 @@ Lebesgue integral**, `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx`.
 - `gram_entry_integral`, `gram_entry_B21`: the Table 3 entry, in V0's generators `gen 1 ∅`,
   `gen 0 {2}`, equals `gramEntryQ ≈ 1.18854 × 10⁻⁵⁸`.
 
+The fourteenth pair is V2c (`Challenge/GramGeneral.lean`, `Solution/GramGeneral.lean`,
+`Solution/GramGeneralCert.lean`, objects in `BGP212/GramGeneral.lean`): **the general monomial
+integral bridge**.
+
+- `integral_supportT_gen`: for every dimension `N`, `g ≥ 0`, `L`, **cap function `C`**, exponent
+  vector `e` and weight `p`, `∫_{T̃} (L − Σ x)^p ∏ xᵢ^{eᵢ} = gramGen N g L C e p`. V2b's
+  stratification, translation and Fubini steps are reused; the new counting places each
+  distinguished coordinate in the rough set, the inclusion–exclusion set, or neither
+  (`sig_insert`, `sig_union`, `sig_card`).
+- `gramGen_extend`: the closed form transports to `gramFin`, indexed by the `d` distinguished
+  coordinates only (loops of size `d`, not `N`); `gramGen_single` recovers V2b.
+- `gram_entry_gen_list`, `gram_entry_B21_rat`: every `I_T` Gram entry of `B₂₁` generators
+  `(L − P₁)^a P_λ` is a sum over placements of the parts, and at Table 3 an explicit rational.
+- `gram_entry_example` (two distinguished coordinates): `I_T[(1, (2)), (0, (2))] =
+  ∫_{T̃} (L − P₁) P₂² = gramExampleQ ≈ 5.45081 × 10⁻⁶⁰`, its value certified cell by cell.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -185,7 +201,9 @@ Lebesgue integral**, `I_T[(1, ∅), (0, (2))] = ∫_{T̃} (L − P₁) P₂ dx`.
   W-trick for H₄₅ (B2); Lemma 7.10, all 455 packing roots (A3a, A3b, A3c); every
   combinatorial hypothesis of Theorem 7.11 at Table 3 (A4); DHL[45, 2] ⇒ H₁ ≤ 212 and the
   W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1); the Gram entry
-  `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b).
+  `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b); every monomial
+  integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
+  (V2c).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -268,6 +286,13 @@ For V2b's controls:
 ```text
 python3 -I specs/checks/gram_entry_v2b_controls.py /tmp/v2b_ctl
 for f in /tmp/v2b_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V2c's controls:
+
+```text
+python3 -I specs/checks/gram_general_v2c_controls.py /tmp/v2c_ctl
+for f in /tmp/v2c_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

@@ -11,3 +11,4 @@ import Challenge.Gap
 import Challenge.Variational
 import Challenge.SimplexMoment
 import Challenge.GramEntry
+import Challenge.GramGeneral
