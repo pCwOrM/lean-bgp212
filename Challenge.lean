@@ -14,3 +14,4 @@ import Challenge.GramEntry
 import Challenge.GramGeneral
 import Challenge.Fibre
 import Challenge.Aggregate
+import Challenge.CapCell

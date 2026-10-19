@@ -245,6 +245,23 @@ The sixteenth pair is V2e-A (`Challenge/Aggregate.lean`, `Solution/Aggregate.lea
   `|K| g + u₂`.
 - `example_value`: `∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] = 19/7680` through the theorem.
 
+The seventeenth pair is V2e-B (`Challenge/CapCell.lean`, `Solution/CapCell.lean`, objects in
+`BGP212/CapCell.lean`): **polygon cells of the cap branch**. On a piece `(R, K)`, `r = |R|`,
+`k = |K|`, the endpoint takes the cap value `U = C(r+1) − r g − u₁` exactly on
+`u₁ ≤ C(r+1) − (r+1) g`, `u₂ ≤ L − k g − C(r+1)`; with the piece constraints this is the cell
+`capCell = {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ M}`.
+
+- `box_monomial`, `box_capPow`, `box_poly`: exact values of monomial, cap-power and rational
+  polynomial integrals over such cells (`boxVal`, computable over `ℚ`); boundary cases
+  `boxVal_empty`, `boxVal_nonpos`, `boxVal_rect`.
+- `endpointAgg_cap`, `endpointAgg_gBranch`, `endpointAgg_LBranch_cap`, `endpointAgg_LBranch_g`:
+  the three branches of `U` in the aggregates; `cap_total_le`: on the cap branch `S ≤ L − g`, so
+  the τ constraint is inactive when `L − g ≤ τ` (Table 3: `capCell_rect_table3`, every cap cell is
+  a rectangle).
+- `cap_branch_piece`, `cap_branch_r0`: `∫_{piece} yᵗ 1_cap U^m` in closed form.
+- `capPieceT3_value` (computational certificate): the cap-branch part of `J_T(1)` on the Table 3
+  piece `({0}, ∅)` of `T̂` is `(L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰`.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -256,7 +273,8 @@ The sixteenth pair is V2e-A (`Challenge/Aggregate.lean`, `Solution/Aggregate.lea
   `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b); every monomial
   integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
   (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d);
-  two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A).
+  two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A);
+  exact polygon-cell integrals of the cap branch and one Table 3 cap-branch certificate (V2e-B).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -360,6 +378,13 @@ For V2e-A's controls:
 ```text
 python3 -I specs/checks/aggregate_v2e_controls.py /tmp/v2e_ctl
 for f in /tmp/v2e_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V2e-B's controls:
+
+```text
+python3 -I specs/checks/capcell_v2eb_controls.py /tmp/v2eb_ctl
+for f in /tmp/v2eb_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

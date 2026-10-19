@@ -1,0 +1,108 @@
+# Result record: seventeenth Challenge/Solution pair (V2e-B, polygon cells of the cap branch)
+
+identity:
+  id: V2e-B
+  statement: "On a piece (R, K) of V2b's decomposition (r = |R|, k = |K|, aggregates u₁ = Σ_R y, u₂ = Σ_{Rᶜ} y), Lemma 9.2's endpoint takes the cap value U = C(r+1) − r g − u₁ exactly on u₁ ≤ C(r+1) − (r+1) g, u₂ ≤ L − k g − C(r+1); with the piece constraints this is the cell {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ M}, and ∫_{piece} yᵗ 1_cap U^m = aggConst R t · aggConst Rᶜ t · capPowVal A B M (C(r+1) − r g) (aggExp R t) (aggExp Rᶜ t) m, an explicit rational for rational data"
+  source: "Source/bgp212.pdf: Table 3 (p. 39), §9.4, Lemma 9.2 and the display of J_T (p. 41), Proposition 10.2 (pp. 41–42)"
+  builds_on: "V2e-A (two_group_fin, one_group, tri, aggR, aggS, aggExp, aggConst, endpointAgg, integral_Icc_pow, tri_isCompact), V2d (inner_integral), V2b (simplexF, pieceSet, pieceSet_subset_simplexF), A1 (BGP212.Params); A0–V2e-A unchanged"
+  base_commits: "proof 01644e6, provenance 38606c0"
+
+state:
+  mathematical: proved
+  computational: kernel-verified
+  provenance: pinned
+  publication: draft
+
+scope:
+  proved_integral_identities: >
+    boxTri_integral (Fubini on a cell), box_monomial (exact monomial integral, boxVal),
+    boxVal_cast, boxVal_empty, boxVal_nonpos, boxVal_rect, box_capPow, box_poly (rational
+    polynomials), piece_cap_eq, cap_branch_piece, cap_branch_r0.
+  proved_geometry: >
+    endpointAgg_cap, endpointAgg_gBranch, endpointAgg_LBranch_cap, endpointAgg_LBranch_g (the
+    three branches of U in the aggregates), mem_capCell, endpointAgg_on_capCell, cap_total_le
+    (S ≤ L − g on the cap branch), capCell_rect (the τ constraint is inactive when L − g ≤ τ),
+    capCell_empty, cap_inner (the inner integral on the cap cell as a polynomial in (u₁, u₂)).
+  table3: >
+    tau_ge_table3 (τ − (L − g) = 1/625), capCell_rect_table3 (every Table 3 cap cell is a
+    rectangle), capCell_empty_table3 (r = 1: empty for k ≥ 7).
+  computational_certificate: >
+    capPieceT3_value: the cap-branch part of J_T(1) on the Table 3 piece (R, K) = ({0}, ∅) of
+    T̂ = supportT 44 g τ C, i.e. ∫ over pieceSet 44 {0} (C(1) − g) (τ − g) of 1_cap U², equals
+    (L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰ (decide +kernel on the rational
+    capPowVal, assembled by norm_num).
+  unproved_assumptions: "none (axioms: propext, Quot.sound, Classical.choice)"
+  outside_V2e_B: >
+    the g branch and the L − S branch (V2f; both are signed combinations of boxTri cells, see
+    the roadmap), the placement counting over all pieces, J_T Gram entries, P⋆ and Theorem 11.1.
+    The certificate is one piece of the inclusion–exclusion decomposition, not J_T(1) itself.
+
+verification:
+  definitions: BGP212/CapCell.lean
+  challenge: Challenge/CapCell.lean
+  solution: Solution/CapCell.lean
+  comparator_config: Comparator/capcell_v2eb.json
+  controls_script: specs/checks/capcell_v2eb_controls.py
+  roadmap: Exploratory/V2e/ROADMAP.md
+  challenge_theorems: [boxTri_integral, box_monomial, boxVal_cast, boxVal_empty, boxVal_nonpos,
+    boxVal_rect, box_capPow, box_poly, endpointAgg_cap, endpointAgg_gBranch,
+    endpointAgg_LBranch_cap, endpointAgg_LBranch_g, cap_total_le, mem_capCell,
+    endpointAgg_on_capCell, capCell_rect, capCell_empty, cap_inner, piece_cap_eq,
+    cap_branch_piece, cap_branch_r0, tau_ge_table3, capCell_rect_table3, capCell_empty_table3,
+    capPieceT3_value]
+  closed_form: >
+    boxVal A B D α β = (B^{β+1} E^{α+1}/(α+1) + ∫_E^F u^α (D − u)^{β+1} du)/(β+1) with
+    E = max 0 (min A (D − B)), F = max 0 (min A D), and 0 if A < 0 or B < 0; the last integral is
+    V2d's inner_integral expanded (innerVal F − innerVal E).
+  independent_checks:
+    - "boxVal against exact polygon clipping (triangle fans): 300 random cells, the controls' diagonal-cut cell, and the certificate's cell"
+    - "certificate against the rectangle closed form B⁴³ (a³ − g³)/(3 · 43!): equal"
+    - "three-dimensional analogue (N = 3, R = {0}, Table 3 data) integrated on a 240³ grid directly in y: 0.005541 against the formula's 0.005550 (relative difference 0.15%)"
+    - "the clamped signed-cell formula for the g branch (roadmap) against direct integration: 500 random cells"
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
+  controls:
+    - change: "boxVal (1/2) (2/3) 1 2 1 (cell cut by the diagonal) equals the clipping value 221/29160, over ℚ and as a Lebesgue integral"
+      result: "accepted (ok_box_diag, ok_box_integral)"
+    - change: "the rectangle product A³/3 · B²/2 = 1/108 for the same cell"
+      result: "rejected (nc_box_rect)"
+    - change: "the certificate value"
+      result: "accepted (ok_cert)"
+    - change: "the certificate with the cap index C(r) in place of C(r+1); with the aggregate exponent without −1 (u₂⁴³, 1/43!)"
+      result: "rejected (nc_cert_capindex, nc_cert_nojac)"
+    - change: "endpoint at (u₁, u₂) = (1/10, 1/10), r = 1, k = 0, Table 3: the cap value; at (1/10, 1/2) (u₂ > c₂, the L − S branch) the cap value claimed"
+      result: "accepted (ok_branch); rejected (nc_branch)"
+    - change: "r = 1, k = 7: L − 7g < C(2) (empty cap cell); k = 6: the same inequality claimed"
+      result: "accepted (ok_empty); rejected (nc_empty)"
+    - change: "cap_branch_piece stated with the cap value C(r) − r g in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.cap_branch_piece'"
+  resources:
+    new_mathlib_modules: none
+    elaboration: "Solution/CapCell.lean about 5 s, peak 3.19 GB (the import baseline)"
+    kernel_arithmetic: "capPowVal at Table 3 (one decide +kernel, rationals with about 180-digit denominators) and a few small constants"
+    comparator_suite: "about 115 seconds in the build container, peak 3.16 GB"
+    development_builds: "only BGP212.CapCell, Challenge.CapCell, Solution.CapCell and their dependencies; the 17-suite regression is left to the VPS"
+  sandbox: >
+    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
+    the real landrun sandbox is recorded below.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  verify_time: "about 115 seconds for the V2e-B comparator suite in the build container"
+  run_date: 2026-10-19
+  commit_hash: PENDING_VPS
+
+next_development:
+  V2f: >
+    The g branch and the L − S branch as clamped signed boxTri cells (the τ constraint active
+    on the L − S branch), the J_T integrand's polynomial in (u₁, u₂) per cell, placement counting
+    over the (r, k) classes, and one J_T Gram entry at Table 3.
+
+footer: Admissible generalizations trail leading specifications.
