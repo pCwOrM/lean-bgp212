@@ -1,0 +1,1819 @@
+From b397e987664ae0b2fef7b3198f6a78c26a758365 Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sun, 18 Oct 2026 17:41:25 -0600
+Subject: [PATCH] V2e-A: two-aggregate Dirichlet integration (sixteenth
+ Challenge/Solution pair)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Proves the Dirichlet identity with a function of the group sums: one
+aggregate (shear s = Σw + x, Fubini, V2b's weighted simplex moment per
+slice), two aggregates over the triangle, and the Fin N form with rough
+set R and complement. Adds boundary cases (empty groups, zero exponents,
+R < 0), rational polynomial specializations via V1's Lemma 10.1,
+consistency with (10.1), the aggregate form of Lemma 9.2's endpoint on
+V2b's translated pieces, a branch-type cut, and a worked example
+(19/7680). Adds Comparator/aggregate_v2e.json, controls, the result
+record and the V2e roadmap.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                            |   1 +
+ BGP212/Aggregate.lean                  |  75 ++
+ Challenge.lean                         |   1 +
+ Challenge/Aggregate.lean               | 140 ++++
+ Comparator/aggregate_v2e.json          |  50 ++
+ Exploratory/V2e/ROADMAP.md             |  96 +++
+ README.md                              |  27 +-
+ Solution.lean                          |   1 +
+ Solution/Aggregate.lean                | 999 +++++++++++++++++++++++++
+ specs/checks/aggregate_v2e_controls.py | 181 +++++
+ specs/results/V2e_A_aggregate.yaml     |  98 +++
+ verify.sh                              |   2 +-
+ 12 files changed, 1669 insertions(+), 2 deletions(-)
+ create mode 100644 BGP212/Aggregate.lean
+ create mode 100644 Challenge/Aggregate.lean
+ create mode 100644 Comparator/aggregate_v2e.json
+ create mode 100644 Exploratory/V2e/ROADMAP.md
+ create mode 100644 Solution/Aggregate.lean
+ create mode 100644 specs/checks/aggregate_v2e_controls.py
+ create mode 100644 specs/results/V2e_A_aggregate.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 3a29c1e..b955137 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -14,3 +14,4 @@ import BGP212.SimplexMoment
+ import BGP212.GramEntry
+ import BGP212.GramGeneral
+ import BGP212.Fibre
++import BGP212.Aggregate
+diff --git a/BGP212/Aggregate.lean b/BGP212/Aggregate.lean
+new file mode 100644
+index 0000000..f8c263c
+--- /dev/null
++++ b/BGP212/Aggregate.lean
+@@ -0,0 +1,75 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §9.4, Lemma 9.2 and the display of `J_T` (p. 41), (10.1),
++Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.Fibre
++
++/-! # V2e-A: two-aggregate Dirichlet integration (definitions)
++
++Track B. The objects of the aggregate Dirichlet theorem; the theorems are proved in
++`Solution/Aggregate.lean`.
++
++For a finite index type `ι` and an exponent vector `e : ι → ℕ`, the **Dirichlet exponent** and
++**Dirichlet constant** of the group are
++
++  `aggExp ι e = |ι| + Σ eᵢ − 1`,   `aggConst ι e = ∏ eᵢ! / (|ι| + Σ eᵢ − 1)!`,
++
++so that, for a nonempty group, `∫_{z ≥ 0, Σ z ≤ R} zᵉ h(Σ z) dz = aggConst ι e ·
++∫₀^R s^{aggExp ι e} h(s) ds` (one aggregate). With two groups `I`, `J`, the two group sums
++`u₁ = Σ_I`, `u₂ = Σ_J` range over the triangle `tri R = {u₁, u₂ ≥ 0, u₁ + u₂ ≤ R}`.
++
++For V2d's marginal problem the groups are the rough and the smooth coordinates of a V2b piece:
++`aggR R y = Σ_{i ∈ R} yᵢ` and `aggS R y = Σ_{i ∉ R} yᵢ` (`Solution/Aggregate.lean`,
++`stratumEndpoint_shift`, expresses Lemma 9.2's endpoint through them). -/
++
++namespace BGP212.V2e
++
++open BGP212.Gram BGP212.V2d MeasureTheory
++
++/-- **Definition.** The Dirichlet exponent `|ι| + Σ eᵢ − 1` of a group. -/
++def aggExp (ι : Type*) [Fintype ι] (e : ι → ℕ) : ℕ := Fintype.card ι + ∑ i, e i - 1
++
++/-- **Definition.** The Dirichlet constant `∏ eᵢ! / (|ι| + Σ eᵢ − 1)!` of a group. -/
++noncomputable def aggConst (ι : Type*) [Fintype ι] (e : ι → ℕ) : ℝ :=
++  (∏ i, ((e i).factorial : ℝ)) / ((aggExp ι e).factorial : ℝ)
++
++/-- **Definition.** The two-group region `{z ≥ 0, w ≥ 0, Σ z + Σ w ≤ R}`. -/
++def quad (I J : Type*) [Fintype I] [Fintype J] (R : ℝ) : Set ((I → ℝ) × (J → ℝ)) :=
++  {p | (∀ i, 0 ≤ p.1 i) ∧ (∀ j, 0 ≤ p.2 j) ∧ ∑ i, p.1 i + ∑ j, p.2 j ≤ R}
++
++/-- **Definition.** The aggregate triangle `{(u₁, u₂) : u₁, u₂ ≥ 0, u₁ + u₂ ≤ R}`. -/
++def tri (R : ℝ) : Set (ℝ × ℝ) := {q | 0 ≤ q.1 ∧ 0 ≤ q.2 ∧ q.1 + q.2 ≤ R}
++
++/-- **Definition.** The rough aggregate `u₁ = Σ_{i ∈ R} yᵢ`. -/
++def aggR {N : ℕ} (R : Finset (Fin N)) (y : Fin N → ℝ) : ℝ := ∑ i ∈ R, y i
++
++/-- **Definition.** The smooth aggregate `u₂ = Σ_{i ∉ R} yᵢ`. -/
++def aggS {N : ℕ} (R : Finset (Fin N)) (y : Fin N → ℝ) : ℝ := ∑ i ∈ Rᶜ, y i
++
++/-- **Definition.** The Dirichlet constant over `ℚ`. -/
++def aggConstQ (ι : Type*) [Fintype ι] (e : ι → ℕ) : ℚ :=
++  (∏ i, ((e i).factorial : ℚ)) / ((aggExp ι e).factorial : ℚ)
++
++/-- **Definition.** Lemma 9.2's endpoint as a function of the aggregates of a translated piece:
++with `r = |R|` rough and `k = |K|` inclusion–exclusion coordinates shifted by `g`, the rough mass
++is `ρ₁ = r g + u₁` and the total is `S = (r + k) g + u₁ + u₂`, so
++`U = min (L − S) (max g (C(r + 1) − ρ₁))`. -/
++noncomputable def endpointAgg (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) : ℝ :=
++  min (L - ((r + k) * g + u₁ + u₂)) (max g (C (r + 1) - (r * g + u₁)))
++
++/-- **Definition.** Lemma 9.2's endpoint with the cap index taken from a given rough set `R`
++(the stratum of V2b's decomposition): `U_R(x) = min (L − Σ x) (max g (C(|R| + 1) − Σ_R x))`.
++On the stratum `roughSet g x = R` it is `endpoint g L C x`. -/
++noncomputable def stratumEndpoint {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R : Finset (Fin n))
++    (x : Fin n → ℝ) : ℝ :=
++  min (L - ∑ i, x i) (max g (C (R.card + 1) - aggR R x))
++
++/-- **Definition.** The worked example's integrand on `ℝ³` (`R = {0}`): `y₀ y₂² · 1[y₀ ≤ c]`,
++the rough coordinate cut at `c` (a branch-type constraint on `u₁`). -/
++noncomputable def exampleLHS (c R : ℝ) : ℝ :=
++  ∫ y in simplexF (Fin 3) R, y 0 * y 2 ^ 2 * (Set.Iic c).indicator (fun _ => (1 : ℝ)) (y 0)
++
++end BGP212.V2e
+diff --git a/Challenge.lean b/Challenge.lean
+index 8789f8f..9542b43 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -13,3 +13,4 @@ import Challenge.SimplexMoment
+ import Challenge.GramEntry
+ import Challenge.GramGeneral
+ import Challenge.Fibre
++import Challenge.Aggregate
+diff --git a/Challenge/Aggregate.lean b/Challenge/Aggregate.lean
+new file mode 100644
+index 0000000..4e89eca
+--- /dev/null
++++ b/Challenge/Aggregate.lean
+@@ -0,0 +1,140 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §9.4, Lemma 9.2 (p. 41), (10.1), Lemma 10.1, Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.Aggregate
++import Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic
++import Mathlib.Algebra.MvPolynomial.CommRing
++
++/-! # V2e-A: two-aggregate Dirichlet integration
++
++Statements only; proofs live in `Solution/Aggregate.lean`. Objects are defined in
++`BGP212/Aggregate.lean` (with V2b's `simplexF`, `shiftV`, `roughSet`, V2d's `endpoint` and V1's
++`polyIntegralQ`). Every statement is parametric: no Table 3 constant enters this pair. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++/-- One aggregate: `∫_{z ≥ 0, Σ z ≤ R} zᵉ h(Σ z) = aggConst ι e · ∫_{[0,R]} s^{aggExp ι e} h(s)`. -/
++theorem one_group {ι : Type*} [Fintype ι] [DecidableEq ι] [Nonempty ι] (R : ℝ) (e : ι → ℕ) (h : ℝ → ℝ) (hm : Measurable h) (B : ℝ)
++    (hb : ∀ s ∈ Set.Icc 0 R, |h s| ≤ B) :
++    ∫ z in simplexF ι R, (∏ i, z i ^ e i) * h (∑ i, z i) =
++      aggConst ι e * ∫ s in Set.Icc 0 R, s ^ aggExp ι e * h s :=
++  sorry
++
++/-- **Two-aggregate Dirichlet integration** (`h` measurable, bounded on `tri R`). -/
++theorem two_group {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J] [Nonempty I] [Nonempty J] (R : ℝ) (a : I → ℕ) (b : J → ℕ)
++    (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst I a * aggConst J b *
++        ∫ q in tri R, q.1 ^ aggExp I a * q.2 ^ aggExp J b * h q :=
++  sorry
++
++/-- The same on `Fin N`, with rough aggregate `u₁ = aggR R y` and smooth aggregate `u₂ = aggS R y`. -/
++theorem two_group_fin {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty) (M : ℝ)
++    (t : Fin N → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri M, |h q| ≤ B) :
++    ∫ y in simplexF (Fin N) M, (∏ i, y i ^ t i) * h (aggR R y, aggS R y) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        ∫ q in tri M, q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++          q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * h q :=
++  sorry
++
++/-- Empty group: the integral is `h 0`. -/
++theorem one_group_empty {ι : Type*} [Fintype ι] [IsEmpty ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ)
++    (h : ℝ → ℝ) :
++    ∫ z in simplexF ι R, (∏ i, z i ^ e i) * h (∑ i, z i) = h 0 :=
++  sorry
++
++/-- Empty smooth group (`u₂ = 0`). -/
++theorem two_group_right_empty {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [Nonempty I] [IsEmpty J] (R : ℝ) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst I a * ∫ u in Set.Icc 0 R, u ^ aggExp I a * h (u, 0) :=
++  sorry
++
++/-- Empty rough group (`u₁ = 0`). -/
++theorem two_group_left_empty {I J : Type*} [Fintype I] [Fintype J] [DecidableEq J] [IsEmpty I] [Nonempty J] (R : ℝ) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst J b * ∫ u in Set.Icc 0 R, u ^ aggExp J b * h (0, u) :=
++  sorry
++
++/-- Both groups empty: the value `h (0, 0)`. -/
++theorem two_group_both_empty {I J : Type*} [Fintype I] [Fintype J] [IsEmpty I] [IsEmpty J] (R : ℝ) (hR : 0 ≤ R) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      h (0, 0) :=
++  sorry
++
++/-- Zero exponents. -/
++theorem aggConst_zero (ι : Type*) [Fintype ι] :
++    aggConst ι (fun _ => 0) = 1 / ((Fintype.card ι - 1).factorial : ℝ) :=
++  sorry
++
++/-- Monomials on the triangle (V1's (10.1) in dimension 2). -/
++theorem tri_monomial (R : ℝ) (hR : 0 ≤ R) (α β : ℕ) :
++    ∫ q in tri R, q.1 ^ α * q.2 ^ β =
++      R ^ (2 + α + β) * (α.factorial : ℝ) * (β.factorial : ℝ) / ((2 + α + β).factorial : ℝ) :=
++  sorry
++
++/-- Rational polynomials on the triangle (V1's Lemma 10.1 in dimension 2). -/
++theorem tri_poly (R : ℚ) (hR : 0 ≤ R) (G : MvPolynomial (Fin 2) ℚ) :
++    ∫ q in tri (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] G = (BGP212.Var.polyIntegralQ R G : ℝ) :=
++  sorry
++
++/-- Rational polynomial specialization of the two-aggregate theorem. -/
++theorem two_group_poly {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J] [Nonempty I] [Nonempty J]
++    (R : ℚ) (hR : 0 ≤ R) (a : I → ℕ) (b : J → ℕ) (P : MvPolynomial (Fin 2) ℚ) :
++    ∫ p in quad I J (R : ℝ), (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) *
++        MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![∑ i, p.1 i, ∑ j, p.2 j] P =
++      ((aggConstQ I a * aggConstQ J b *
++        BGP212.Var.polyIntegralQ R (MvPolynomial.X 0 ^ aggExp I a * MvPolynomial.X 1 ^ aggExp J b * P) : ℚ) : ℝ) :=
++  sorry
++
++/-- Consistency with (10.1): `h = 1` gives the simplex moment of the combined monomial. -/
++theorem two_group_const {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J] [Nonempty I] [Nonempty J] (R : ℝ) (hR : 0 ≤ R) (a : I → ℕ) (b : J → ℕ) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) =
++      R ^ (Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j)) *
++        (∏ i, ((a i).factorial : ℝ)) * (∏ j, ((b j).factorial : ℝ)) /
++          ((Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j)).factorial : ℝ) :=
++  sorry
++
++/-- On a translated piece the rough mass is `|R| g + u₁`. -/
++theorem aggR_shift {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (y : Fin N → ℝ) :
++    aggR R (y + shiftV g (R ∪ K)) = R.card * g + aggR R y :=
++  sorry
++
++/-- On a translated piece the remaining mass is `|K| g + u₂`. -/
++theorem aggS_shift {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (hRK : Disjoint R K) (y : Fin N → ℝ) :
++    aggS R (y + shiftV g (R ∪ K)) = K.card * g + aggS R y :=
++  sorry
++
++/-- On the stratum `roughSet g x = R`, Lemma 9.2's endpoint is the stratum endpoint. -/
++theorem endpoint_eq_stratum {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (x : Fin n → ℝ) (R : Finset (Fin n))
++    (hR : roughSet g x = R) :
++    endpoint g L C x = stratumEndpoint g L C R x :=
++  sorry
++
++/-- The endpoint on a translated piece is a function of the two aggregates. -/
++theorem stratumEndpoint_shift {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin n))
++    (hRK : Disjoint R K) (y : Fin n → ℝ) :
++    stratumEndpoint g L C R (y + shiftV g (R ∪ K)) =
++      endpointAgg g L C R.card K.card (aggR R y) (aggS R y) :=
++  sorry
++
++/-- One cut `u₁ ≤ c` of the triangle, in closed form. -/
++theorem tri_cut (R c : ℝ) (hc : 0 ≤ c) (hcR : c ≤ R) (α β : ℕ) :
++    ∫ q in tri R, q.1 ^ α * q.2 ^ β * (Set.Iic c).indicator (fun _ => (1 : ℝ)) q.1 =
++      (∑ j ∈ Finset.range (β + 1 + 1), ((β + 1).choose j : ℝ) * R ^ (β + 1 - j) * (-1) ^ j *
++        c ^ (α + j + 1) / (α + j + 1)) / (β + 1) :=
++  sorry
++
++/-- **The worked example**: `∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] = 19/7680`. -/
++theorem example_value :
++    exampleLHS (1 / 2) 1 = 19 / 7680 :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/aggregate_v2e.json b/Comparator/aggregate_v2e.json
+new file mode 100644
+index 0000000..2820cee
+--- /dev/null
++++ b/Comparator/aggregate_v2e.json
+@@ -0,0 +1,50 @@
++{
++    "challenge_module": "Challenge.Aggregate",
++    "solution_module": "Solution.Aggregate",
++    "theorem_names": [
++        "BGP212.Challenge.one_group",
++        "BGP212.Challenge.two_group",
++        "BGP212.Challenge.two_group_fin",
++        "BGP212.Challenge.one_group_empty",
++        "BGP212.Challenge.two_group_right_empty",
++        "BGP212.Challenge.two_group_left_empty",
++        "BGP212.Challenge.two_group_both_empty",
++        "BGP212.Challenge.aggConst_zero",
++        "BGP212.Challenge.tri_monomial",
++        "BGP212.Challenge.tri_poly",
++        "BGP212.Challenge.two_group_poly",
++        "BGP212.Challenge.two_group_const",
++        "BGP212.Challenge.aggR_shift",
++        "BGP212.Challenge.aggS_shift",
++        "BGP212.Challenge.endpoint_eq_stratum",
++        "BGP212.Challenge.stratumEndpoint_shift",
++        "BGP212.Challenge.tri_cut",
++        "BGP212.Challenge.example_value"
++    ],
++    "definition_names": [
++        "BGP212.V2e.aggExp",
++        "BGP212.V2e.aggConst",
++        "BGP212.V2e.aggConstQ",
++        "BGP212.V2e.quad",
++        "BGP212.V2e.tri",
++        "BGP212.V2e.aggR",
++        "BGP212.V2e.aggS",
++        "BGP212.V2e.endpointAgg",
++        "BGP212.V2e.stratumEndpoint",
++        "BGP212.V2e.exampleLHS",
++        "BGP212.Gram.simplexF",
++        "BGP212.Gram.shiftV",
++        "BGP212.Gram.roughSet",
++        "BGP212.V2d.roughCount",
++        "BGP212.V2d.roughMass",
++        "BGP212.V2d.endpoint",
++        "BGP212.Var.expList",
++        "BGP212.Var.polyIntegralQ",
++        "BGP212.Var.simplexMoment"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/Exploratory/V2e/ROADMAP.md b/Exploratory/V2e/ROADMAP.md
+new file mode 100644
+index 0000000..a4f7b71
+--- /dev/null
++++ b/Exploratory/V2e/ROADMAP.md
+@@ -0,0 +1,96 @@
++# V2e roadmap: from the aggregate Dirichlet theorem to `J_T` Gram entries
++
++Status:
++- **V2e-A is proved** (sixteenth pair, `Solution/Aggregate.lean`).
++- This file is the plan for V2e-B and V2f.
++- Statements marked *exploratory* were checked numerically, not in the kernel.
++
++## 1. What V2e-A provides (kernel-checked)
++
++**Dirichlet exponent and constant.**
++- `aggExp ι e = |ι| + Σ e − 1`.
++- `aggConst ι e = ∏ eᵢ! / (aggExp ι e)!`.
++
++**The two-aggregate identity, `two_group_fin`.** For a rough set `R` with `R` and `Rᶜ` nonempty, and `h` measurable and bounded on the triangle:
++
++```text
++∫_{y ≥ 0, Σ y ≤ M} yᵗ h(u₁, u₂) dy = aggConst R t · aggConst Rᶜ t · ∫_{tri M} u₁^{aggExp R t} u₂^{aggExp Rᶜ t} h(u₁, u₂)
++```
++
++Here `u₁ = Σ_R y`, `u₂ = Σ_{Rᶜ} y`, and `tri M = {u₁, u₂ ≥ 0, u₁ + u₂ ≤ M}`.
++
++**Boundary cases.**
++- A single group: `one_group`.
++- An empty group: `one_group_empty`, `two_group_left_empty`, `two_group_right_empty` and `two_group_both_empty`.
++- Zero exponents.
++- `R < 0`.
++
++**Rational specializations.**
++- `tri_poly` and `two_group_poly` give the rational value for polynomial `h`, via V1's Lemma 10.1.
++- `two_group_const` shows consistency with (10.1).
++
++**The endpoint as a function of the aggregates.**
++- On V2b's translated piece `x = y + g·1_{R ∪ K}`, with `r = |R|` and `k = |K|`:
++  - rough mass `ρ₁ = r g + u₁` (`aggR_shift`);
++  - remaining mass `S − ρ₁ = k g + u₂` (`aggS_shift`).
++- `stratumEndpoint_shift` then gives `U = endpointAgg g L C r k u₁ u₂ = min(L − (r+k)g − u₁ − u₂, max(g, C(r+1) − r g − u₁))`.
++- The cap index is `r + 1`, taken from the stratum `R`.
++  - The translated point's own rough set is `R ∪ K`, since the `K` coordinates are also shifted by `g`.
++  - Using it gives a different endpoint. The control `nc_union` records this: 461/1250 instead of 587/1250 at Table 3.
++  - `endpoint_eq_stratum` identifies the two on the stratum itself.
++
++**Prototype of a branch integral.**
++- `tri_cut` integrates `u₁^α u₂^β` over the triangle cut by `u₁ ≤ c`.
++- It is closed-form, via V2d's `inner_integral`.
++
++## 2. The cells of one piece (exploratory, verified exactly at 20 000 random points)
++
++Fix a piece `(R, K)` with `r = |R|` and `k = |K|`. The branches of `U` switch along three lines in the `(u₁, u₂)` plane:
++
++| switch | line | type |
++|---|---|---|
++| `max`: `g` vs `C(r+1) − ρ₁` | `u₁ = c₁ := C(r+1) − (r+1) g` | vertical |
++| `min`, cap side (`u₁ ≤ c₁`): `L − S` vs `C(r+1) − ρ₁` | `u₂ = c₂ := L − k g − C(r+1)` | horizontal (`u₁` cancels) |
++| `min`, `g` side (`u₁ ≥ c₁`): `L − S` vs `g` | `u₁ + u₂ = c₃ := L − (r+k+1) g` | anti-diagonal |
++
++On each cell `U` is affine, with three possible values:
++- `L − (r+k) g − u₁ − u₂`;
++- `C(r+1) − r g − u₁`;
++- `g`.
++
++The support constraints of `T̂ = supportT 44 g τ C` (V2d's `hatSupport_eq`) on the piece are:
++- `u₁ + u₂ ≤ τ − (r+k) g`;
++- `u₁ ≤ C(r) − r g`.
++
++These lines are of the same three types. So every cell is a polygon bounded by vertical, horizontal and anti-diagonal lines with rational offsets.
++
++Every cell integral is therefore an iterated one-variable polynomial integral with rational limits, the shape of `tri_cut`.
++
++## 3. V2e-B: one branch, polygon cells
++
++1. **The `J_T` integrand on a piece.** For generators `(L − S − u)^a ∏_q (P̂_q + u^q)`, V2d's `inner_integral` makes `∫₀^U F du` a polynomial in:
++   - `U`;
++   - `M = L − S`;
++   - power sums of `x̂`.
++
++   Expanding the power sums and the square gives `Σ (monomial in x̂) · poly(U, M)`. After the translation `x̂ = y + g·1_{R∪K}`, the monomials become monomials in `y` times powers of `g`.
++
++   So each term has exactly the form `yᵗ h(u₁, u₂)` of `two_group_fin`, with:
++
++   ```text
++   h = 1_cell · poly(endpointAgg, L − S)
++   ```
++2. **Cell integrals.** Generalize `tri_cut` to polynomial `h` and to cells cut by one vertical, one horizontal or one anti-diagonal line. Take one branch first, the cap branch `U = C(r+1) − ρ₁`, on `{u₁ ≤ c₁, u₂ ≤ c₂}`.
++3. **Measurability and boundedness** of `h` are immediate: polynomials times indicators of closed half-planes, on the compact triangle.
++
++## 4. V2f: all branches and `J_T` entries
++
++1. **All three branches.** Sum the cells of each piece, with null boundaries handled as in V2b.
++2. **Counting.** Use V2c's placement machinery (`Sig`, `sig_union`, `sig_card`) over the 44 outer coordinates. The placements now also carry the branch cells, and symmetry gives the factor 45 (V2d, `marginal_agrees`).
++3. **One `J_T` Gram entry at Table 3,** as an exact rational with a small kernel certificate. Then certify `J_T(P⋆) − 4 I_T(P⋆)` directly. The full 846 × 846 matrix stays uncertified.
++
++## 5. Costs observed in V2e-A
++
++- **Elaboration:** `Solution/Aggregate.lean` elaborates in about 6 s, with a 3.15 GB peak, which is mostly the import baseline.
++- **New Mathlib modules:** none.
++- **Kernel arithmetic:** none beyond the worked example's small constants (`decide +kernel` on four `ℚ`/`ℕ` values).
+diff --git a/README.md b/README.md
+index ce11d00..f6a0a2e 100644
+--- a/README.md
++++ b/README.md
+@@ -210,6 +210,23 @@ The fifteenth pair is V2d (`Challenge/Fibre.lean`, `Solution/Fibre.lean`, object
+ - `inner_integral`: `∫₀^U (M − u)^p u^t du` in closed form, the first block of the `J_T` bridge.
+ - `v2d_spec_discharged`: all seven specification statements, including the Table 3 instances.
+ 
++The sixteenth pair is V2e-A (`Challenge/Aggregate.lean`, `Solution/Aggregate.lean`, objects in
++`BGP212/Aggregate.lean`): **two-aggregate Dirichlet integration**. With
++`aggExp ι e = |ι| + Σ eᵢ − 1` and `aggConst ι e = ∏ eᵢ! / (aggExp ι e)!`:
++
++- `one_group`: `∫_{z ≥ 0, Σ z ≤ R} zᵉ h(Σ z) = aggConst ι e · ∫_{[0, R]} s^{aggExp ι e} h(s)` for a
++  nonempty group and `h` measurable and bounded on `[0, R]` (shear `s = Σ z`, Fubini, V2b's
++  weighted simplex moment on each slice).
++- `two_group`, `two_group_fin`: two groups with sums `u₁`, `u₂` reduce to the triangle
++  `{u₁, u₂ ≥ 0, u₁ + u₂ ≤ R}` with weight `u₁^{aggExp I a} u₂^{aggExp J b}`; on `Fin N` the groups
++  are a rough set `R` and its complement (`u₁ = aggR R y`, `u₂ = aggS R y`).
++- Boundary cases (empty groups, zero exponents, `R < 0`), rational polynomial specializations
++  (`tri_poly`, `two_group_poly`, via V1's Lemma 10.1) and consistency with (10.1) (`two_group_const`).
++- `stratumEndpoint_shift`: on V2b's piece `x = y + g·1_{R ∪ K}` the endpoint of Lemma 9.2 (cap index
++  from the stratum `R`) is `endpointAgg` at `(u₁, u₂)`: rough mass `|R| g + u₁`, remaining mass
++  `|K| g + u₂`.
++- `example_value`: `∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] = 19/7680` through the theorem.
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+@@ -220,7 +237,8 @@ The fifteenth pair is V2d (`Challenge/Fibre.lean`, `Solution/Fibre.lean`, object
+   W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1); the Gram entry
+   `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b); every monomial
+   integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
+-  (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d).
++  (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d);
++  two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -319,6 +337,13 @@ python3 -I specs/checks/fibre_v2d_controls.py /tmp/v2d_ctl
+ for f in /tmp/v2d_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For V2e-A's controls:
++
++```text
++python3 -I specs/checks/aggregate_v2e_controls.py /tmp/v2e_ctl
++for f in /tmp/v2e_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 403fbd3..096dddc 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -15,3 +15,4 @@ import Solution.GramEntry
+ import Solution.GramGeneralCert
+ import Solution.GramGeneral
+ import Solution.Fibre
++import Solution.Aggregate
+diff --git a/Solution/Aggregate.lean b/Solution/Aggregate.lean
+new file mode 100644
+index 0000000..7791f0f
+--- /dev/null
++++ b/Solution/Aggregate.lean
+@@ -0,0 +1,999 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): §9.4, Lemma 9.2 (p. 41), (10.1), Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.Aggregate
++import Solution.Fibre
++
++/-! # V2e-A: two-aggregate Dirichlet integration (proofs)
++
++PROVED INTEGRAL IDENTITIES (no kernel arithmetic beyond the example's small constants).
++
++1. `core_integral`: on `(κ → ℝ) × ℝ`, the shear `(w, x) ↦ (w, Σ w + x)` (`shear`, measure
++   preserving by `MeasurePreserving.skew_product`), Fubini with the aggregate `s` outside
++   (`integral_prod_symm`), and V2b's weighted simplex moment `weighted_simplexF` on each slice.
++2. `one_group`: any nonempty group, by splitting off one coordinate
++   (`volume_preserving_piEquivPiSubtypeProd`, `volume_preserving_funUnique`).
++3. `two_group`: Fubini over the two groups (`integral_prod`), `one_group` for the inner group
++   with `h(Σ z, ·)`, then for the outer group with the parametric inner integral `innerAgg`
++   (measurable by `StronglyMeasurable.integral_prod_right'`, bounded by
++   `norm_setIntegral_le_of_norm_le_const`), and Fubini on the triangle (`tri_integral`).
++4. `two_group_fin`: the rough/smooth split `y ↦ (y|_R, y|_{Rᶜ})` of V2b (`split_sums`).
++5. Boundary cases: `one_group_empty`, `two_group_right_empty`, `two_group_left_empty`,
++   `two_group_both_empty` (Dirac measure on an empty product), `aggConst_zero`, `tri_eq_empty`,
++   `quad_eq_empty`.
++6. Rational specializations: the triangle is V1's 2-simplex (`tri_eq_simplex`,
++   `volume_preserving_finTwoArrow`), so `tri_monomial` and `tri_poly` are V1's (10.1) and Lemma
++   10.1; `two_group_poly` (rational value), `two_group_const` (consistency with (10.1)).
++7. Link to V2d: `aggR_shift`, `aggS_shift`, `endpoint_eq_stratum`, `stratumEndpoint_shift`.
++8. A branch-type cut `tri_cut` (via V2d's `inner_integral`) and the worked example
++   `example_value`. -/
++
++namespace BGP212.V2e
++
++open BGP212.Gram BGP212.V2d MeasureTheory
++
++/-! ## Integrability of bounded integrands on compact sets -/
++
++theorem integrableOn_cont_mul {X : Type*} [MeasureSpace X] [TopologicalSpace X]
++    [OpensMeasurableSpace X] [IsFiniteMeasureOnCompacts (volume : Measure X)]
++    {S : Set X} (hS : IsCompact S) (hSm : MeasurableSet S) {P k : X → ℝ} (hP : Continuous P)
++    (hk : Measurable k) {B : ℝ} (hb : ∀ x ∈ S, |k x| ≤ B) :
++    IntegrableOn (fun x => P x * k x) S := by
++  obtain ⟨C, hC⟩ := hS.exists_bound_of_continuousOn hP.continuousOn
++  refine Measure.integrableOn_of_bounded (M := C * B) hS.measure_lt_top.ne
++    (hP.measurable.mul hk).aestronglyMeasurable ?_
++  refine (ae_restrict_iff' hSm).mpr (Filter.Eventually.of_forall fun x hx => ?_)
++  rw [norm_mul]
++  have h1 := hC x hx
++  have h2 : ‖k x‖ ≤ B := by rw [Real.norm_eq_abs]; exact hb x hx
++  exact mul_le_mul h1 h2 (norm_nonneg _) (le_trans (norm_nonneg _) h1)
++
++/-! ## The shear `(w, s) ↦ (w, s − Σ w)` -/
++
++variable (κ : Type*) [Fintype κ]
++
++/-- The shear on `(κ → ℝ) × ℝ`. -/
++def shear : ((κ → ℝ) × ℝ) ≃ᵐ ((κ → ℝ) × ℝ) where
++  toFun q := (q.1, q.2 - ∑ i, q.1 i)
++  invFun p := (p.1, p.2 + ∑ i, p.1 i)
++  left_inv q := by simp
++  right_inv p := by simp
++  measurable_toFun := show Measurable (fun q : (κ → ℝ) × ℝ => (q.1, q.2 - ∑ i, q.1 i)) from by
++    fun_prop
++  measurable_invFun := show Measurable (fun p : (κ → ℝ) × ℝ => (p.1, p.2 + ∑ i, p.1 i)) from by
++    fun_prop
++
++theorem shear_measurePreserving : MeasurePreserving (shear κ) volume volume := by
++  have h := MeasurePreserving.skew_product (μa := (volume : Measure (κ → ℝ)))
++    (μc := (volume : Measure ℝ)) (μd := (volume : Measure ℝ)) (MeasurePreserving.id volume)
++    (g := fun w s => s - ∑ i, w i) (by fun_prop)
++    (Filter.Eventually.of_forall fun w => by
++      simp only [sub_eq_add_neg]
++      exact map_add_right_eq_self volume _)
++  exact h
++
++/-- The region `{(w, x) : w ≥ 0, x ≥ 0, Σ w + x ≤ R}`. -/
++def coreSet (R : ℝ) : Set ((κ → ℝ) × ℝ) :=
++  {p | (∀ i, 0 ≤ p.1 i) ∧ 0 ≤ p.2 ∧ ∑ i, p.1 i + p.2 ≤ R}
++
++theorem coreSet_isClosed (R : ℝ) : IsClosed (coreSet κ R) := by
++  have h1 : IsClosed {p : (κ → ℝ) × ℝ | ∀ i, 0 ≤ p.1 i} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun i => isClosed_le continuous_const
++      ((continuous_apply i).comp continuous_fst)
++  have h2 : IsClosed {p : (κ → ℝ) × ℝ | 0 ≤ p.2} := isClosed_le continuous_const continuous_snd
++  have h3 : IsClosed {p : (κ → ℝ) × ℝ | ∑ i, p.1 i + p.2 ≤ R} :=
++    isClosed_le (by fun_prop) continuous_const
++  have : coreSet κ R = {p | ∀ i, 0 ≤ p.1 i} ∩ ({p | 0 ≤ p.2} ∩ {p | ∑ i, p.1 i + p.2 ≤ R}) := by
++    ext p; simp [coreSet]
++  rw [this]; exact h1.inter (h2.inter h3)
++
++theorem coreSet_isCompact (R : ℝ) : IsCompact (coreSet κ R) := by
++  refine (isCompact_Icc (a := ((0 : κ → ℝ), (0 : ℝ))) (b := (fun _ => |R|, |R|))).of_isClosed_subset
++    (coreSet_isClosed κ R) ?_
++  rintro ⟨w, x⟩ ⟨hw, hx, hs⟩
++  have hsum : 0 ≤ ∑ i, w i := Finset.sum_nonneg fun i _ => hw i
++  refine ⟨⟨fun i => hw i, hx⟩, ⟨fun i => ?_, ?_⟩⟩
++  · have : w i ≤ ∑ j, w j := Finset.single_le_sum (fun j _ => hw j) (Finset.mem_univ i)
++    show w i ≤ |R|
++    linarith [le_abs_self R]
++  · show x ≤ |R|
++    linarith [le_abs_self R]
++
++/-- **Core lemma** (one aggregate, one coordinate split off): for `h` measurable and bounded on
++`[0, R]`, `∫_{w ≥ 0, x ≥ 0, Σ w + x ≤ R} wᵉ x^f h(Σ w + x) = ∏ eᵢ! f! / m! · ∫₀^R s^m h(s)`,
++`m = |κ| + Σ e + f`. Proof: the shear `s = Σ w + x` (`shear_measurePreserving`), Fubini with `s`
++outside, and V2b's weighted simplex moment `weighted_simplexF` on each slice. -/
++theorem core_integral (R : ℝ) (e : κ → ℕ) (f : ℕ) (h : ℝ → ℝ) (hm : Measurable h) (B : ℝ)
++    (hb : ∀ s ∈ Set.Icc 0 R, |h s| ≤ B) :
++    ∫ p in coreSet κ R, (∏ i, p.1 i ^ e i) * p.2 ^ f * h (∑ i, p.1 i + p.2) =
++      (∏ i, ((e i).factorial : ℝ)) * (f.factorial : ℝ) /
++          ((Fintype.card κ + ∑ i, e i + f).factorial : ℝ) *
++        ∫ s in Set.Icc 0 R, s ^ (Fintype.card κ + ∑ i, e i + f) * h s := by
++  set m := Fintype.card κ + ∑ i, e i + f
++  set K := (∏ i, ((e i).factorial : ℝ)) * (f.factorial : ℝ) / (m.factorial : ℝ)
++  set G : (κ → ℝ) × ℝ → ℝ := fun p => (∏ i, p.1 i ^ e i) * p.2 ^ f * h (∑ i, p.1 i + p.2)
++  have hmeasE := (coreSet_isClosed κ R).measurableSet
++  -- integrability of the original integrand
++  have hint : Integrable ((coreSet κ R).indicator G) := by
++    rw [integrable_indicator_iff hmeasE]
++    refine integrableOn_cont_mul (coreSet_isCompact κ R) hmeasE (by fun_prop)
++      (hm.comp (by fun_prop)) (B := B) ?_
++    rintro ⟨w, x⟩ ⟨hw, hx, hs⟩
++    exact hb _ ⟨by linarith [Finset.sum_nonneg fun i (_ : i ∈ Finset.univ) => hw i], hs⟩
++  -- the sheared integrand
++  set E' : Set ((κ → ℝ) × ℝ) := {q | q.1 ∈ simplexF κ q.2 ∧ q.2 ≤ R}
++  set G' : (κ → ℝ) × ℝ → ℝ := fun q => (∏ i, q.1 i ^ e i) * (q.2 - ∑ i, q.1 i) ^ f * h q.2
++  have hshear : ∀ q, (coreSet κ R).indicator G (shear κ q) = E'.indicator G' q := by
++    rintro ⟨w, s⟩
++    have hmem : shear κ (w, s) ∈ coreSet κ R ↔ (w, s) ∈ E' := by
++      simp only [shear, MeasurableEquiv.coe_mk, Equiv.coe_fn_mk, coreSet, Set.mem_ofPred_eq, E',
++        simplexF]
++      constructor
++      · rintro ⟨hw, hx, hs⟩; exact ⟨⟨hw, by linarith⟩, by linarith⟩
++      · rintro ⟨⟨hw, hx⟩, hs⟩; exact ⟨hw, by linarith, by linarith⟩
++    by_cases hq : (w, s) ∈ E'
++    · rw [Set.indicator_of_mem (hmem.mpr hq), Set.indicator_of_mem hq]
++      simp only [G, G', shear, MeasurableEquiv.coe_mk, Equiv.coe_fn_mk]
++      congr 2; ring
++    · rw [Set.indicator_of_notMem (fun h' => hq (hmem.mp h')), Set.indicator_of_notMem hq]
++  have hint' : Integrable (E'.indicator G') (volume.prod volume) := by
++    have := ((shear_measurePreserving κ).integrable_comp_emb
++      (shear κ).measurableEmbedding).mpr hint
++    have heq : (coreSet κ R).indicator G ∘ ⇑(shear κ) = E'.indicator G' := funext hshear
++    rwa [heq] at this
++  -- slices
++  have hslice : ∀ s : ℝ, ∫ w, E'.indicator G' (w, s) =
++      (Set.Icc 0 R).indicator (fun s => K * (s ^ m * h s)) s := by
++    intro s
++    by_cases hs : 0 ≤ s ∧ s ≤ R
++    · rw [Set.indicator_of_mem (show s ∈ Set.Icc 0 R from hs)]
++      have hfun : (fun w => E'.indicator G' (w, s)) =
++          (simplexF κ s).indicator (fun w => ((∏ i, w i ^ e i) * (s - ∑ i, w i) ^ f) * h s) := by
++        funext w
++        by_cases hw : w ∈ simplexF κ s
++        · rw [Set.indicator_of_mem (show (w, s) ∈ E' from ⟨hw, hs.2⟩), Set.indicator_of_mem hw]
++        · rw [Set.indicator_of_notMem (fun h' => hw h'.1), Set.indicator_of_notMem hw]
++      rw [hfun, integral_indicator (simplexF_measurableSet s), integral_mul_const,
++        weighted_simplexF s hs.1 e f]
++      simp only [K, m]
++      ring
++    · rw [Set.indicator_of_notMem (show s ∉ Set.Icc 0 R from hs)]
++      have hfun : (fun w => E'.indicator G' (w, s)) = fun _ => 0 := by
++        funext w
++        refine Set.indicator_of_notMem ?_ _
++        rintro ⟨⟨hw, hws⟩, hsR⟩
++        exact hs ⟨le_trans (Finset.sum_nonneg fun i _ => hw i) hws, hsR⟩
++      rw [hfun, integral_zero]
++  have hcomp := (shear_measurePreserving κ).integral_comp' ((coreSet κ R).indicator G)
++  rw [← integral_indicator hmeasE, ← hcomp]
++  simp_rw [hshear]
++  rw [show (volume : Measure ((κ → ℝ) × ℝ)) = volume.prod volume from rfl,
++    integral_prod_symm _ hint']
++  simp_rw [hslice]
++  rw [integral_indicator measurableSet_Icc, ← integral_const_mul]
++
++/-! ## One aggregate over any nonempty group -/
++
++section OneGroup
++
++variable {ι : Type*} [Fintype ι] [DecidableEq ι]
++
++instance uniqueEq (i₀ : ι) : Unique {i // ¬ i ≠ i₀} where
++  default := ⟨i₀, by simp⟩
++  uniq := fun ⟨j, hj⟩ => by simp only [ne_eq, not_not] at hj; subst hj; rfl
++
++/-- Split off the coordinate `i₀`: `(ι → ℝ) ≃ ({i // i ≠ i₀} → ℝ) × ℝ`, measure preserving. -/
++def splitOff (i₀ : ι) : ((ι → ℝ)) ≃ᵐ (({i // i ≠ i₀} → ℝ) × ℝ) :=
++  (MeasurableEquiv.piEquivPiSubtypeProd (fun _ : ι => ℝ) (· ≠ i₀)).trans
++    (MeasurableEquiv.prodCongr (MeasurableEquiv.refl _)
++      (MeasurableEquiv.funUnique {i // ¬ i ≠ i₀} ℝ))
++
++theorem splitOff_measurePreserving (i₀ : ι) :
++    MeasurePreserving (splitOff i₀) volume volume := by
++  have h1 := volume_preserving_piEquivPiSubtypeProd (fun _ : ι => ℝ) (· ≠ i₀)
++  have hu := volume_preserving_funUnique {i // ¬ i ≠ i₀} ℝ
++  rw [show (Unique.fintype : Fintype {i // ¬ i ≠ i₀}) = Subtype.fintype _ from
++    Subsingleton.elim _ _] at hu
++  have h2 := (MeasurePreserving.id (volume : Measure ({i // i ≠ i₀} → ℝ))).prod hu
++  have h1' : MeasurePreserving (MeasurableEquiv.piEquivPiSubtypeProd (fun _ : ι => ℝ) (· ≠ i₀))
++      volume ((volume : Measure ({i // i ≠ i₀} → ℝ)).prod
++        (volume : Measure ({i // ¬ i ≠ i₀} → ℝ))) := h1
++  exact h2.comp h1'
++
++theorem splitOff_symm_apply (i₀ : ι) (w : {i // i ≠ i₀} → ℝ) (x : ℝ) :
++    (splitOff i₀).symm (w, x) = fun i => if hi : i ≠ i₀ then w ⟨i, hi⟩ else x := by
++  funext i
++  by_cases hi : i ≠ i₀
++  · simp [splitOff, MeasurableEquiv.piEquivPiSubtypeProd_symm_apply, hi,
++      MeasurableEquiv.prodCongr, Equiv.prodCongr]
++  · simp [splitOff, MeasurableEquiv.piEquivPiSubtypeProd_symm_apply, hi,
++      MeasurableEquiv.prodCongr, Equiv.prodCongr, MeasurableEquiv.funUnique,
++      MeasurableEquiv.piUnique, Equiv.piUnique]
++
++theorem sum_splitOff (i₀ : ι) (f : ι → ℝ) :
++    ∑ i, f i = ∑ i : {i // i ≠ i₀}, f i + f i₀ := by
++  have h1 := Fintype.sum_subtype_add_sum_subtype (fun i => i ≠ i₀) f
++  have h2 : ∑ i : {i // ¬ i ≠ i₀}, f i = f i₀ := by
++    rw [Fintype.sum_unique (fun i : {i // ¬ i ≠ i₀} => f i)]; rfl
++  rw [← h1, h2]
++
++theorem prod_splitOff (i₀ : ι) (f : ι → ℝ) :
++    ∏ i, f i = (∏ i : {i // i ≠ i₀}, f i) * f i₀ := by
++  have h1 := Fintype.prod_subtype_mul_prod_subtype (fun i => i ≠ i₀) f
++  have h2 : ∏ i : {i // ¬ i ≠ i₀}, f i = f i₀ := by
++    rw [Fintype.prod_unique (fun i : {i // ¬ i ≠ i₀} => f i)]; rfl
++  rw [← h1, h2]
++
++theorem sum_splitOff_nat (i₀ : ι) (f : ι → ℕ) :
++    ∑ i, f i = ∑ i : {i // i ≠ i₀}, f i + f i₀ := by
++  have h1 := Fintype.sum_subtype_add_sum_subtype (fun i => i ≠ i₀) f
++  have h2 : ∑ i : {i // ¬ i ≠ i₀}, f i = f i₀ := by
++    rw [Fintype.sum_unique (fun i : {i // ¬ i ≠ i₀} => f i)]; rfl
++  rw [← h1, h2]
++
++theorem card_splitOff (i₀ : ι) : Fintype.card {i // i ≠ i₀} + 1 = Fintype.card ι := by
++  rw [Fintype.card_subtype_compl, Fintype.card_subtype_eq]
++  have : 1 ≤ Fintype.card ι := Fintype.card_pos_iff.mpr ⟨i₀⟩
++  omega
++
++/-- **One-aggregate Dirichlet integration.** For a nonempty group `ι`, an exponent vector `e`,
++and `h` measurable and bounded on `[0, R]`:
++`∫_{z ≥ 0, Σ z ≤ R} zᵉ h(Σ z) dz = aggConst ι e · ∫_{[0, R]} s^{aggExp ι e} h(s) ds`. -/
++theorem one_group [Nonempty ι] (R : ℝ) (e : ι → ℕ) (h : ℝ → ℝ) (hm : Measurable h) (B : ℝ)
++    (hb : ∀ s ∈ Set.Icc 0 R, |h s| ≤ B) :
++    ∫ z in simplexF ι R, (∏ i, z i ^ e i) * h (∑ i, z i) =
++      aggConst ι e * ∫ s in Set.Icc 0 R, s ^ aggExp ι e * h s := by
++  obtain ⟨i₀⟩ := ‹Nonempty ι›
++  have hT := (splitOff_measurePreserving i₀).symm
++  rw [← integral_indicator (simplexF_measurableSet R), ← hT.integral_comp']
++  have hfun : ∀ q : ({i // i ≠ i₀} → ℝ) × ℝ, (simplexF ι R).indicator
++      (fun z => (∏ i, z i ^ e i) * h (∑ i, z i)) ((splitOff i₀).symm q) =
++      (coreSet {i // i ≠ i₀} R).indicator (fun p => (∏ i, p.1 i ^ e i) * p.2 ^ e i₀ * h (∑ i, p.1 i + p.2)) q := by
++    rintro ⟨w, x⟩
++    rw [splitOff_symm_apply]
++    have hs : ∑ i, (fun i => if hi : i ≠ i₀ then w ⟨i, hi⟩ else x) i = ∑ i, w i + x := by
++      rw [sum_splitOff i₀]
++      congr 1
++      · exact Finset.sum_congr rfl fun j _ => by simp [j.2]
++      · simp
++    have hp : ∏ i, (fun i => if hi : i ≠ i₀ then w ⟨i, hi⟩ else x) i ^ e i =
++        (∏ i, w i ^ e i) * x ^ e i₀ := by
++      rw [prod_splitOff i₀ (fun i => (fun i => if hi : i ≠ i₀ then w ⟨i, hi⟩ else x) i ^ e i)]
++      congr 1
++      · exact Finset.prod_congr rfl fun j _ => by simp [j.2]
++      · simp
++    have hmem : (fun i => if hi : i ≠ i₀ then w ⟨i, hi⟩ else x) ∈ simplexF ι R ↔
++        (w, x) ∈ coreSet {i // i ≠ i₀} R := by
++      simp only [simplexF, coreSet, Set.mem_ofPred_eq]
++      rw [hs]
++      constructor
++      · rintro ⟨h0, hR⟩
++        refine ⟨fun i => ?_, ?_, hR⟩
++        · have := h0 i; simpa [i.2] using this
++        · have := h0 i₀; simpa using this
++      · rintro ⟨hw, hx, hR⟩
++        refine ⟨fun i => ?_, hR⟩
++        by_cases hi : i ≠ i₀
++        · simpa [hi] using hw ⟨i, hi⟩
++        · simpa [hi] using hx
++    by_cases hq : (w, x) ∈ coreSet {i // i ≠ i₀} R
++    · rw [Set.indicator_of_mem (hmem.mpr hq), Set.indicator_of_mem hq, hs, hp]
++    · rw [Set.indicator_of_notMem (fun h' => hq (hmem.mp h')), Set.indicator_of_notMem hq]
++  simp_rw [hfun]
++  rw [integral_indicator (coreSet_isClosed {i // i ≠ i₀} R).measurableSet,
++    core_integral {i // i ≠ i₀} R (fun i => e i) (e i₀) h hm B hb]
++  have hexp : Fintype.card {i // i ≠ i₀} + ∑ i : {i // i ≠ i₀}, e i + e i₀ = aggExp ι e := by
++    rw [aggExp, sum_splitOff_nat i₀ e, ← card_splitOff i₀]; omega
++  have hfac : (∏ i : {i // i ≠ i₀}, ((e i).factorial : ℝ)) * ((e i₀).factorial : ℝ) =
++      ∏ i, ((e i).factorial : ℝ) := (prod_splitOff i₀ (fun i => ((e i).factorial : ℝ))).symm
++  rw [hexp, hfac, aggConst]
++
++end OneGroup
++
++/-! ## Two aggregates -/
++
++section TwoGroup
++
++variable {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J]
++
++omit [DecidableEq I] [DecidableEq J] in
++theorem quad_isClosed (R : ℝ) : IsClosed (quad I J R) := by
++  have h1 : IsClosed {p : (I → ℝ) × (J → ℝ) | ∀ i, 0 ≤ p.1 i} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun i => isClosed_le continuous_const
++      ((continuous_apply i).comp continuous_fst)
++  have h2 : IsClosed {p : (I → ℝ) × (J → ℝ) | ∀ j, 0 ≤ p.2 j} := by
++    simp only [Set.ofPred_forall]
++    exact isClosed_iInter fun j => isClosed_le continuous_const
++      ((continuous_apply j).comp continuous_snd)
++  have h3 : IsClosed {p : (I → ℝ) × (J → ℝ) | ∑ i, p.1 i + ∑ j, p.2 j ≤ R} :=
++    isClosed_le (by fun_prop) continuous_const
++  have : quad I J R = {p | ∀ i, 0 ≤ p.1 i} ∩ ({p | ∀ j, 0 ≤ p.2 j} ∩
++      {p | ∑ i, p.1 i + ∑ j, p.2 j ≤ R}) := by
++    ext p; simp [quad]
++  rw [this]; exact h1.inter (h2.inter h3)
++
++omit [DecidableEq I] [DecidableEq J] in
++theorem quad_isCompact (R : ℝ) : IsCompact (quad I J R) := by
++  refine (isCompact_Icc (a := ((0 : I → ℝ), (0 : J → ℝ)))
++    (b := (fun _ => |R|, fun _ => |R|))).of_isClosed_subset (quad_isClosed R) ?_
++  rintro ⟨z, w⟩ ⟨hz, hw, hs⟩
++  have hz' : 0 ≤ ∑ i, z i := Finset.sum_nonneg fun i _ => hz i
++  have hw' : 0 ≤ ∑ j, w j := Finset.sum_nonneg fun j _ => hw j
++  refine ⟨⟨fun i => hz i, fun j => hw j⟩, ⟨fun i => ?_, fun j => ?_⟩⟩
++  · have : z i ≤ ∑ k, z k := Finset.single_le_sum (fun k _ => hz k) (Finset.mem_univ i)
++    show z i ≤ |R|
++    linarith [le_abs_self R]
++  · have : w j ≤ ∑ k, w k := Finset.single_le_sum (fun k _ => hw k) (Finset.mem_univ j)
++    show w j ≤ |R|
++    linarith [le_abs_self R]
++
++theorem tri_isClosed (R : ℝ) : IsClosed (tri R) := by
++  have : tri R = {q : ℝ × ℝ | 0 ≤ q.1} ∩ ({q | 0 ≤ q.2} ∩ {q | q.1 + q.2 ≤ R}) := by
++    ext q; simp [tri]
++  rw [this]
++  exact (isClosed_le continuous_const continuous_fst).inter
++    ((isClosed_le continuous_const continuous_snd).inter (isClosed_le (by fun_prop) continuous_const))
++
++theorem tri_isCompact (R : ℝ) : IsCompact (tri R) := by
++  refine (isCompact_Icc (a := ((0 : ℝ), (0 : ℝ))) (b := (|R|, |R|))).of_isClosed_subset
++    (tri_isClosed R) ?_
++  rintro ⟨u, s⟩ ⟨hu, hs, hR⟩
++  exact ⟨⟨hu, hs⟩, ⟨show u ≤ |R| by linarith [le_abs_self R], show s ≤ |R| by linarith [le_abs_self R]⟩⟩
++
++/-- The inner aggregate integral `u ↦ ∫_{[0, R − u]} s^k h(u, s) ds`. -/
++noncomputable def innerAgg (R : ℝ) (k : ℕ) (h : ℝ × ℝ → ℝ) (u : ℝ) : ℝ :=
++  ∫ s in Set.Icc 0 (R - u), s ^ k * h (u, s)
++
++theorem innerAgg_eq (R : ℝ) (k : ℕ) (h : ℝ × ℝ → ℝ) (u : ℝ) :
++    innerAgg R k h u =
++      ∫ s, {q : ℝ × ℝ | 0 ≤ q.2 ∧ q.2 ≤ R - q.1}.indicator (fun q => q.2 ^ k * h q) (u, s) := by
++  rw [innerAgg, ← integral_indicator measurableSet_Icc]
++  rfl
++
++theorem innerAgg_measurable (R : ℝ) (k : ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) :
++    Measurable (innerAgg R k h) := by
++  have hset : MeasurableSet {q : ℝ × ℝ | 0 ≤ q.2 ∧ q.2 ≤ R - q.1} :=
++    (measurableSet_le measurable_const measurable_snd).inter
++      (measurableSet_le measurable_snd (measurable_const.sub measurable_fst))
++  have hsm : StronglyMeasurable ({q : ℝ × ℝ | 0 ≤ q.2 ∧ q.2 ≤ R - q.1}.indicator
++      (fun q => q.2 ^ k * h q)) :=
++    (((by fun_prop : Measurable fun q : ℝ × ℝ => q.2 ^ k).mul hm).indicator hset).stronglyMeasurable
++  have := (hsm.integral_prod_right' (ν := (volume : Measure ℝ))).measurable
++  convert this using 1
++  funext u
++  exact innerAgg_eq R k h u
++
++theorem innerAgg_bound (R : ℝ) (k : ℕ) (h : ℝ × ℝ → ℝ) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∀ u ∈ Set.Icc 0 R, |innerAgg R k h u| ≤ |R| ^ k * |B| * |R| := by
++  intro u hu
++  rw [← Real.norm_eq_abs, innerAgg]
++  refine le_trans (norm_setIntegral_le_of_norm_le_const (C := |R| ^ k * |B|) measure_Icc_lt_top
++    fun s hs => ?_) ?_
++  · rw [norm_mul, norm_pow, Real.norm_eq_abs, Real.norm_eq_abs]
++    have h1 : |s| ^ k ≤ |R| ^ k := pow_le_pow_left₀ (abs_nonneg s)
++      (by rw [abs_of_nonneg hs.1]; linarith [le_abs_self R, hs.2, hu.1]) k
++    have h2 : |h (u, s)| ≤ |B| := le_trans (hb _ ⟨hu.1, hs.1, by linarith [hs.2]⟩) (le_abs_self B)
++    exact mul_le_mul h1 h2 (abs_nonneg _) (pow_nonneg (abs_nonneg _) _)
++  · rw [Real.volume_real_Icc_of_le (by linarith [hu.2])]
++    exact mul_le_mul_of_nonneg_left (by linarith [le_abs_self R, hu.1])
++      (mul_nonneg (pow_nonneg (abs_nonneg _) _) (abs_nonneg _))
++
++/-- The triangle integral as an iterated integral, aggregate `u₁` outside. -/
++theorem tri_integral (R : ℝ) (k₁ k₂ : ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ)
++    (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ q in tri R, q.1 ^ k₁ * q.2 ^ k₂ * h q =
++      ∫ u in Set.Icc 0 R, u ^ k₁ * innerAgg R k₂ h u := by
++  have hTm := (tri_isClosed R).measurableSet
++  have hint : Integrable ((tri R).indicator fun q : ℝ × ℝ => q.1 ^ k₁ * q.2 ^ k₂ * h q)
++      (volume.prod volume) := by
++    rw [integrable_indicator_iff hTm]
++    exact integrableOn_cont_mul (tri_isCompact R) hTm (P := fun q : ℝ × ℝ => q.1 ^ k₁ * q.2 ^ k₂)
++      (by fun_prop) hm hb
++  rw [← integral_indicator hTm, show (volume : Measure (ℝ × ℝ)) = volume.prod volume from rfl,
++    integral_prod _ hint, ← integral_indicator measurableSet_Icc]
++  congr 1
++  funext u
++  by_cases hu : u ∈ Set.Icc 0 R
++  · rw [Set.indicator_of_mem hu, innerAgg, ← integral_const_mul,
++      ← integral_indicator measurableSet_Icc]
++    congr 1
++    funext s
++    by_cases hs : s ∈ Set.Icc 0 (R - u)
++    · rw [Set.indicator_of_mem (show (u, s) ∈ tri R from ⟨hu.1, hs.1, by linarith [hs.2]⟩),
++        Set.indicator_of_mem hs]
++      ring
++    · rw [Set.indicator_of_notMem hs, Set.indicator_of_notMem]
++      rintro ⟨-, h1, h2⟩
++      exact hs ⟨h1, by linarith⟩
++  · rw [Set.indicator_of_notMem hu]
++    have : (fun s => (tri R).indicator (fun q : ℝ × ℝ => q.1 ^ k₁ * q.2 ^ k₂ * h q) (u, s)) =
++        fun _ => 0 := by
++      funext s
++      refine Set.indicator_of_notMem ?_ _
++      rintro ⟨h1, h2, h3⟩
++      exact hu ⟨h1, by linarith⟩
++    rw [this, integral_zero]
++
++/-- **Two-aggregate Dirichlet integration.** For nonempty groups `I`, `J`, exponent vectors
++`a`, `b`, and `h : ℝ × ℝ → ℝ` measurable and bounded on the triangle `tri R`:
++`∫_{z, w ≥ 0, Σ z + Σ w ≤ R} zᵃ wᵇ h(Σ z, Σ w) = aggConst I a · aggConst J b ·
++∫_{tri R} u₁^{aggExp I a} u₂^{aggExp J b} h(u₁, u₂)`. -/
++theorem two_group [Nonempty I] [Nonempty J] (R : ℝ) (a : I → ℕ) (b : J → ℕ)
++    (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst I a * aggConst J b *
++        ∫ q in tri R, q.1 ^ aggExp I a * q.2 ^ aggExp J b * h q := by
++  set G : (I → ℝ) × (J → ℝ) → ℝ :=
++    fun p => (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j)
++  have hQm := (quad_isClosed (I := I) (J := J) R).measurableSet
++  have hint : Integrable ((quad I J R).indicator G) (volume.prod volume) := by
++    rw [integrable_indicator_iff hQm]
++    refine integrableOn_cont_mul (quad_isCompact R) hQm
++      (P := fun p : (I → ℝ) × (J → ℝ) => (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j))
++      (by fun_prop) (hm.comp (by fun_prop)) (B := B) ?_
++    rintro ⟨z, w⟩ ⟨hz, hw, hs⟩
++    exact hb _ ⟨Finset.sum_nonneg fun i _ => hz i, Finset.sum_nonneg fun j _ => hw j, hs⟩
++  have hslice : ∀ z : I → ℝ, ∫ w, (quad I J R).indicator G (z, w) =
++      (simplexF I R).indicator
++        (fun z => (∏ i, z i ^ a i) * (aggConst J b * innerAgg R (aggExp J b) h (∑ i, z i))) z := by
++    intro z
++    by_cases hz : z ∈ simplexF I R
++    · rw [Set.indicator_of_mem hz]
++      have hfun : (fun w => (quad I J R).indicator G (z, w)) =
++          (simplexF J (R - ∑ i, z i)).indicator
++            (fun w => (∏ i, z i ^ a i) * ((∏ j, w j ^ b j) * h (∑ i, z i, ∑ j, w j))) := by
++        funext w
++        have hmem : (z, w) ∈ quad I J R ↔ w ∈ simplexF J (R - ∑ i, z i) := by
++          simp only [quad, simplexF, Set.mem_ofPred_eq]
++          constructor
++          · rintro ⟨-, hw, hs⟩; exact ⟨hw, by linarith⟩
++          · rintro ⟨hw, hs⟩; exact ⟨hz.1, hw, by linarith⟩
++        by_cases hw : w ∈ simplexF J (R - ∑ i, z i)
++        · rw [Set.indicator_of_mem (hmem.mpr hw), Set.indicator_of_mem hw]
++          simp only [G]; ring
++        · rw [Set.indicator_of_notMem (fun h' => hw (hmem.mp h')), Set.indicator_of_notMem hw]
++      have hz0 : 0 ≤ ∑ i, z i := Finset.sum_nonneg fun i _ => hz.1 i
++      rw [hfun, integral_indicator (simplexF_measurableSet _), integral_const_mul,
++        one_group (R - ∑ i, z i) b (fun s => h (∑ i, z i, s)) (hm.comp (by fun_prop)) B
++          (fun s hs => hb _ ⟨hz0, hs.1, by linarith [hs.2]⟩)]
++      rfl
++    · rw [Set.indicator_of_notMem hz]
++      have : (fun w => (quad I J R).indicator G (z, w)) = fun _ => 0 := by
++        funext w
++        refine Set.indicator_of_notMem ?_ _
++        rintro ⟨hz0, hw0, hs⟩
++        exact hz ⟨hz0, by linarith [Finset.sum_nonneg fun j (_ : j ∈ Finset.univ) => hw0 j]⟩
++      rw [this, integral_zero]
++  rw [← integral_indicator hQm, show (volume : Measure ((I → ℝ) × (J → ℝ))) = volume.prod volume
++    from rfl, integral_prod _ hint]
++  simp_rw [hslice]
++  rw [integral_indicator (simplexF_measurableSet R),
++    one_group R a (fun u => aggConst J b * innerAgg R (aggExp J b) h u)
++      ((innerAgg_measurable R _ h hm).const_mul _) (|aggConst J b| * (|R| ^ aggExp J b * |B| * |R|))
++      (fun u hu => by
++        rw [abs_mul]
++        exact mul_le_mul_of_nonneg_left (innerAgg_bound R _ h B hb u hu) (abs_nonneg _)),
++    tri_integral R _ _ h hm B hb, ← integral_const_mul, ← integral_const_mul]
++  congr 1
++  funext u
++  ring
++
++end TwoGroup
++
++/-! ## The Fin N form: rough and smooth aggregates -/
++
++section FinForm
++
++theorem sum_compl_subtype {N : ℕ} (R : Finset (Fin N)) (y : Fin N → ℝ) :
++    ∑ i ∈ Rᶜ, y i = ∑ i : {i // i ∉ R}, y i :=
++  Finset.sum_subtype Rᶜ (fun _ => Finset.mem_compl) y
++
++/-- **Two-aggregate Dirichlet integration on `Fin N`.** For a rough set `R` with `R` and `Rᶜ`
++nonempty, `u₁ = aggR R y = Σ_{i ∈ R} yᵢ`, `u₂ = aggS R y = Σ_{i ∉ R} yᵢ`:
++`∫_{y ≥ 0, Σ y ≤ M} yᵗ h(u₁, u₂) = aggConst R t · aggConst Rᶜ t ·
++∫_{tri M} u₁^{aggExp R t} u₂^{aggExp Rᶜ t} h(u₁, u₂)`. -/
++theorem two_group_fin {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty) (M : ℝ)
++    (t : Fin N → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri M, |h q| ≤ B) :
++    ∫ y in simplexF (Fin N) M, (∏ i, y i ^ t i) * h (aggR R y, aggS R y) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        ∫ q in tri M, q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++          q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * h q := by
++  have : Nonempty {i // i ∈ R} := hR.to_subtype
++  have : Nonempty {i // i ∉ R} := by
++    obtain ⟨i, hi⟩ := hRc; exact ⟨⟨i, Finset.mem_compl.mp hi⟩⟩
++  set Φ := MeasurableEquiv.piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R) with hΦdef
++  have hΦ : MeasurePreserving Φ.symm volume volume := by
++    convert (volume_preserving_piEquivPiSubtypeProd (fun _ : Fin N => ℝ) (· ∈ R)).symm Φ <;> rfl
++  rw [← two_group M (fun i : {i // i ∈ R} => t i) (fun i : {i // i ∉ R} => t i) h hm B hb,
++    ← integral_indicator (simplexF_measurableSet M), ← hΦ.integral_comp',
++    ← integral_indicator (quad_isClosed M).measurableSet]
++  congr 1
++  funext ⟨z, w⟩
++  obtain ⟨h1, h2, hR', hall⟩ := split_sums N R z w
++  rw [← hΦdef] at h1 h2 hR' hall
++  have hS : aggS R (Φ.symm (z, w)) = ∑ i, w i := by
++    rw [aggS, sum_compl_subtype]
++    exact Finset.sum_congr rfl fun i _ => h2 i
++  have hP : ∏ i, Φ.symm (z, w) i ^ t i = (∏ i, z i ^ t i) * (∏ i, w i ^ t i) := by
++    rw [← Fintype.prod_subtype_mul_prod_subtype (· ∈ R)]
++    congr 1
++    · exact Finset.prod_congr (by congr; exact Subsingleton.elim _ _) fun i _ => by rw [h1 i]
++    · exact Finset.prod_congr (by congr) fun i _ => by rw [h2 i]
++  have hmem : Φ.symm (z, w) ∈ simplexF (Fin N) M ↔ (z, w) ∈ quad {i // i ∈ R} {i // i ∉ R} M := by
++    simp only [simplexF, quad, Set.mem_ofPred_eq, hall]
++    constructor
++    · rintro ⟨h0, hs⟩
++      exact ⟨fun i => by rw [← h1 i]; exact h0 _, fun i => by rw [← h2 i]; exact h0 _, hs⟩
++    · rintro ⟨hz, hw, hs⟩
++      refine ⟨fun i => ?_, hs⟩
++      by_cases hi : i ∈ R
++      · have := h1 ⟨i, hi⟩; simp only at this; rw [this]; exact hz _
++      · have := h2 ⟨i, hi⟩; simp only at this; rw [this]; exact hw _
++  by_cases hq : (z, w) ∈ quad {i // i ∈ R} {i // i ∉ R} M
++  · rw [Set.indicator_of_mem (hmem.mpr hq), Set.indicator_of_mem hq, hP, hS, aggR, hR']
++  · rw [Set.indicator_of_notMem (fun h' => hq (hmem.mp h')), Set.indicator_of_notMem hq]
++
++end FinForm
++
++/-! ## Boundary cases -/
++
++section Boundary
++
++variable {I J : Type*} [Fintype I] [Fintype J]
++
++theorem volume_isEmpty {κ : Type*} [Fintype κ] [IsEmpty κ] (x : κ → ℝ) :
++    (volume : Measure (κ → ℝ)) = Measure.dirac x := by
++  rw [volume_pi]; exact Measure.pi_of_empty _ x
++
++/-- **Empty group.** With no coordinates the "simplex" is a point: the integral is `h 0`. -/
++theorem one_group_empty {ι : Type*} [Fintype ι] [IsEmpty ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ)
++    (h : ℝ → ℝ) : ∫ z in simplexF ι R, (∏ i, z i ^ e i) * h (∑ i, z i) = h 0 := by
++  have huniv : simplexF ι R = Set.univ := by
++    ext z; simp [simplexF, hR]
++  rw [huniv, Measure.restrict_univ, volume_isEmpty (isEmptyElim : ι → ℝ), integral_dirac]
++  simp
++
++omit [Fintype J] in
++theorem quad_integrable [Fintype J] (R : ℝ) (a : I → ℕ) (b : J → ℕ) (h : ℝ × ℝ → ℝ)
++    (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    Integrable ((quad I J R).indicator fun p : (I → ℝ) × (J → ℝ) =>
++      (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j)) (volume.prod volume) := by
++  have hQm := (quad_isClosed (I := I) (J := J) R).measurableSet
++  rw [integrable_indicator_iff hQm]
++  refine integrableOn_cont_mul (quad_isCompact R) hQm
++    (P := fun p : (I → ℝ) × (J → ℝ) => (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j))
++    (by fun_prop) (hm.comp (by fun_prop)) (B := B) ?_
++  rintro ⟨z, w⟩ ⟨hz, hw, hs⟩
++  exact hb _ ⟨Finset.sum_nonneg fun i _ => hz i, Finset.sum_nonneg fun j _ => hw j, hs⟩
++
++/-- **Empty smooth group** (`J = ∅`): one aggregate, `u₂ = 0`. -/
++theorem two_group_right_empty [DecidableEq I] [Nonempty I] [IsEmpty J] (R : ℝ) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst I a * ∫ u in Set.Icc 0 R, u ^ aggExp I a * h (u, 0) := by
++  rw [← integral_indicator (quad_isClosed R).measurableSet,
++    show (volume : Measure ((I → ℝ) × (J → ℝ))) = volume.prod volume from rfl,
++    integral_prod _ (quad_integrable R a b h hm B hb)]
++  have hslice : ∀ z : I → ℝ, ∫ w, (quad I J R).indicator (fun p : (I → ℝ) × (J → ℝ) =>
++      (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j)) (z, w) =
++      (simplexF I R).indicator (fun z => (∏ i, z i ^ a i) * h (∑ i, z i, 0)) z := by
++    intro z
++    rw [volume_isEmpty (isEmptyElim : J → ℝ), integral_dirac]
++    by_cases hz : z ∈ simplexF I R
++    · rw [Set.indicator_of_mem hz, Set.indicator_of_mem (show (z, (isEmptyElim : J → ℝ)) ∈ quad I J R
++        from ⟨hz.1, isEmptyElim, by simpa using hz.2⟩)]
++      simp
++    · rw [Set.indicator_of_notMem hz, Set.indicator_of_notMem]
++      rintro ⟨h0, -, hs⟩
++      exact hz ⟨h0, by simpa using hs⟩
++  simp_rw [hslice]
++  rw [integral_indicator (simplexF_measurableSet R),
++    one_group R a (fun u => h (u, 0)) (hm.comp (by fun_prop)) B
++      (fun u hu => hb _ ⟨hu.1, le_refl 0, by simpa using hu.2⟩)]
++
++/-- **Empty rough group** (`I = ∅`): one aggregate, `u₁ = 0`. -/
++theorem two_group_left_empty [DecidableEq J] [IsEmpty I] [Nonempty J] (R : ℝ) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst J b * ∫ u in Set.Icc 0 R, u ^ aggExp J b * h (0, u) := by
++  rw [← integral_indicator (quad_isClosed R).measurableSet,
++    show (volume : Measure ((I → ℝ) × (J → ℝ))) = volume.prod volume from rfl,
++    integral_prod_symm _ (quad_integrable R a b h hm B hb)]
++  have hslice : ∀ w : J → ℝ, ∫ z, (quad I J R).indicator (fun p : (I → ℝ) × (J → ℝ) =>
++      (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j)) (z, w) =
++      (simplexF J R).indicator (fun w => (∏ j, w j ^ b j) * h (0, ∑ j, w j)) w := by
++    intro w
++    rw [volume_isEmpty (isEmptyElim : I → ℝ), integral_dirac]
++    by_cases hw : w ∈ simplexF J R
++    · rw [Set.indicator_of_mem hw, Set.indicator_of_mem (show ((isEmptyElim : I → ℝ), w) ∈ quad I J R
++        from ⟨isEmptyElim, hw.1, by simpa using hw.2⟩)]
++      simp
++    · rw [Set.indicator_of_notMem hw, Set.indicator_of_notMem]
++      rintro ⟨-, h0, hs⟩
++      exact hw ⟨h0, by simpa using hs⟩
++  simp_rw [hslice]
++  rw [integral_indicator (simplexF_measurableSet R),
++    one_group R b (fun u => h (0, u)) (hm.comp (by fun_prop)) B
++      (fun u hu => hb _ ⟨le_refl 0, hu.1, by simpa using hu.2⟩)]
++
++/-- **Both groups empty**: the region is the point `0` (for `R ≥ 0`). -/
++theorem two_group_both_empty [IsEmpty I] [IsEmpty J] (R : ℝ) (hR : 0 ≤ R) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      h (0, 0) := by
++  have huniv : quad I J R = Set.univ := by ext p; simp [quad, hR]
++  rw [huniv, Measure.restrict_univ, show (volume : Measure ((I → ℝ) × (J → ℝ))) =
++    volume.prod volume from rfl, volume_isEmpty (isEmptyElim : I → ℝ),
++    volume_isEmpty (isEmptyElim : J → ℝ), Measure.dirac_prod_dirac, integral_dirac]
++  simp
++
++/-- **Zero exponents.** -/
++theorem aggExp_zero (ι : Type*) [Fintype ι] : aggExp ι (fun _ => 0) = Fintype.card ι - 1 := by
++  simp [aggExp]
++
++theorem aggConst_zero (ι : Type*) [Fintype ι] :
++    aggConst ι (fun _ => 0) = 1 / ((Fintype.card ι - 1).factorial : ℝ) := by
++  simp [aggConst, aggExp_zero]
++
++/-- **Empty region** (`R < 0`). -/
++theorem tri_eq_empty (R : ℝ) (hR : R < 0) : tri R = ∅ := by
++  ext q; simp only [tri, Set.mem_ofPred_eq, Set.mem_empty_iff_false, iff_false, not_and]
++  intro h1 h2 h3; linarith
++
++omit [Fintype I] [Fintype J] in
++theorem quad_eq_empty [Fintype I] [Fintype J] (R : ℝ) (hR : R < 0) : quad I J R = ∅ := by
++  ext p
++  simp only [quad, Set.mem_ofPred_eq, Set.mem_empty_iff_false, iff_false, not_and]
++  intro hz hw hs
++  linarith [Finset.sum_nonneg fun i (_ : i ∈ Finset.univ) => hz i,
++    Finset.sum_nonneg fun j (_ : j ∈ Finset.univ) => hw j]
++
++end Boundary
++
++/-! ## The triangle as V1's two-dimensional simplex; rational specializations -/
++
++section Rational
++
++open BGP212.Var
++
++theorem tri_eq_simplex (R : ℝ) (F : ℝ × ℝ → ℝ) :
++    ∫ q in tri R, F q = ∫ z in simplex 2 R, F (z 0, z 1) := by
++  have hT := volume_preserving_finTwoArrow ℝ
++  rw [← integral_indicator (tri_isClosed R).measurableSet, ← hT.integral_comp',
++    ← integral_indicator (simplex_measurableSet 2 R)]
++  congr 1
++  funext z
++  have hz : MeasurableEquiv.finTwoArrow z = (z 0, z 1) := rfl
++  have hmem : (z 0, z 1) ∈ tri R ↔ z ∈ simplex 2 R := by
++    simp only [tri, simplex, Set.mem_ofPred_eq, Fin.forall_fin_two, Fin.sum_univ_two]
++    tauto
++  rw [hz]
++  by_cases h : z ∈ simplex 2 R
++  · rw [Set.indicator_of_mem (hmem.mpr h), Set.indicator_of_mem h]
++  · rw [Set.indicator_of_notMem (fun h' => h (hmem.mp h')), Set.indicator_of_notMem h]
++
++/-- **Monomials on the triangle** (V1's (10.1) in dimension 2):
++`∫_{tri R} u₁^α u₂^β = R^{2+α+β} α! β! / (2+α+β)!`. -/
++theorem tri_monomial (R : ℝ) (hR : 0 ≤ R) (α β : ℕ) :
++    ∫ q in tri R, q.1 ^ α * q.2 ^ β =
++      R ^ (2 + α + β) * (α.factorial : ℝ) * (β.factorial : ℝ) / ((2 + α + β).factorial : ℝ) := by
++  rw [tri_eq_simplex]
++  have := simplex_integral 2 R ![α, β] hR
++  simp only [Fin.prod_univ_two, Matrix.cons_val_zero, Matrix.cons_val_one] at this
++  rw [this, momentR]
++  simp only [Fin.sum_univ_two, Fin.prod_univ_two, Matrix.cons_val_zero, Matrix.cons_val_one]
++  rw [add_assoc]; ring
++
++/-- **Rational polynomials on the triangle** (V1's Lemma 10.1 in dimension 2). -/
++theorem tri_poly (R : ℚ) (hR : 0 ≤ R) (G : MvPolynomial (Fin 2) ℚ) :
++    ∫ q in tri (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] G = (polyIntegralQ R G : ℝ) := by
++  rw [tri_eq_simplex]
++  have hv : ∀ z : Fin 2 → ℝ, ![z 0, z 1] = z := fun z => by
++    funext i; fin_cases i <;> rfl
++  simp_rw [hv]
++  exact poly_integral 2 R hR G
++
++theorem aggConst_eq_cast (ι : Type*) [Fintype ι] (e : ι → ℕ) :
++    aggConst ι e = (aggConstQ ι e : ℝ) := by
++  simp [aggConst, aggConstQ]
++
++theorem continuous_evalPoly (P : MvPolynomial (Fin 2) ℚ) :
++    Continuous fun q : ℝ × ℝ => MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] P := by
++  simp only [MvPolynomial.eval₂_eq']
++  refine continuous_finsetSum _ fun d _ => continuous_const.mul ?_
++  refine continuous_finsetProd _ fun i _ => ?_
++  fin_cases i
++  · exact continuous_fst.pow _
++  · exact continuous_snd.pow _
++
++/-- **Rational polynomial specialization.** For `h` a polynomial with rational coefficients in
++the two aggregates and rational `R ≥ 0`, the two-group integral is an explicit rational:
++`aggConstQ I a · aggConstQ J b · polyIntegralQ R (X₀^{aggExp I a} X₁^{aggExp J b} P)`. -/
++theorem two_group_poly {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J]
++    [Nonempty I] [Nonempty J] (R : ℚ) (hR : 0 ≤ R) (a : I → ℕ) (b : J → ℕ)
++    (P : MvPolynomial (Fin 2) ℚ) :
++    ∫ p in quad I J (R : ℝ), (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) *
++        MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![∑ i, p.1 i, ∑ j, p.2 j] P =
++      ((aggConstQ I a * aggConstQ J b *
++        polyIntegralQ R (MvPolynomial.X 0 ^ aggExp I a * MvPolynomial.X 1 ^ aggExp J b * P) : ℚ) : ℝ) := by
++  obtain ⟨B, hB⟩ := (tri_isCompact (R : ℝ)).exists_bound_of_continuousOn
++    (continuous_evalPoly P).continuousOn
++  have := two_group (R : ℝ) a b (fun q => MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] P)
++    (continuous_evalPoly P).measurable B (fun q hq => by rw [← Real.norm_eq_abs]; exact hB q hq)
++  simp only at this
++  have hG : ∫ q in tri (R : ℝ), q.1 ^ aggExp I a * q.2 ^ aggExp J b *
++      MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] P =
++      ∫ q in tri (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2]
++        (MvPolynomial.X 0 ^ aggExp I a * MvPolynomial.X 1 ^ aggExp J b * P) := by
++    congr 1; funext q
++    simp [MvPolynomial.eval₂_mul, MvPolynomial.eval₂_pow, MvPolynomial.eval₂_X]
++  rw [this, hG, tri_poly R hR, aggConst_eq_cast, aggConst_eq_cast]
++  push_cast; ring
++
++/-- **Consistency with (10.1).** With `h = 1` the two-aggregate formula reproduces the simplex
++moment of the combined monomial: `R^{n} ∏ aᵢ! ∏ bⱼ! / n!`, `n = |I| + Σ a + |J| + Σ b`. -/
++theorem two_group_const {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J]
++    [Nonempty I] [Nonempty J] (R : ℝ) (hR : 0 ≤ R) (a : I → ℕ) (b : J → ℕ) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) =
++      R ^ (Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j)) *
++        (∏ i, ((a i).factorial : ℝ)) * (∏ j, ((b j).factorial : ℝ)) /
++          ((Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j)).factorial : ℝ) := by
++  have := two_group R a b (fun _ => 1) measurable_const 1 (fun _ _ => by simp)
++  simp only [mul_one] at this
++  rw [this, tri_monomial R hR]
++  have hI : 1 ≤ Fintype.card I := Fintype.card_pos
++  have hJ : 1 ≤ Fintype.card J := Fintype.card_pos
++  have hn : 2 + aggExp I a + aggExp J b = Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j) := by
++    simp only [aggExp]; omega
++  rw [hn, aggConst, aggConst]
++  have h1 : ((aggExp I a).factorial : ℝ) ≠ 0 := by positivity
++  have h2 : ((aggExp J b).factorial : ℝ) ≠ 0 := by positivity
++  field_simp
++
++end Rational
++
++/-! ## The aggregates of V2d's marginal problem -/
++
++section Link
++
++theorem sum_eq_aggR_add_aggS {N : ℕ} (R : Finset (Fin N)) (x : Fin N → ℝ) :
++    ∑ i, x i = aggR R x + aggS R x := (Finset.sum_add_sum_compl R x).symm
++
++/-- On a translated piece `x = y + g·1_{R ∪ K}`: the rough mass is `|R| g + u₁`. -/
++theorem aggR_shift {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (y : Fin N → ℝ) :
++    aggR R (y + shiftV g (R ∪ K)) = R.card * g + aggR R y := by
++  simp only [aggR, Pi.add_apply, Finset.sum_add_distrib]
++  rw [sum_shiftV g _ _ Finset.subset_union_left]; ring
++
++/-- On a translated piece `x = y + g·1_{R ∪ K}` (`R`, `K` disjoint): the remaining mass is
++`|K| g + u₂`. -/
++theorem aggS_shift {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (hRK : Disjoint R K) (y : Fin N → ℝ) :
++    aggS R (y + shiftV g (R ∪ K)) = K.card * g + aggS R y := by
++  have htot := sum_add_shiftV g R K hRK y
++  have h1 := sum_eq_aggR_add_aggS R (y + shiftV g (R ∪ K))
++  have h2 := sum_eq_aggR_add_aggS R y
++  have h3 := aggR_shift g R K y
++  linarith
++
++/-- On the stratum `roughSet g x = R`, Lemma 9.2's endpoint is the stratum endpoint. -/
++theorem endpoint_eq_stratum {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (x : Fin n → ℝ) (R : Finset (Fin n))
++    (hR : roughSet g x = R) : endpoint g L C x = stratumEndpoint g L C R x := by
++  simp only [endpoint, stratumEndpoint, roughCount, roughMass, hR, aggR]
++
++/-- **The aggregate form of the endpoint.** On V2b's translated piece `x = y + g·1_{R ∪ K}` the
++stratum endpoint depends on `y` only through `u₁ = aggR R y` (rough mass `ρ₁ = |R| g + u₁`) and
++`u₂ = aggS R y` (remaining mass `S − ρ₁ = |K| g + u₂`). -/
++theorem stratumEndpoint_shift {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin n))
++    (hRK : Disjoint R K) (y : Fin n → ℝ) :
++    stratumEndpoint g L C R (y + shiftV g (R ∪ K)) =
++      endpointAgg g L C R.card K.card (aggR R y) (aggS R y) := by
++  rw [stratumEndpoint, endpointAgg, sum_eq_aggR_add_aggS R, aggR_shift g R K y,
++    aggS_shift g R K hRK y]
++  congr 2; ring
++
++end Link
++
++/-! ## A branch-type cut, and the worked example -/
++
++section Example
++
++theorem integral_Icc_pow (X : ℝ) (hX : 0 ≤ X) (k : ℕ) :
++    ∫ s in Set.Icc 0 X, s ^ k = X ^ (k + 1) / (k + 1) := by
++  rw [integral_Icc_eq_integral_Ioc, ← intervalIntegral.integral_of_le hX, integral_pow]
++  simp
++
++/-- **One cut of the triangle** (`u₁ ≤ c`, the shape of one branch of `U`), in closed form via
++V2d's `inner_integral`. -/
++theorem tri_cut (R c : ℝ) (hc : 0 ≤ c) (hcR : c ≤ R) (α β : ℕ) :
++    ∫ q in tri R, q.1 ^ α * q.2 ^ β * (Set.Iic c).indicator (fun _ => (1 : ℝ)) q.1 =
++      (∑ j ∈ Finset.range (β + 1 + 1), ((β + 1).choose j : ℝ) * R ^ (β + 1 - j) * (-1) ^ j *
++        c ^ (α + j + 1) / (α + j + 1)) / (β + 1) := by
++  have hm : Measurable fun q : ℝ × ℝ => (Set.Iic c).indicator (fun _ => (1 : ℝ)) q.1 :=
++    (measurable_const.indicator measurableSet_Iic).comp measurable_fst
++  rw [tri_integral R α β _ hm 1 (fun q _ => by
++    simp only [Set.indicator]; split_ifs <;> simp)]
++  have hinner : ∀ u ∈ Set.Icc 0 R, u ^ α * innerAgg R β
++      (fun q : ℝ × ℝ => (Set.Iic c).indicator (fun _ => (1 : ℝ)) q.1) u =
++      (Set.Iic c).indicator (fun u => (R - u) ^ (β + 1) * u ^ α / (β + 1)) u := by
++    intro u hu
++    simp only [innerAgg]
++    by_cases huc : u ∈ Set.Iic c
++    · simp only [Set.indicator_of_mem huc, mul_one]
++      rw [integral_Icc_pow (R - u) (by linarith [hu.2])]; ring
++    · simp only [Set.indicator_of_notMem huc, mul_zero, integral_zero]
++  rw [setIntegral_congr_fun measurableSet_Icc hinner, setIntegral_indicator measurableSet_Iic,
++    show Set.Icc (0 : ℝ) R ∩ Set.Iic c = Set.Icc 0 c by
++      ext u; simp only [Set.mem_inter_iff, Set.mem_Icc, Set.mem_Iic]
++      constructor
++      · rintro ⟨⟨h1, -⟩, h2⟩; exact ⟨h1, h2⟩
++      · rintro ⟨h1, h2⟩; exact ⟨⟨h1, le_trans h2 hcR⟩, h2⟩,
++    integral_Icc_eq_integral_Ioc, ← intervalIntegral.integral_of_le hc,
++    intervalIntegral.integral_div, inner_integral c R (β + 1) α]
++
++/-- **The worked example.** In dimension 3 with rough set `R = {0}` and exponents `(1, 0, 2)`,
++`∫_{y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] dy = 19/7680`: the aggregate theorem reduces it to
++`(1/3) ∫_{tri 1, u₁ ≤ 1/2} u₁ u₂³`, evaluated by `tri_cut`. -/
++theorem example_value : exampleLHS (1 / 2) 1 = 19 / 7680 := by
++  have hR : ({0} : Finset (Fin 3)).Nonempty := Finset.singleton_nonempty 0
++  have hRc : ({0} : Finset (Fin 3))ᶜ.Nonempty := ⟨1, by decide⟩
++  have hm : Measurable fun q : ℝ × ℝ => (Set.Iic (1 / 2 : ℝ)).indicator (fun _ => (1 : ℝ)) q.1 :=
++    (measurable_const.indicator measurableSet_Iic).comp measurable_fst
++  have key := two_group_fin {0} hR hRc 1 ![1, 0, 2] _ hm 1 (fun q _ => by
++    simp only [Set.indicator]; split_ifs <;> simp)
++  have hlhs : exampleLHS (1 / 2) 1 = ∫ y in simplexF (Fin 3) 1, (∏ i, y i ^ (![1, 0, 2] : Fin 3 → ℕ) i) *
++      (Set.Iic (1 / 2 : ℝ)).indicator (fun _ => (1 : ℝ)) (aggR {0} y, aggS {0} y).1 := by
++    rw [exampleLHS]
++    congr 1; funext y
++    simp [Fin.prod_univ_three, aggR]
++  have e1 : ∀ inst : Fintype {i // i ∈ ({0} : Finset (Fin 3))},
++      @aggExp _ inst (fun i => (![1, 0, 2] : Fin 3 → ℕ) i) = 1 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide
++  have e2 : ∀ inst : Fintype {i // i ∉ ({0} : Finset (Fin 3))},
++      @aggExp _ inst (fun i => (![1, 0, 2] : Fin 3 → ℕ) i) = 3 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide
++  have c1 : ∀ inst : Fintype {i // i ∈ ({0} : Finset (Fin 3))},
++      @aggConstQ _ inst (fun i => (![1, 0, 2] : Fin 3 → ℕ) i) = 1 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide +kernel
++  have c2 : ∀ inst : Fintype {i // i ∉ ({0} : Finset (Fin 3))},
++      @aggConstQ _ inst (fun i => (![1, 0, 2] : Fin 3 → ℕ) i) = 1 / 3 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide +kernel
++  rw [hlhs, key, e1, e2, aggConst_eq_cast, aggConst_eq_cast, c1, c2,
++    tri_cut 1 (1 / 2) (by norm_num) (by norm_num) 1 3]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero]
++  norm_num [Nat.choose]
++
++end Example
++
++end BGP212.V2e
++
++/-! ## Comparator wrappers -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++/-- One aggregate: `∫_{z ≥ 0, Σ z ≤ R} zᵉ h(Σ z) = aggConst ι e · ∫_{[0,R]} s^{aggExp ι e} h(s)`. -/
++theorem one_group {ι : Type*} [Fintype ι] [DecidableEq ι] [Nonempty ι] (R : ℝ) (e : ι → ℕ) (h : ℝ → ℝ) (hm : Measurable h) (B : ℝ)
++    (hb : ∀ s ∈ Set.Icc 0 R, |h s| ≤ B) :
++    ∫ z in simplexF ι R, (∏ i, z i ^ e i) * h (∑ i, z i) =
++      aggConst ι e * ∫ s in Set.Icc 0 R, s ^ aggExp ι e * h s :=
++  BGP212.V2e.one_group R e h hm B hb
++
++/-- **Two-aggregate Dirichlet integration** (`h` measurable, bounded on `tri R`). -/
++theorem two_group {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J] [Nonempty I] [Nonempty J] (R : ℝ) (a : I → ℕ) (b : J → ℕ)
++    (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst I a * aggConst J b *
++        ∫ q in tri R, q.1 ^ aggExp I a * q.2 ^ aggExp J b * h q :=
++  BGP212.V2e.two_group R a b h hm B hb
++
++/-- The same on `Fin N`, with rough aggregate `u₁ = aggR R y` and smooth aggregate `u₂ = aggS R y`. -/
++theorem two_group_fin {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty) (M : ℝ)
++    (t : Fin N → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri M, |h q| ≤ B) :
++    ∫ y in simplexF (Fin N) M, (∏ i, y i ^ t i) * h (aggR R y, aggS R y) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        ∫ q in tri M, q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++          q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * h q :=
++  BGP212.V2e.two_group_fin R hR hRc M t h hm B hb
++
++/-- Empty group: the integral is `h 0`. -/
++theorem one_group_empty {ι : Type*} [Fintype ι] [IsEmpty ι] (R : ℝ) (hR : 0 ≤ R) (e : ι → ℕ)
++    (h : ℝ → ℝ) :
++    ∫ z in simplexF ι R, (∏ i, z i ^ e i) * h (∑ i, z i) = h 0 :=
++  BGP212.V2e.one_group_empty R hR e h
++
++/-- Empty smooth group (`u₂ = 0`). -/
++theorem two_group_right_empty {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [Nonempty I] [IsEmpty J] (R : ℝ) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst I a * ∫ u in Set.Icc 0 R, u ^ aggExp I a * h (u, 0) :=
++  BGP212.V2e.two_group_right_empty R a b h hm B hb
++
++/-- Empty rough group (`u₁ = 0`). -/
++theorem two_group_left_empty {I J : Type*} [Fintype I] [Fintype J] [DecidableEq J] [IsEmpty I] [Nonempty J] (R : ℝ) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) (hm : Measurable h) (B : ℝ) (hb : ∀ q ∈ tri R, |h q| ≤ B) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      aggConst J b * ∫ u in Set.Icc 0 R, u ^ aggExp J b * h (0, u) :=
++  BGP212.V2e.two_group_left_empty R a b h hm B hb
++
++/-- Both groups empty: the value `h (0, 0)`. -/
++theorem two_group_both_empty {I J : Type*} [Fintype I] [Fintype J] [IsEmpty I] [IsEmpty J] (R : ℝ) (hR : 0 ≤ R) (a : I → ℕ)
++    (b : J → ℕ) (h : ℝ × ℝ → ℝ) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) * h (∑ i, p.1 i, ∑ j, p.2 j) =
++      h (0, 0) :=
++  BGP212.V2e.two_group_both_empty R hR a b h
++
++/-- Zero exponents. -/
++theorem aggConst_zero (ι : Type*) [Fintype ι] :
++    aggConst ι (fun _ => 0) = 1 / ((Fintype.card ι - 1).factorial : ℝ) :=
++  BGP212.V2e.aggConst_zero ι
++
++/-- Monomials on the triangle (V1's (10.1) in dimension 2). -/
++theorem tri_monomial (R : ℝ) (hR : 0 ≤ R) (α β : ℕ) :
++    ∫ q in tri R, q.1 ^ α * q.2 ^ β =
++      R ^ (2 + α + β) * (α.factorial : ℝ) * (β.factorial : ℝ) / ((2 + α + β).factorial : ℝ) :=
++  BGP212.V2e.tri_monomial R hR α β
++
++/-- Rational polynomials on the triangle (V1's Lemma 10.1 in dimension 2). -/
++theorem tri_poly (R : ℚ) (hR : 0 ≤ R) (G : MvPolynomial (Fin 2) ℚ) :
++    ∫ q in tri (R : ℝ), MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] G = (BGP212.Var.polyIntegralQ R G : ℝ) :=
++  BGP212.V2e.tri_poly R hR G
++
++/-- Rational polynomial specialization of the two-aggregate theorem. -/
++theorem two_group_poly {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J] [Nonempty I] [Nonempty J]
++    (R : ℚ) (hR : 0 ≤ R) (a : I → ℕ) (b : J → ℕ) (P : MvPolynomial (Fin 2) ℚ) :
++    ∫ p in quad I J (R : ℝ), (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) *
++        MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![∑ i, p.1 i, ∑ j, p.2 j] P =
++      ((aggConstQ I a * aggConstQ J b *
++        BGP212.Var.polyIntegralQ R (MvPolynomial.X 0 ^ aggExp I a * MvPolynomial.X 1 ^ aggExp J b * P) : ℚ) : ℝ) :=
++  BGP212.V2e.two_group_poly R hR a b P
++
++/-- Consistency with (10.1): `h = 1` gives the simplex moment of the combined monomial. -/
++theorem two_group_const {I J : Type*} [Fintype I] [Fintype J] [DecidableEq I] [DecidableEq J] [Nonempty I] [Nonempty J] (R : ℝ) (hR : 0 ≤ R) (a : I → ℕ) (b : J → ℕ) :
++    ∫ p in quad I J R, (∏ i, p.1 i ^ a i) * (∏ j, p.2 j ^ b j) =
++      R ^ (Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j)) *
++        (∏ i, ((a i).factorial : ℝ)) * (∏ j, ((b j).factorial : ℝ)) /
++          ((Fintype.card I + ∑ i, a i + (Fintype.card J + ∑ j, b j)).factorial : ℝ) :=
++  BGP212.V2e.two_group_const R hR a b
++
++/-- On a translated piece the rough mass is `|R| g + u₁`. -/
++theorem aggR_shift {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (y : Fin N → ℝ) :
++    aggR R (y + shiftV g (R ∪ K)) = R.card * g + aggR R y :=
++  BGP212.V2e.aggR_shift g R K y
++
++/-- On a translated piece the remaining mass is `|K| g + u₂`. -/
++theorem aggS_shift {N : ℕ} (g : ℝ) (R K : Finset (Fin N)) (hRK : Disjoint R K) (y : Fin N → ℝ) :
++    aggS R (y + shiftV g (R ∪ K)) = K.card * g + aggS R y :=
++  BGP212.V2e.aggS_shift g R K hRK y
++
++/-- On the stratum `roughSet g x = R`, Lemma 9.2's endpoint is the stratum endpoint. -/
++theorem endpoint_eq_stratum {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (x : Fin n → ℝ) (R : Finset (Fin n))
++    (hR : roughSet g x = R) :
++    endpoint g L C x = stratumEndpoint g L C R x :=
++  BGP212.V2e.endpoint_eq_stratum g L C x R hR
++
++/-- The endpoint on a translated piece is a function of the two aggregates. -/
++theorem stratumEndpoint_shift {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R K : Finset (Fin n))
++    (hRK : Disjoint R K) (y : Fin n → ℝ) :
++    stratumEndpoint g L C R (y + shiftV g (R ∪ K)) =
++      endpointAgg g L C R.card K.card (aggR R y) (aggS R y) :=
++  BGP212.V2e.stratumEndpoint_shift g L C R K hRK y
++
++/-- One cut `u₁ ≤ c` of the triangle, in closed form. -/
++theorem tri_cut (R c : ℝ) (hc : 0 ≤ c) (hcR : c ≤ R) (α β : ℕ) :
++    ∫ q in tri R, q.1 ^ α * q.2 ^ β * (Set.Iic c).indicator (fun _ => (1 : ℝ)) q.1 =
++      (∑ j ∈ Finset.range (β + 1 + 1), ((β + 1).choose j : ℝ) * R ^ (β + 1 - j) * (-1) ^ j *
++        c ^ (α + j + 1) / (α + j + 1)) / (β + 1) :=
++  BGP212.V2e.tri_cut R c hc hcR α β
++
++/-- **The worked example**: `∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] = 19/7680`. -/
++theorem example_value :
++    exampleLHS (1 / 2) 1 = 19 / 7680 :=
++  BGP212.V2e.example_value
++
++end BGP212.Challenge
+diff --git a/specs/checks/aggregate_v2e_controls.py b/specs/checks/aggregate_v2e_controls.py
+new file mode 100644
+index 0000000..89b0f99
+--- /dev/null
++++ b/specs/checks/aggregate_v2e_controls.py
+@@ -0,0 +1,181 @@
++#!/usr/bin/env python3
++"""Positive and negative controls for V2e-A (two-aggregate Dirichlet integration).
++
++Writes Lean files into the given directory (default /tmp/v2e_ctl). Each `ok_*` file must be
++accepted and each `nc_*` file rejected.
++
++  ok_example / nc_example_*   the worked example ∫_{y ∈ ℝ³, y ≥ 0, Σy ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] dy.
++                              Its value is recomputed here by an independent method: the direct
++                              iterated integral dy₂ dy₁ dy₀ over the simplex, in exact rational
++                              polynomial arithmetic, with no aggregate change of variables.
++                              nc_example_nojac uses aggregate exponents |ι| + Σe (the −1 dropped);
++                              nc_example_uncut claims the uncut value 1/360.
++  ok_const / nc_const_nojac   two_group_const for I = Fin 1, J = Fin 2, a = (1), b = (0, 2), R = 1:
++                              the value 1/360 of (10.1); the nc file uses the exponents without −1.
++  ok_stratum / nc_union       the endpoint on V2b's piece (R, K) = ({0}, {1}) at Table 3 with
++                              y = (1/10, 1/10, 1/20), x = y + g·1_{R∪K}: the stratum endpoint (cap
++                              index |R| + 1 = 2, rough mass x₀) is 587/1250; the nc file takes the
++                              cap index and mass from R ∪ K (the translated point's own rough set)
++                              and claims the same value (its value is 461/1250, ok_union_value).
++  ok_link                     stratumEndpoint_shift on the same piece: the endpoint equals
++                              endpointAgg at the aggregates (u₁, u₂) = (1/10, 3/20).
++
++Usage: python3 -I specs/checks/aggregate_v2e_controls.py [dir]
++Check: for f in DIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++"""
++import os
++import sys
++from fractions import Fraction as Fr
++from math import comb, factorial as fact
++
++OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/v2e_ctl"
++os.makedirs(OUT, exist_ok=True)
++
++
++# ---- exact univariate polynomial arithmetic (coefficient lists) -------------------------------
++def padd(p, q):
++    n = max(len(p), len(q))
++    return [(p[i] if i < len(p) else 0) + (q[i] if i < len(q) else 0) for i in range(n)]
++
++
++def pmul(p, q):
++    out = [Fr(0)] * (len(p) + len(q) - 1)
++    for i, a in enumerate(p):
++        for j, b in enumerate(q):
++            out[i + j] += a * b
++    return out
++
++
++def ppow(p, n):
++    out = [Fr(1)]
++    for _ in range(n):
++        out = pmul(out, p)
++    return out
++
++
++def pint(p, a, b):
++    return sum(c * (b ** (i + 1) - a ** (i + 1)) / (i + 1) for i, c in enumerate(p))
++
++
++# ---- independent value: ∫₀^{c} y₀ ∫₀^{1−y₀} ∫₀^{1−y₀−y₁} y₂² dy₂ dy₁ dy₀ --------------------
++# inner: ∫₀^{T} y₂² = T³/3 with T = 1 − y₀ − y₁; middle: ∫₀^{1−y₀} (1 − y₀ − y₁)³/3 dy₁ =
++# (1 − y₀)⁴/12 (substitute v = 1 − y₀ − y₁, a direct one-variable step); outer by expansion.
++def example_direct(c, R=Fr(1)):
++    one_minus = [R, Fr(-1)]                       # R − y₀
++    integrand = pmul([Fr(0), Fr(1)], ppow(one_minus, 4))   # y₀ (R − y₀)⁴
++    return pint(integrand, Fr(0), min(c, R)) / 12
++
++
++# the same middle step checked symbolically: ∫₀^{M} (M − y)³ dy = M⁴/4 for M = 7/9
++M = Fr(7, 9)
++assert pint(ppow([M, Fr(-1)], 3), Fr(0), M) == M ** 4 / 4
++
++v_example = example_direct(Fr(1, 2))
++v_uncut = example_direct(Fr(1))
++assert v_example == Fr(19, 7680) and v_uncut == Fr(1, 360)
++assert v_uncut == Fr(fact(1) * fact(2), fact(6))   # (10.1): 1! 0! 2! / (3 + 3)!
++
++
++# ---- the wrong-Jacobian variant: aggregate exponents |ι| + Σe instead of |ι| + Σe − 1 ----------
++def tri_cut(R, c, al, be):
++    integrand = pmul([Fr(0)] * al + [Fr(1)], ppow([R, Fr(-1)], be + 1))
++    return pint(integrand, Fr(0), c) / (be + 1)
++
++
++kI, kJ = 1 + 1, 2 + 2                     # no −1
++cI, cJ = Fr(fact(1), fact(kI)), Fr(fact(0) * fact(2), fact(kJ))
++v_nojac = cI * cJ * tri_cut(Fr(1), Fr(1, 2), kI, kJ)
++assert v_nojac != v_example
++# with the −1 the same recipe reproduces the direct value
++assert Fr(1) * Fr(2, 6) * tri_cut(Fr(1), Fr(1, 2), 1, 3) == v_example
++v_const_nojac = cI * cJ * Fr(fact(kI) * fact(kJ), fact(2 + kI + kJ))
++assert v_const_nojac != v_uncut
++
++# ---- the endpoint on a piece at Table 3 --------------------------------------------------------
++G, L = Fr(41, 625), Fr(53, 50)
++BNUM = [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
++
++
++def C(m):
++    return Fr(0) if m == 0 else 4 * Fr(BNUM[min(m, 10) - 1], 5000)
++
++
++y = [Fr(1, 10), Fr(1, 10), Fr(1, 20)]
++x = [y[0] + G, y[1] + G, y[2]]
++assert x[2] <= G < x[0] and G < x[1]           # the translated point's own rough set is {0, 1}
++S = sum(x)
++U_stratum = min(L - S, max(G, C(2) - x[0]))
++U_union = min(L - S, max(G, C(3) - (x[0] + x[1])))
++u1, u2 = y[0], y[1] + y[2]
++U_agg = min(L - (2 * G + u1 + u2), max(G, C(2) - (G + u1)))
++assert U_stratum == U_agg == Fr(587, 1250) and U_union == Fr(461, 1250)
++
++
++def q(v):
++    v = Fr(v)
++    return f"({v.numerator} / {v.denominator} : ℝ)"
++
++
++HEAD = """import Solution.Aggregate
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++"""
++EX = """theorem ctl : exampleLHS (1 / 2) 1 = {V} := by
++  rw [example_value]
++  all_goals norm_num
++"""
++CONST = """theorem ctl : ∫ p in quad (Fin 1) (Fin 2) 1, (∏ i, p.1 i ^ (![1] : Fin 1 → ℕ) i) *
++    (∏ j, p.2 j ^ (![0, 2] : Fin 2 → ℕ) j) = {V} := by
++  rw [two_group_const 1 (by norm_num)]
++  simp [Fin.sum_univ_two, Fin.prod_univ_two, Nat.factorial]
++  all_goals norm_num
++"""
++END = """noncomputable def Ct : ℕ → ℝ := fun m => (BGP212.Params.C m : ℝ)
++
++theorem C2 : Ct 2 = 794 / 1250 := by
++  have : BGP212.Params.C 2 = 794 / 1250 := by decide +kernel
++  simp only [Ct, this]; norm_num
++
++theorem C3 : Ct 3 = 875 / 1250 := by
++  have : BGP212.Params.C 3 = 875 / 1250 := by decide +kernel
++  simp only [Ct, this]; norm_num
++
++theorem ctl : stratumEndpoint (41 / 625) (53 / 50) Ct {SET}
++    (![1 / 10 + 41 / 625, 1 / 10 + 41 / 625, 1 / 20] : Fin 3 → ℝ) = {V} := by
++  simp only [stratumEndpoint, aggR, Fin.sum_univ_three, Finset.sum_singleton,
++    Finset.sum_pair (show (0 : Fin 3) ≠ 1 by decide), Finset.card_singleton,
++    Finset.card_pair (show (0 : Fin 3) ≠ 1 by decide), Matrix.cons_val_zero, Matrix.cons_val_one,
++    Matrix.cons_val_two, Matrix.head_cons, Matrix.tail_cons]
++  norm_num [C2, C3, min_def, max_def]
++"""
++LINK = """noncomputable def Ct : ℕ → ℝ := fun m => (BGP212.Params.C m : ℝ)
++
++theorem ctl : stratumEndpoint (41 / 625) (53 / 50) Ct {0}
++    ((![1 / 10, 1 / 10, 1 / 20] : Fin 3 → ℝ) + shiftV (41 / 625) ({0} ∪ {1})) =
++      endpointAgg (41 / 625) (53 / 50) Ct 1 1 (1 / 10) (3 / 20) := by
++  rw [stratumEndpoint_shift _ _ _ _ _ (by decide)]
++  have h1 : aggR {0} (![1 / 10, 1 / 10, 1 / 20] : Fin 3 → ℝ) = 1 / 10 := by
++    simp [aggR]
++  have h2 : aggS {0} (![1 / 10, 1 / 10, 1 / 20] : Fin 3 → ℝ) = 3 / 20 := by
++    rw [aggS, show ({0} : Finset (Fin 3))ᶜ = {1, 2} by decide,
++      Finset.sum_pair (show (1 : Fin 3) ≠ 2 by decide)]
++    simp; norm_num
++  rw [h1, h2]; rfl
++"""
++files = {
++    "ok_example": EX.replace("{V}", q(v_example)),
++    "nc_example_nojac": EX.replace("{V}", q(v_nojac)),
++    "nc_example_uncut": EX.replace("{V}", q(v_uncut)),
++    "ok_const": CONST.replace("{V}", q(v_uncut)),
++    "nc_const_nojac": CONST.replace("{V}", q(v_const_nojac)),
++    "ok_stratum": END.replace("{SET}", "{0}").replace("{V}", q(U_stratum)),
++    "nc_union": END.replace("{SET}", "{0, 1}").replace("{V}", q(U_stratum)),
++    "ok_union_value": END.replace("{SET}", "{0, 1}").replace("{V}", q(U_union)),
++    "ok_link": LINK,
++}
++for name, body in files.items():
++    open(os.path.join(OUT, name + ".lean"), "w").write(HEAD + body)
++print("wrote", len(files), "control files to", OUT)
++print("example (direct) =", v_example, " no-Jacobian variant =", v_nojac, " uncut =", v_uncut)
++print("endpoint: stratum =", U_stratum, " union =", U_union)
+diff --git a/specs/results/V2e_A_aggregate.yaml b/specs/results/V2e_A_aggregate.yaml
+new file mode 100644
+index 0000000..72c6590
+--- /dev/null
++++ b/specs/results/V2e_A_aggregate.yaml
+@@ -0,0 +1,98 @@
++# Result record: sixteenth Challenge/Solution pair (V2e-A, two-aggregate Dirichlet integration)
++
++identity:
++  id: V2e-A
++  statement: "∫_{y ≥ 0, Σ y ≤ M} yᵗ h(Σ_R y, Σ_{Rᶜ} y) dy = aggConst R t · aggConst Rᶜ t · ∫_{u₁, u₂ ≥ 0, u₁ + u₂ ≤ M} u₁^{|R| + Σ_R t − 1} u₂^{|Rᶜ| + Σ_{Rᶜ} t − 1} h(u₁, u₂), for h measurable and bounded on the triangle; on V2b's piece x = y + g·1_{R∪K} the endpoint of Lemma 9.2 (cap index from the stratum R) is a function of (u₁, u₂)"
++  source: "Source/bgp212.pdf: §9.4, Lemma 9.2 and the display of J_T (p. 41), (10.1), Lemma 10.1, Proposition 10.2 (pp. 41–42)"
++  builds_on: "V2d (endpoint, roughCount, roughMass, inner_integral), V2b (simplexF, shiftV, weighted_simplexF, split_sums, sum_shiftV, sum_add_shiftV), V1 (simplex, simplex_integral, poly_integral, polyIntegralQ); A0–V2d unchanged"
++
++state:
++  mathematical: proved
++  computational: "kernel-verified (small decide +kernel constants in the worked example only)"
++  provenance: pinned
++  publication: draft
++
++scope:
++  proved: >
++    core_integral (shear s = Σ w + x, Fubini, V2b's weighted simplex moment per slice),
++    one_group (any nonempty group), two_group (two groups, the triangle), two_group_fin (rough set R
++    and complement on Fin N), one_group_empty, two_group_right_empty, two_group_left_empty,
++    two_group_both_empty, aggConst_zero, tri_eq_empty, quad_eq_empty, tri_eq_simplex, tri_monomial,
++    tri_poly, two_group_poly (rational value for polynomial h), two_group_const (consistency with
++    (10.1)), aggR_shift, aggS_shift, endpoint_eq_stratum, stratumEndpoint_shift, tri_cut,
++    example_value.
++  assumptions: >
++    h : ℝ × ℝ → ℝ (or ℝ → ℝ for one group) measurable with |h| ≤ B on the triangle (resp. on
++    [0, R]); groups nonempty in the main theorems, empty groups in the boundary theorems;
++    R ≥ 0 only where a Dirac value is taken (empty groups) or a closed form is evaluated.
++  unproved_assumptions: "none (axioms: propext, Quot.sound, Classical.choice)"
++  aggregate_correspondence: >
++    On V2b's translated piece x = y + g·1_{R∪K} (R, K disjoint): u₁ = Σ_R y and u₂ = Σ_{Rᶜ} y,
++    rough mass ρ₁ = |R| g + u₁ (aggR_shift), remaining mass S − ρ₁ = |K| g + u₂ (aggS_shift), and
++    U = min(L − (|R|+|K|) g − u₁ − u₂, max(g, C(|R|+1) − |R| g − u₁)) (stratumEndpoint_shift). The cap
++    index is that of the stratum R; the translated point's own rough set is R ∪ K, and its endpoint
++    differs (control nc_union).
++  outside_V2e_A: >
++    the branches of U as cells (V2e-B), all branches with counting and J_T Gram entries (V2f),
++    certificates for P⋆ and Theorem 11.1. No Table 3 constant enters the theorems; Table 3 appears
++    only in the endpoint controls, through BGP212.Params.C.
++
++verification:
++  definitions: BGP212/Aggregate.lean
++  challenge: Challenge/Aggregate.lean
++  solution: Solution/Aggregate.lean
++  comparator_config: Comparator/aggregate_v2e.json
++  controls_script: specs/checks/aggregate_v2e_controls.py
++  roadmap: Exploratory/V2e/ROADMAP.md
++  challenge_theorems: [one_group, two_group, two_group_fin, one_group_empty, two_group_right_empty,
++    two_group_left_empty, two_group_both_empty, aggConst_zero, tri_monomial, tri_poly,
++    two_group_poly, two_group_const, aggR_shift, aggS_shift, endpoint_eq_stratum,
++    stratumEndpoint_shift, tri_cut, example_value]
++  worked_example:
++    integral: "∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] dy"
++    reduction: "R = {0}, t = (1, 0, 2): aggConst = 1 and 1/3, exponents 1 and 3; (1/3) ∫_{tri 1, u₁ ≤ 1/2} u₁ u₂³ (tri_cut)"
++    value: "19/7680 (example_value)"
++    independent_check: "direct iterated integral dy₂ dy₁ dy₀ over the simplex in exact rational arithmetic (controls script): 19/7680; uncut 1/360 = 1! 0! 2!/6! ((10.1))"
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  controls:
++    - change: "worked example equals the independently computed 19/7680"
++      result: "accepted (ok_example)"
++    - change: "worked example with aggregate exponents |ι| + Σe (the −1 dropped): 73/1720320; the uncut value 1/360"
++      result: "rejected (nc_example_nojac, nc_example_uncut)"
++    - change: "two_group_const for I = Fin 1, J = Fin 2, a = (1), b = (0, 2), R = 1: 1/360; the variant without −1: 1/20160"
++      result: "accepted (ok_const); rejected (nc_const_nojac)"
++    - change: "Table 3 piece (R, K) = ({0}, {1}), y = (1/10, 1/10, 1/20): stratum endpoint 587/1250; endpointAgg at (u₁, u₂) = (1/10, 3/20) via stratumEndpoint_shift"
++      result: "accepted (ok_stratum, ok_link)"
++    - change: "cap index and rough mass taken from R ∪ K (the translated point's own rough set): value 461/1250, claimed 587/1250"
++      result: "rejected (nc_union); its true value accepted (ok_union_value)"
++    - change: "two_group stated with u₂^{aggExp J b + 1} in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.two_group'"
++  resources:
++    new_mathlib_modules: none
++    elaboration: "Solution/Aggregate.lean about 6 s, peak 3.15 GB (the import baseline)"
++    kernel_arithmetic: "four small decide +kernel / decide evaluations (the example's constants)"
++    comparator_suite: "about 93 seconds in the build container, peak 3.16 GB"
++    disk: "about 7.4 MB of new build artefacts (olean, ilean and IR for the three Aggregate modules)"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
++    the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 93 seconds for the V2e-A comparator suite in the build container"
++  run_date: 2026-10-18
++  commit_hash: PENDING_VPS
++
++next_development:
++  V2e-B: "one branch of U (the cap branch) as polygon cells with polynomial h; generalize tri_cut"
++  V2f: "all three branches, placement counting (V2c), one J_T Gram entry at Table 3"
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 5c69320..28f1bb3 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json Comparator/gram_general_v2c.json Comparator/fibre_v2d.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json Comparator/gram_general_v2c.json Comparator/fibre_v2d.json Comparator/aggregate_v2e.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
