@@ -21,7 +21,7 @@
 \newcommand{\code}[1]{\texttt{#1}}
 \title{Exact Rational Integration over Constrained Simplices\\[4pt]\large Symmetric Polynomial Bases, Marginal Geometry, and Lean 4 Verification}
 \author{Reading Point \texorpdfstring{(\href{https://translatepi.ai/}{translatepi.ai})}{(translatepi.ai)}}
-\date{Draft v0.2 --- 18 October 2026}
+\date{Draft v0.3 --- 19 October 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -31,7 +31,7 @@ The development includes exact simplex moments, a rational polynomial subspace o
 dimension 846, cap-parametric formulas for arbitrary monomial integrals, explicit rational
 representations of associated Gram entries, a fibre decomposition for marginal
 functionals, and a two-aggregate Dirichlet integration theorem reducing weighted
-high-dimensional simplex integrals to integrals over a triangle. These statements are formalized in Lean 4 and are supported by independently
+high-dimensional simplex integrals to integrals over a triangle, and exact rational polynomial integration over truncated rectangular cells for the cap branch of the marginal endpoint. These statements are formalized in Lean 4 and are supported by independently
 replayed Comparator suites and boundary controls. The construction arose in the analysis
 of a bounded-prime-gap argument, but this manuscript concerns the integration and
 polynomial mathematics in its own right. General marginal Gram evaluations and the
@@ -283,11 +283,82 @@ fibre endpoint as
 The cap index belongs to the stratum $R$. Substituting the translated point's
 rough set $R\cup K$ instead changes the endpoint; the Table~3 control records
 the distinct values $587/1250$ and $461/1250$.
-The resulting polygon-cell integrations for general $J_T$ remain future work.
+The cap-branch polygon-cell integration is established in Section~\ref{sec:capcell}; the other endpoint branches and general $J_T$ Gram entries remain outstanding.
+
+
+\section{Polygon-cell integration and the cap branch}\label{sec:capcell}
+The two-aggregate reduction produces planar regions bounded by coordinate
+thresholds and a total-sum constraint. For real $A,B,D$ define the clipped cell
+\[
+ \mathcal B(A,B,D)=\{(u_1,u_2)\in\R^2:0\le u_1\le A,\;
+ 0\le u_2\le B,\;u_1+u_2\le D\}.
+\]
+\begin{theorem}[Exact polygon-cell moments]\label{thm:box}
+For $\alpha,\beta\in\N$, the Lebesgue integral
+\[
+ \int_{\mathcal B(A,B,D)}u_1^\alpha u_2^\beta\,du_1\,du_2
+ =\operatorname{boxVal}(A,B,D,\alpha,\beta)
+\]
+where $\operatorname{boxVal}$ is a finite closed form using polynomial
+antiderivatives. For rational $A,B,D$ its value is rational. The same
+construction gives rational integrals for arbitrary rational polynomials in
+two variables. Degenerate and empty cells are treated separately.
+\end{theorem}
+\noindent\textbf{Lean:} \code{box\_monomial}, \code{boxVal\_cast},
+\code{box\_poly}, \code{boxVal\_empty}, \code{boxVal\_nonpos},
+\code{boxVal\_rect}; \nolinkurl{Solution/CapCell.lean}.
+
+\paragraph{Proof outline.}
+Integrate first in $u_2$ with upper endpoint
+$\min(B,D-u_1)$ and split the $u_1$ interval at $D-B$. The resulting
+one-variable powers have exact polynomial antiderivatives. In particular,
+when $A+B\le D$ the diagonal constraint is redundant and the cell is a
+rectangle; the formula also covers diagonally truncated cells.
+
+\begin{theorem}[Cap-branch endpoint and piece integral]\label{thm:capbranch}
+On a translated stratum $x=y+g\mathbf1_{R\cup K}$, with
+$r=|R|$, $k=|K|$ and aggregates $u_1,u_2$ as in
+Section~\ref{sec:aggregate}, the cap branch of the fibre endpoint is
+\[
+ U=C(r+1)-rg-u_1,
+\]
+subject to its vertical and horizontal branch constraints. Combined with
+the piece constraints, the aggregate domain is a clipped cell
+$\mathcal B(A,B,D)$ with parameters determined by $g,L,\tau,C,r,k$.
+The weighted piece integrals
+\[
+ \int_{\mathrm{piece}} y^t\,\mathbf1_{\mathrm{cap}}
+ U^m\,dy
+\]
+therefore equal an explicit expression obtained from the two-aggregate
+Dirichlet constants and rational cell integral formulas.
+\end{theorem}
+\noindent\textbf{Lean:} \code{endpointAgg\_on\_capCell},
+\code{cap\_branch\_piece}, \code{cap\_branch\_r0},
+\code{cap\_inner}; \nolinkurl{Solution/CapCell.lean}.
+The formalization proves the branch classification and corresponding
+endpoint equalities. For Table 3 the $\tau$ constraint is redundant on
+the cap branch: $\tau-(L-g)=1/625>0$, and the cap cells become rectangles
+(\code{tau\_ge\_table3}, \code{capCell\_rect\_table3}).
+
+\begin{proposition}[A Table 3 cap-piece certificate]\label{prop:capcert}
+For the specified 44-coordinate piece $(R,K)=(\{0\},\varnothing)$,
+the cap-branch contribution to the integral defining $J_T(1)$ is
+\[
+ \frac{(L-C(2))^{43}\big((C(2)-g)^3-g^3\big)}{3\cdot43!}
+ \approx 1.0464\times 10^{-70}.
+\]
+\end{proposition}
+\noindent\textbf{Lean:} \code{capPieceT3\_value}
+(\nolinkurl{Solution/CapCell.lean}). This is \emph{one piece} of the
+inclusion--exclusion decomposition, not the complete value of $J_T(1)$.
+The exact rational certificate is kernel-checked. Polygon clipping and
+lower-dimensional integration provide independent numerical controls;
+the latter is an approximation, not part of the kernel proof.
 
 \section{Verification, limitations, and further mathematics}
 The project uses Lean \code{v4.34.0-rc2} and a pinned Mathlib revision
-\code{85e3a25}. At the V2e-A baseline, all 16 Comparator suites were independently
+\code{85e3a25}. At the V2e-B baseline, all 17 Comparator suites were independently
 accepted on the VPS. Four positive V2d controls were accepted; four intentionally
 incorrect controls were rejected with unsolved goals. The V2d proof commit is
 \code{52fd36a}; its published verification record is commit
@@ -296,12 +367,17 @@ For V2e-A, five positive controls were accepted and four negative controls
 were rejected. The V2e-A proof commit is \code{01644e6}, with VPS
 verification/provenance commit
 \href{https://github.com/thinkthoughts/lean-bgp212/commit/38606c0}{\code{38606c0}}.
+For V2e-B, five positive controls were accepted and five deliberately
+incorrect controls rejected; the V2e-B proof commit is
+\href{https://github.com/thinkthoughts/lean-bgp212/commit/6a21780}{\code{6a21780}},
+with verification/provenance commit
+\href{https://github.com/thinkthoughts/lean-bgp212/commit/25a7376}{\code{25a7376}}.
 The reported kernel axioms for these developments are
 \code{propext}, \code{Quot.sound}, and \code{Classical.choice}.
 Results and verification scripts are available in
 \href{https://github.com/thinkthoughts/lean-bgp212/tree/main/specs/results}{\code{specs/results}}.
 
-Further work is needed for polygon-cell integration across the branches of
+Further work is needed for the remaining $g$ and $L-S$ branches of
 the marginal endpoint, general $\JT$ Gram evaluations,
 optimized polynomial coefficients, exact variational positivity certificates, and
 remaining analytic hypotheses. The existing Lean development formalizes the
