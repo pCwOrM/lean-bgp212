@@ -2,8 +2,8 @@
 
 **Working paper:** *Exact Rational Integration over Constrained Simplices*  
 **Project:** [translatepi.ai](https://translatepi.ai/) · [Lean repository](https://github.com/thinkthoughts/lean-bgp212)  
-**Baseline:** V2e-A, proof commit [`01644e6`](https://github.com/thinkthoughts/lean-bgp212/commit/01644e6); VPS verification/provenance commit [`38606c0`](https://github.com/thinkthoughts/lean-bgp212/commit/38606c0).  
-**Verification:** 16/16 Comparator suites accepted on the VPS; V2e-A: five positive controls accepted and four negative controls rejected.  
+**Baseline:** V2e-B, [proof commit `6a21780`](https://github.com/thinkthoughts/lean-bgp212/commit/6a21780); [VPS verification/provenance commit `25a7376`](https://github.com/thinkthoughts/lean-bgp212/commit/25a7376).  
+**Verification:** 17/17 Comparator suites accepted on the VPS; V2e-B: five positive controls accepted and five negative controls rejected. Earlier V2e-A: five positive accepted and four negative rejected.  
 **Purpose:** Inventory the central mathematical statements for the paper, with source locations and explicit scope. These are independent formalization results motivated by the bounded-prime-gap argument; the unconditional bound is not claimed here.
 
 ## 1. Exact simplex moments
@@ -150,21 +150,74 @@ where `r = |R|` and `k = |K|`. The cap index comes from the **stratum `R`**, rat
 
 `tri_cut` supplies an exact closed form for an aggregate triangle cut by one coordinate threshold. This prepares the polygon-cell integrations of V2e-B; **general `J_T` Gram entries and positivity certificates are not yet proved**.
 
+## 8. Exact polygon-cell integration and the cap branch (V2e-B)
+
+**Lean:** `box_monomial`, `box_capPow`, `box_poly`, `cap_branch_piece`, `cap_branch_r0` — `Solution/CapCell.lean`  
+**Geometry and endpoint:** `endpointAgg_cap`, `endpointAgg_on_capCell`, `cap_inner`, `capCell_rect_table3` — `Solution/CapCell.lean`  
+**Definitions:** `boxTri`, `boxVal`, `capPowVal`, `capCell` — `BGP212/CapCell.lean`
+
+For real cell parameters `A`, `B`, `D`, define the capped triangle
+
+$$
+\mathrm{boxTri}(A,B,D)=\{(u_1,u_2):0\le u_1\le A,\ 0\le u_2\le B,\ u_1+u_2\le D\}.
+$$
+
+For natural exponents `α`, `β`, the Lean theorem `box_monomial` identifies its Lebesgue monomial integral with the finite closed form `boxVal`:
+
+$$
+\int_{\mathrm{boxTri}(A,B,D)}u_1^\alpha u_2^\beta\,du_1\,du_2
+=\mathrm{boxVal}(A,B,D,\alpha,\beta).
+$$
+
+The formula splits the first-coordinate interval at
+
+$$
+E=\max(0,\min(A,D-B)),\qquad F=\max(0,\min(A,D)),
+$$
+
+and evaluates the resulting polynomial integrals explicitly; its rational specialization is computable over `ℚ`. Related theorems cover rational bivariate polynomials (`box_poly`), powers `(a-u₁)^m` (`box_capPow`), empty or degenerate cells (`boxVal_empty`, `boxVal_nonpos`), and the rectangle case (`boxVal_rect`).
+
+**Cap-branch geometry.** On V2e-A's translated piece, let `r = |R|`, `k = |K|`, and let `u₁,u₂` denote the two aggregate coordinate sums. The cap branch of the fibre endpoint is
+
+$$
+U=C(r+1)-rg-u_1
+$$
+
+on the cell specified by the vertical and horizontal inequalities
+
+$$
+u_1\le C(r+1)-(r+1)g,\qquad u_2\le L-kg-C(r+1),
+$$
+
+together with the translated piece constraints. Theorems `endpointAgg_on_capCell`, `cap_inner` and `cap_branch_piece` give the endpoint identity, polynomial inner integral and the exact weighted piece integral via `two_group_fin`. `cap_branch_r0` treats the empty-rough-stratum case.
+
+**Table 3 simplification.** On the cap branch, `S ≤ L-g`; at Table 3, `τ-(L-g)=1/625 > 0`. Consequently the total-mass cut is inactive there, and `capCell_rect_table3` proves that each Table 3 cap cell is a rectangle. The fact that only **59** `(r,k)` cardinality classes contribute is an *exploratory exact enumeration*, not a general kernel-checked count. The particular emptiness result for `r=1`, `k≥7` is kernel-checked.
+
+**Worked rational certificate.** `capPieceT3_value` proves that the cap-branch contribution from the single Table 3 piece `(R,K)=({0},∅)` to the squared-fibre integrand for `J_T(1)` equals
+
+$$
+\frac{(L-C(2))^{43}\bigl((C(2)-g)^3-g^3\bigr)}{3\cdot43!}
+\approx1.0464\times10^{-70}.
+$$
+
+This is **one piece** of the inclusion–exclusion decomposition, **not** the complete value of `J_T(1)` or a general `J_T` Gram entry. The remaining endpoint branches, their assembly, and variational positivity are separate obligations (V2f).
+
 ## Formal verification and provenance
 
 - **Source:** [`thinkthoughts/lean-bgp212`](https://github.com/thinkthoughts/lean-bgp212)
 - **V2d:** proof commit `52fd36a`; provenance commit `90055db`.
 - **V2e-A:** [proof commit `01644e6`](https://github.com/thinkthoughts/lean-bgp212/commit/01644e6); [VPS provenance commit `38606c0`](https://github.com/thinkthoughts/lean-bgp212/commit/38606c0).
+- **V2e-B:** [proof commit `6a21780`](https://github.com/thinkthoughts/lean-bgp212/commit/6a21780); [VPS provenance commit `25a7376`](https://github.com/thinkthoughts/lean-bgp212/commit/25a7376).
 - **Toolchain:** Lean `v4.34.0-rc2`; mathlib pinned at `85e3a25` (see repository result YAML files).
-- **VPS:** 16/16 Comparator suites accepted. V2d: four positive controls accepted and four negative controls rejected; V2e-A: five positive controls accepted and four negative controls rejected.
-- **Trusted axioms reported for V2d and V2e-A:** `propext`, `Quot.sound`, `Classical.choice`.
+- **VPS:** 17/17 Comparator suites accepted. V2d: four positive controls accepted and four negative controls rejected; V2e-A: five positive accepted and four negative rejected; V2e-B: five positive accepted and five negative rejected.
+- **Trusted axioms reported for V2d, V2e-A and V2e-B:** `propext`, `Quot.sound`, `Classical.choice`.
 - **Result records:** [`specs/results`](https://github.com/thinkthoughts/lean-bgp212/tree/main/specs/results).
 
 ## Beyond the current theorems
 
 The following are **outstanding**, not conclusions of this inventory:
 
-1. Polygon-cell integration for the endpoint branches and general `J_T` evaluation (V2e-B/V2f). The two-aggregate Dirichlet identity (V2e-A) is proved.
+1. Integration and assembly of the remaining `g` and `L − S` endpoint branches, including general `J_T` Gram evaluation (V2f). The cap branch (V2e-B) and two-aggregate Dirichlet identity (V2e-A) are proved.
 2. Exact optimized polynomial coefficient data and direct positivity certificates.
 3. Remaining analytic/variational hypotheses needed for `DHL[45,2]`.
 
