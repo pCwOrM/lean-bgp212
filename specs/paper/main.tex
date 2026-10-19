@@ -1,0 +1,251 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=27mm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{microtype}
+\usepackage{xcolor,hyperref}
+\hypersetup{colorlinks=true,urlcolor=blue!55!black,linkcolor=blue!40!black,citecolor=blue!55!black}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{definition}[theorem]{Definition}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\IT}{I_T}
+\newcommand{\JT}{J_T}
+\newcommand{\support}{\operatorname{supportT}}
+\newcommand{\gram}{\operatorname{gramGen}}
+\newcommand{\code}[1]{\texttt{#1}}
+\title{Exact Rational Integration over Constrained Simplices\\[4pt]\large Symmetric Polynomial Bases, Marginal Geometry, and Lean 4 Verification}
+\author{Reading Point \texorpdfstring{(\href{https://translatepi.ai/}{translatepi.ai})}{(translatepi.ai)}}
+\date{Draft v0.1 --- 18 October 2026}
+\begin{document}
+\maketitle
+\begin{abstract}
+We present a formalized collection of integration identities for polynomial weights on
+simplexes constrained by coordinate thresholds and cardinality-dependent caps.
+The development includes exact simplex moments, a rational polynomial subspace of
+dimension 846, cap-parametric formulas for arbitrary monomial integrals, explicit rational
+representations of associated Gram entries, and a fibre decomposition for marginal
+functionals. These statements are formalized in Lean 4 and are supported by independently
+replayed Comparator suites and boundary controls. The construction arose in the analysis
+of a bounded-prime-gap argument, but this manuscript concerns the integration and
+polynomial mathematics in its own right. General marginal Gram evaluations and the
+remaining variational and analytic obligations lie outside the completed results.
+\end{abstract}
+
+\section{Introduction and scope}
+Exact integration on constrained regions is useful where a variational inequality must
+ultimately be checked using rational arithmetic. A conventional simplex has a closed
+monomial moment formula; the present support also depends on which coordinates cross a
+threshold and on a cap for the sum of those coordinates. This introduces a finite
+stratification, but preserves a route to exact, rational expressions.
+
+We study the mathematical constructions implemented in the public Lean repository
+\href{https://github.com/thinkthoughts/lean-bgp212}{\code{thinkthoughts/lean-bgp212}}.
+The motivating bounded-prime-gap argument originates with Axiom Math
+\cite{axiom}; the statements below are an independent formalization of specified
+components and do not amount to a complete formal proof of the unconditional
+prime-gap bound. References to Lean declarations are included to delimit precisely
+what has been checked. The short arguments given here are \emph{proof outlines}, not
+substitutes for the complete Lean proof terms.
+
+\section{Polynomial moments on a simplex}
+\begin{definition}
+For $m\in\N$ and $R\in\R$, define
+\[
+ \Delta_m(R)=\left\{x\in\R^m: x_i\ge 0\ \text{for all }i,
+ \quad\sum_{i=1}^m x_i\le R\right\}.
+\]
+\end{definition}
+\begin{theorem}[Simplex monomial moments]\label{thm:simplex}
+For $m\in\N$, $R\ge0$, and $e\in\N^m$,
+\[
+ \int_{\Delta_m(R)}\prod_{i=1}^{m}x_i^{e_i}\,dx
+ =\frac{R^{m+\sum_i e_i}\prod_i(e_i!)}{(m+\sum_i e_i)!}.
+\]
+Here the dimension-zero case uses the corresponding Lean integral convention.
+\end{theorem}
+\noindent\textbf{Lean:} \code{simplex\_integral}; definitions \code{simplex}, \code{momentR}.\\
+\textit{Source:} \nolinkurl{Solution/SimplexMoment.lean:160}.
+
+\paragraph{Proof outline.}
+Induct on dimension and use Fubini to isolate a coordinate. The inner integral is a
+Beta integral; the factorial expression then simplifies by induction. The formal
+development additionally treats negative and zero radii, simplex volume, and
+rational-polynomial integrals (\code{poly\_integral}).
+
+\section{An indexed rational polynomial space}
+Consider rational polynomials in 45 coordinates. Write $P_j$ for the $j$th power sum,
+$P_{\lambda}$ for the product over parts of a multiset $\lambda$, and set
+\[
+ G_{a,\lambda}=(L-P_1)^aP_{\lambda},\qquad
+ \lambda\text{ has positive even parts},\quad a+|\lambda|\le21.
+\]
+The index type $B_{21}\mathrm{Idx}$ enumerates the admissible pairs.
+\begin{theorem}[Independence and rank]\label{thm:basis}
+The indexed family $G_{a,\lambda}$ is linearly independent over $\Q$. Its rational span
+$B_{21}$ has
+\[
+ \dim_{\Q}B_{21}=846.
+\]
+\end{theorem}
+\noindent\textbf{Lean:} \code{genIdx\_linearIndependent},
+\code{finrank\_B21} (\nolinkurl{Solution/Variational.lean:398,410}).
+
+\paragraph{Proof outline.}
+The indexing is injective; distinct indexed monomials are linearly independent.
+Injective polynomial transformations preserve this independence. A separate count
+establishes $|B_{21}\mathrm{Idx}|=846$, and the span-rank identity gives the result.
+The theorem concerns this designated subspace, not the full polynomial ring.
+
+\section{Cap-constrained supports and general integrals}
+Let $N\in\N$, $g\ge0$, $L\in\R$, and $C:\N\to\R$. For $x\in\R^N$ write
+\[
+ R_g(x)=\{i:x_i>g\},\qquad s_g(x)=|R_g(x)|,\qquad
+ \rho_g(x)=\sum_{i\in R_g(x)}x_i.
+\]
+Define the capped simplex support
+\begin{equation}\label{eq:support}
+ T(N,g,L,C)=\left\{x\in\R^N:x_i\ge0,\quad
+ \sum_i x_i\le L,\quad \rho_g(x)\le C(s_g(x))\right\}.
+\end{equation}
+\begin{theorem}[General monomial integral]\label{thm:general}
+For $N\in\N$, $g\ge0$, $L\in\R$, $C:\N\to\R$, $e\in\N^N$, and $p\in\N$,
+\begin{equation}\label{eq:gram}
+ \int_{T(N,g,L,C)}\left(L-\sum_i x_i\right)^p
+ \prod_i x_i^{e_i}\,dx
+ =\gram(N,g,L,C,e,p).
+\end{equation}
+The right-hand side is the explicit, finite expression defined in Lean.
+\end{theorem}
+\noindent\textbf{Lean:} \code{integral\_supportT\_gen}; \code{gramGen}.\\
+\textit{Sources:} \nolinkurl{Solution/GramGeneral.lean:344};\\
+\nolinkurl{BGP212/GramGeneral.lean}.
+
+\paragraph{Proof outline.}
+Stratify by the rough-coordinate set, apply inclusion--exclusion to threshold
+conditions, and translate the resulting pieces to weighted simplexes. Use
+Theorem~\ref{thm:simplex} and Fubini to evaluate the polynomial weights.
+Placement-counting identities \code{sig\_insert}, \code{sig\_union}, and
+\code{sig\_card} reduce the sums to the finite closed form. The reduction
+\code{gramGen\_extend} transports calculation to the coordinates having nonzero
+exponents. This is an algebraic efficiency result, not a claim that all entries are
+computationally cheap to certify.
+
+\section{Rational Gram representations}
+Specialize to the fixed rational cap values and support parameters of Table 3 in
+\cite{axiom}, with $N=45$. For indices $i,j\in B_{21}\mathrm{Idx}$ define
+\[
+ \IT(i,j)=\int_T G_i(x)G_j(x)\,dx.
+\]
+\begin{theorem}[Explicit rational representation]\label{thm:rational}
+For every $i,j\in B_{21}\mathrm{Idx}$, $\IT(i,j)$ equals the real embedding of a
+finite rational sum indexed by placements $\varphi$ of the combined power-sum parts:
+\[
+ \IT(i,j)=\left(\sum_{\varphi}
+ \gram_{\Q}\bigl(45,g,L,C,e_{\varphi},a_i+a_j\bigr)\right)_{\R}.
+\]
+Here $e_{\varphi}$ is the exponent vector obtained from the placement, exactly as
+specified by \code{expo} in the Lean source.
+\end{theorem}
+\noindent\textbf{Lean:} \code{gram\_entry\_B21\_rat}
+(\nolinkurl{Solution/GramGeneral.lean:522});
+\code{gram\_entry\_gen\_list} and \code{gram\_entry\_example}.
+
+The theorem gives each entry an explicit rational representation; it does not
+supply an evaluated and certified $846\times846$ matrix. One worked entry,
+corresponding to $(L-P_1)P_2^2$, has its value certified using a collection of
+small exact rational lemmas. This separation between an algebraic identity and
+its numerical certificate is important to reproducibility.
+
+\section{Marginal-fibre geometry}
+Let $\widehat x\in\R^n$ and append $u\in\R$ as the last coordinate. Define
+$S=\sum_i\widehat x_i$, $s=s_g(\widehat x)$,
+$\rho_1=\rho_g(\widehat x)$, and
+\[
+ \widehat T=\{\widehat x\ge0:S\le\tau,\ \rho_1\le C(s)\},
+ \quad U(\widehat x)=\min\!\left\{L-S,\max\bigl(g,C(s+1)-\rho_1\bigr)\right\}.
+\]
+\begin{theorem}[Fibre equivalence]\label{thm:fibre}
+Suppose $g\ge0$, $\tau\le L$, and $\widehat x\in\widehat T$. Then for every
+$u\in\R$,
+\[
+ (\widehat x,u)\in T(n+1,g,L,C)
+ \quad\Longleftrightarrow\quad 0\le u\le U(\widehat x).
+\]
+\end{theorem}
+\noindent\textbf{Lean:} \code{fibre\_equiv}
+(\nolinkurl{Solution/Fibre.lean:115}).
+
+\paragraph{Proof outline.}
+Appending $u$ leaves the rough set unchanged for $u\le g$, and increments both
+rough count and rough mass for $u>g$. Combining the resulting cap inequality with
+$S+u\le L$ identifies the minimum--maximum endpoint exactly.
+The empty-fibre theorem for cap-violating outer coordinates additionally needs
+$C(m+1)\le C(m)+g$ for $m\ge1$, and $C(0)\ge0$. No constraint on the step
+$m=0$ is assumed; the relevant Table 3 facts are checked in Lean.
+
+\begin{theorem}[Marginal identity]\label{thm:marginal}
+Assume $g\ge0$, $\tau\le L$, $C(0)\ge0$, and
+$C(m+1)\le C(m)+g$ for every $m\ge1$. For continuous $P$,
+\[
+ \operatorname{marginalJ}(n,g,L,\tau,C,P)
+ =\JT(n,g,L,\tau,C,P).
+\]
+The right-hand functional integrates the squared fibre integral over $\widehat T$.
+\end{theorem}
+\noindent\textbf{Lean:} \code{marginal\_agrees}
+(\nolinkurl{Solution/Fibre.lean:217}).
+
+\begin{proposition}[Polynomial inner integral]\label{prop:inner}
+For arbitrary $U,M\in\R$ and $p,t\in\N$,
+\[
+ \int_0^U(M-u)^pu^t\,du
+ =\sum_{j=0}^p\binom pj M^{p-j}(-1)^j
+ \frac{U^{t+j+1}}{t+j+1}.
+\]
+\end{proposition}
+\noindent\textbf{Lean:} \code{inner\_integral}
+(\nolinkurl{Solution/Fibre.lean:240}). The equality follows by expanding the
+binomial and integrating each power. It holds for arbitrary real $U$ under the
+oriented interval-integral convention.
+
+\section{Verification, limitations, and further mathematics}
+The project uses Lean \code{v4.34.0-rc2} and a pinned Mathlib revision
+\code{85e3a25}. At the V2d baseline, 15 Comparator suites were independently
+accepted on the VPS. Four positive V2d controls were accepted; four intentionally
+incorrect controls were rejected with unsolved goals. The V2d proof commit is
+\code{52fd36a}; its published verification record is commit
+\href{https://github.com/thinkthoughts/lean-bgp212/commit/90055db}{\code{90055db}}.
+The reported kernel axioms for the V2d development are
+\code{propext}, \code{Quot.sound}, and \code{Classical.choice}.
+Results and verification scripts are available in
+\href{https://github.com/thinkthoughts/lean-bgp212/tree/main/specs/results}{\code{specs/results}}.
+
+Further work is needed for aggregate Dirichlet integrals over functions of two group
+sums, all branches of the marginal endpoint, general $\JT$ Gram evaluations,
+optimized polynomial coefficients, exact variational positivity certificates, and
+remaining analytic hypotheses. The existing Lean development formalizes the
+\emph{conditional} implication $\mathrm{DHL}[45,2]\Rightarrow H_1\le212$;
+this manuscript does not claim an unconditional formal proof of $H_1\le212$.
+
+\section*{Acknowledgment and provenance}
+The bounded-prime-gap application is motivated by Axiom Math's mathematical argument
+\cite{axiom}. This manuscript records an independent Lean formalization of the
+specified results, with theorem names and commit identifiers to support reproducible
+review. Substantive exposition and attribution will be expanded in a subsequent draft.
+
+\begin{thebibliography}{9}
+\bibitem{axiom}
+Axiom Math, \emph{A New Bound for Small Gaps Between Primes}, preliminary draft,
+3 September 2026. Project page:
+\url{https://primegaps.axiommath.ai/}.
+\bibitem{leanrepo}
+Reading Point, \emph{lean-bgp212}: Lean source, verification records, and certificates.
+\url{https://github.com/thinkthoughts/lean-bgp212}.
+\end{thebibliography}
+\end{document}
