@@ -13,3 +13,4 @@ import Challenge.SimplexMoment
 import Challenge.GramEntry
 import Challenge.GramGeneral
 import Challenge.Fibre
+import Challenge.Aggregate

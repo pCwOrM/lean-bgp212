@@ -14,3 +14,4 @@ import BGP212.SimplexMoment
 import BGP212.GramEntry
 import BGP212.GramGeneral
 import BGP212.Fibre
+import BGP212.Aggregate

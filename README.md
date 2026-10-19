@@ -228,6 +228,23 @@ The fifteenth pair is V2d (`Challenge/Fibre.lean`, `Solution/Fibre.lean`, object
 - `inner_integral`: `∫₀^U (M − u)^p u^t du` in closed form, the first block of the `J_T` bridge.
 - `v2d_spec_discharged`: all seven specification statements, including the Table 3 instances.
 
+The sixteenth pair is V2e-A (`Challenge/Aggregate.lean`, `Solution/Aggregate.lean`, objects in
+`BGP212/Aggregate.lean`): **two-aggregate Dirichlet integration**. With
+`aggExp ι e = |ι| + Σ eᵢ − 1` and `aggConst ι e = ∏ eᵢ! / (aggExp ι e)!`:
+
+- `one_group`: `∫_{z ≥ 0, Σ z ≤ R} zᵉ h(Σ z) = aggConst ι e · ∫_{[0, R]} s^{aggExp ι e} h(s)` for a
+  nonempty group and `h` measurable and bounded on `[0, R]` (shear `s = Σ z`, Fubini, V2b's
+  weighted simplex moment on each slice).
+- `two_group`, `two_group_fin`: two groups with sums `u₁`, `u₂` reduce to the triangle
+  `{u₁, u₂ ≥ 0, u₁ + u₂ ≤ R}` with weight `u₁^{aggExp I a} u₂^{aggExp J b}`; on `Fin N` the groups
+  are a rough set `R` and its complement (`u₁ = aggR R y`, `u₂ = aggS R y`).
+- Boundary cases (empty groups, zero exponents, `R < 0`), rational polynomial specializations
+  (`tri_poly`, `two_group_poly`, via V1's Lemma 10.1) and consistency with (10.1) (`two_group_const`).
+- `stratumEndpoint_shift`: on V2b's piece `x = y + g·1_{R ∪ K}` the endpoint of Lemma 9.2 (cap index
+  from the stratum `R`) is `endpointAgg` at `(u₁, u₂)`: rough mass `|R| g + u₁`, remaining mass
+  `|K| g + u₂`.
+- `example_value`: `∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] = 19/7680` through the theorem.
+
 ## What is proved, imported, and external
 
 - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
@@ -238,7 +255,8 @@ The fifteenth pair is V2d (`Challenge/Fibre.lean`, `Solution/Fibre.lean`, object
   W-trick step of Lemma 4.9 (B3); `dim B₂₁ = 846` (V0); the simplex moment identity (10.1) (V1); the Gram entry
   `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b); every monomial
   integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
-  (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d).
+  (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d);
+  two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A).
 - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
@@ -335,6 +353,13 @@ For V2d's controls:
 ```text
 python3 -I specs/checks/fibre_v2d_controls.py /tmp/v2d_ctl
 for f in /tmp/v2d_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+```
+
+For V2e-A's controls:
+
+```text
+python3 -I specs/checks/aggregate_v2e_controls.py /tmp/v2e_ctl
+for f in /tmp/v2e_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
 ```
 
 `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.

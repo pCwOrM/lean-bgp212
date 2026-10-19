@@ -1,0 +1,98 @@
+# Result record: sixteenth Challenge/Solution pair (V2e-A, two-aggregate Dirichlet integration)
+
+identity:
+  id: V2e-A
+  statement: "∫_{y ≥ 0, Σ y ≤ M} yᵗ h(Σ_R y, Σ_{Rᶜ} y) dy = aggConst R t · aggConst Rᶜ t · ∫_{u₁, u₂ ≥ 0, u₁ + u₂ ≤ M} u₁^{|R| + Σ_R t − 1} u₂^{|Rᶜ| + Σ_{Rᶜ} t − 1} h(u₁, u₂), for h measurable and bounded on the triangle; on V2b's piece x = y + g·1_{R∪K} the endpoint of Lemma 9.2 (cap index from the stratum R) is a function of (u₁, u₂)"
+  source: "Source/bgp212.pdf: §9.4, Lemma 9.2 and the display of J_T (p. 41), (10.1), Lemma 10.1, Proposition 10.2 (pp. 41–42)"
+  builds_on: "V2d (endpoint, roughCount, roughMass, inner_integral), V2b (simplexF, shiftV, weighted_simplexF, split_sums, sum_shiftV, sum_add_shiftV), V1 (simplex, simplex_integral, poly_integral, polyIntegralQ); A0–V2d unchanged"
+
+state:
+  mathematical: proved
+  computational: "kernel-verified (small decide +kernel constants in the worked example only)"
+  provenance: pinned
+  publication: draft
+
+scope:
+  proved: >
+    core_integral (shear s = Σ w + x, Fubini, V2b's weighted simplex moment per slice),
+    one_group (any nonempty group), two_group (two groups, the triangle), two_group_fin (rough set R
+    and complement on Fin N), one_group_empty, two_group_right_empty, two_group_left_empty,
+    two_group_both_empty, aggConst_zero, tri_eq_empty, quad_eq_empty, tri_eq_simplex, tri_monomial,
+    tri_poly, two_group_poly (rational value for polynomial h), two_group_const (consistency with
+    (10.1)), aggR_shift, aggS_shift, endpoint_eq_stratum, stratumEndpoint_shift, tri_cut,
+    example_value.
+  assumptions: >
+    h : ℝ × ℝ → ℝ (or ℝ → ℝ for one group) measurable with |h| ≤ B on the triangle (resp. on
+    [0, R]); groups nonempty in the main theorems, empty groups in the boundary theorems;
+    R ≥ 0 only where a Dirac value is taken (empty groups) or a closed form is evaluated.
+  unproved_assumptions: "none (axioms: propext, Quot.sound, Classical.choice)"
+  aggregate_correspondence: >
+    On V2b's translated piece x = y + g·1_{R∪K} (R, K disjoint): u₁ = Σ_R y and u₂ = Σ_{Rᶜ} y,
+    rough mass ρ₁ = |R| g + u₁ (aggR_shift), remaining mass S − ρ₁ = |K| g + u₂ (aggS_shift), and
+    U = min(L − (|R|+|K|) g − u₁ − u₂, max(g, C(|R|+1) − |R| g − u₁)) (stratumEndpoint_shift). The cap
+    index is that of the stratum R; the translated point's own rough set is R ∪ K, and its endpoint
+    differs (control nc_union).
+  outside_V2e_A: >
+    the branches of U as cells (V2e-B), all branches with counting and J_T Gram entries (V2f),
+    certificates for P⋆ and Theorem 11.1. No Table 3 constant enters the theorems; Table 3 appears
+    only in the endpoint controls, through BGP212.Params.C.
+
+verification:
+  definitions: BGP212/Aggregate.lean
+  challenge: Challenge/Aggregate.lean
+  solution: Solution/Aggregate.lean
+  comparator_config: Comparator/aggregate_v2e.json
+  controls_script: specs/checks/aggregate_v2e_controls.py
+  roadmap: Exploratory/V2e/ROADMAP.md
+  challenge_theorems: [one_group, two_group, two_group_fin, one_group_empty, two_group_right_empty,
+    two_group_left_empty, two_group_both_empty, aggConst_zero, tri_monomial, tri_poly,
+    two_group_poly, two_group_const, aggR_shift, aggS_shift, endpoint_eq_stratum,
+    stratumEndpoint_shift, tri_cut, example_value]
+  worked_example:
+    integral: "∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] dy"
+    reduction: "R = {0}, t = (1, 0, 2): aggConst = 1 and 1/3, exponents 1 and 3; (1/3) ∫_{tri 1, u₁ ≤ 1/2} u₁ u₂³ (tri_cut)"
+    value: "19/7680 (example_value)"
+    independent_check: "direct iterated integral dy₂ dy₁ dy₀ over the simplex in exact rational arithmetic (controls script): 19/7680; uncut 1/360 = 1! 0! 2!/6! ((10.1))"
+  axioms_used: [propext, Quot.sound, Classical.choice]
+  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
+  controls:
+    - change: "worked example equals the independently computed 19/7680"
+      result: "accepted (ok_example)"
+    - change: "worked example with aggregate exponents |ι| + Σe (the −1 dropped): 73/1720320; the uncut value 1/360"
+      result: "rejected (nc_example_nojac, nc_example_uncut)"
+    - change: "two_group_const for I = Fin 1, J = Fin 2, a = (1), b = (0, 2), R = 1: 1/360; the variant without −1: 1/20160"
+      result: "accepted (ok_const); rejected (nc_const_nojac)"
+    - change: "Table 3 piece (R, K) = ({0}, {1}), y = (1/10, 1/10, 1/20): stratum endpoint 587/1250; endpointAgg at (u₁, u₂) = (1/10, 3/20) via stratumEndpoint_shift"
+      result: "accepted (ok_stratum, ok_link)"
+    - change: "cap index and rough mass taken from R ∪ K (the translated point's own rough set): value 461/1250, claimed 587/1250"
+      result: "rejected (nc_union); its true value accepted (ok_union_value)"
+    - change: "two_group stated with u₂^{aggExp J b + 1} in the Challenge"
+      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.two_group'"
+  resources:
+    new_mathlib_modules: none
+    elaboration: "Solution/Aggregate.lean about 6 s, peak 3.15 GB (the import baseline)"
+    kernel_arithmetic: "four small decide +kernel / decide evaluations (the example's constants)"
+    comparator_suite: "about 93 seconds in the build container, peak 3.16 GB"
+    disk: "about 7.4 MB of new build artefacts (olean, ilean and IR for the three Aggregate modules)"
+  sandbox: >
+    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
+    the real landrun sandbox is recorded below.
+
+result:
+  toolchain: leanprover/lean4:v4.34.0-rc2
+  mathlib: 85e3a25
+  comparator: leanprover/comparator @ c78dd72
+  lean4export: leanprover/lean4export @ 483e011
+  output_tail:
+    - "Running Lean default kernel on solution."
+    - "Lean default kernel accepts the solution"
+    - "Your solution is okay!"
+  verify_time: "about 93 seconds for the V2e-A comparator suite in the build container"
+  run_date: 2026-10-18
+  commit_hash: PENDING_VPS
+
+next_development:
+  V2e-B: "one branch of U (the cap branch) as polygon cells with polynomial h; generalize tri_cut"
+  V2f: "all three branches, placement counting (V2c), one J_T Gram entry at Table 3"
+
+footer: Admissible generalizations trail leading specifications.

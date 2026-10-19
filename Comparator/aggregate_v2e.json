@@ -1,0 +1,50 @@
+{
+    "challenge_module": "Challenge.Aggregate",
+    "solution_module": "Solution.Aggregate",
+    "theorem_names": [
+        "BGP212.Challenge.one_group",
+        "BGP212.Challenge.two_group",
+        "BGP212.Challenge.two_group_fin",
+        "BGP212.Challenge.one_group_empty",
+        "BGP212.Challenge.two_group_right_empty",
+        "BGP212.Challenge.two_group_left_empty",
+        "BGP212.Challenge.two_group_both_empty",
+        "BGP212.Challenge.aggConst_zero",
+        "BGP212.Challenge.tri_monomial",
+        "BGP212.Challenge.tri_poly",
+        "BGP212.Challenge.two_group_poly",
+        "BGP212.Challenge.two_group_const",
+        "BGP212.Challenge.aggR_shift",
+        "BGP212.Challenge.aggS_shift",
+        "BGP212.Challenge.endpoint_eq_stratum",
+        "BGP212.Challenge.stratumEndpoint_shift",
+        "BGP212.Challenge.tri_cut",
+        "BGP212.Challenge.example_value"
+    ],
+    "definition_names": [
+        "BGP212.V2e.aggExp",
+        "BGP212.V2e.aggConst",
+        "BGP212.V2e.aggConstQ",
+        "BGP212.V2e.quad",
+        "BGP212.V2e.tri",
+        "BGP212.V2e.aggR",
+        "BGP212.V2e.aggS",
+        "BGP212.V2e.endpointAgg",
+        "BGP212.V2e.stratumEndpoint",
+        "BGP212.V2e.exampleLHS",
+        "BGP212.Gram.simplexF",
+        "BGP212.Gram.shiftV",
+        "BGP212.Gram.roughSet",
+        "BGP212.V2d.roughCount",
+        "BGP212.V2d.roughMass",
+        "BGP212.V2d.endpoint",
+        "BGP212.Var.expList",
+        "BGP212.Var.polyIntegralQ",
+        "BGP212.Var.simplexMoment"
+    ],
+    "permitted_axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+    ]
+}
