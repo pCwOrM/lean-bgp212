@@ -21,7 +21,7 @@
 \newcommand{\code}[1]{\texttt{#1}}
 \title{Exact Rational Integration over Constrained Simplices\\[4pt]\large Symmetric Polynomial Bases, Marginal Geometry, and Lean 4 Verification}
 \author{Reading Point \texorpdfstring{(\href{https://translatepi.ai/}{translatepi.ai})}{(translatepi.ai)}}
-\date{Draft v0.1 --- 18 October 2026}
+\date{Draft v0.2 --- 18 October 2026}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -29,8 +29,9 @@ We present a formalized collection of integration identities for polynomial weig
 simplexes constrained by coordinate thresholds and cardinality-dependent caps.
 The development includes exact simplex moments, a rational polynomial subspace of
 dimension 846, cap-parametric formulas for arbitrary monomial integrals, explicit rational
-representations of associated Gram entries, and a fibre decomposition for marginal
-functionals. These statements are formalized in Lean 4 and are supported by independently
+representations of associated Gram entries, a fibre decomposition for marginal
+functionals, and a two-aggregate Dirichlet integration theorem reducing weighted
+high-dimensional simplex integrals to integrals over a triangle. These statements are formalized in Lean 4 and are supported by independently
 replayed Comparator suites and boundary controls. The construction arose in the analysis
 of a bounded-prime-gap argument, but this manuscript concerns the integration and
 polynomial mathematics in its own right. General marginal Gram evaluations and the
@@ -214,20 +215,94 @@ For arbitrary $U,M\in\R$ and $p,t\in\N$,
 binomial and integrating each power. It holds for arbitrary real $U$ under the
 oriented interval-integral convention.
 
+\section{Two-aggregate Dirichlet integration}\label{sec:aggregate}
+Let $I$ and $J$ be disjoint, nonempty finite coordinate groups, with exponent
+vectors $a\in\N^I$ and $b\in\N^J$. For a nonempty finite group $G$ and an
+exponent vector $e$, define
+\[
+ \alpha_G(e)=|G|+\sum_{i\in G}e_i-1,\qquad
+ A_G(e)=\frac{\prod_{i\in G}(e_i!)}{\alpha_G(e)!}.
+\]
+Write $\Delta_{I\sqcup J}(M)$ for the nonnegative simplex with total coordinate
+sum at most $M$, and
+\[
+ \Delta_2(M)=\{(u_1,u_2)\in\R_{\ge0}^2:u_1+u_2\le M\}.
+\]
+\begin{theorem}[Two-aggregate Dirichlet integration]\label{thm:aggregate}
+Suppose $I$ and $J$ are nonempty, and $h:\R^2\to\R$ is measurable and
+bounded on $\Delta_2(M)$. With $u_1=\sum_{i\in I}y_i$ and
+$u_2=\sum_{j\in J}y_j$, the weighted simplex integral satisfies
+\begin{align}\label{eq:twoagg}
+ &\int_{\Delta_{I\sqcup J}(M)}
+   \left(\prod_{i\in I}y_i^{a_i}\right)
+   \left(\prod_{j\in J}y_j^{b_j}\right)
+   h(u_1,u_2)\,dy \notag\\
+ &\qquad=A_I(a)A_J(b)
+   \int_{\Delta_2(M)} u_1^{\alpha_I(a)}u_2^{\alpha_J(b)}
+   h(u_1,u_2)\,du_1\,du_2.
+\end{align}
+The formalization also gives the version on $\mathrm{Fin}\,N$ for a rough
+coordinate set and its complement.
+\end{theorem}
+\noindent\textbf{Lean:} \code{two\_group}, \code{two\_group\_fin},
+\code{one\_group}; \nolinkurl{Solution/Aggregate.lean}. The theorem is proved
+for the corresponding measurable, bounded integrands; separate theorems handle
+empty groups and other boundary cases.
+
+\paragraph{Proof outline.}
+Use Fubini and a sum-coordinate shear to isolate the total in one group;
+apply the weighted simplex moment calculation to the corresponding slices.
+Repeat for the second group. The factors $A_I,A_J$ record the Dirichlet
+normalizations; in particular the $-1$ in each aggregate exponent is essential.
+The polynomial cases \code{tri\_poly} and \code{two\_group\_poly} yield
+explicit rational expressions, and \code{two\_group\_const} recovers the
+simplex moment formula when $h=1$.
+
+\begin{proposition}[A cut-triangle certificate]\label{prop:aggregate-example}
+With $y=(y_0,y_1,y_2)$, the exact value is
+\[
+ \int_{\substack{y_i\ge0,\;y_0+y_1+y_2\le1\\y_0\le 1/2}}
+ y_0y_2^2\,dy=\frac{19}{7680}.
+\]
+\end{proposition}
+\noindent\textbf{Lean:} \code{tri\_cut}, \code{example\_value}
+(\nolinkurl{Solution/Aggregate.lean}). The certificate reduces this integral
+to $\tfrac13\int_{\Delta_2(1),\,u_1\le1/2}u_1u_2^3\,du_1du_2$;
+the value has also been cross-checked by direct rational integration.
+
+\paragraph{Connection to marginal geometry.}
+On the translated stratum $x=y+g\mathbf 1_{R\cup K}$, define
+$u_1=\sum_{i\in R}y_i$ and $u_2=\sum_{i\notin R}y_i$.
+The proved correspondence \code{stratumEndpoint\_shift} expresses the
+fibre endpoint as
+\[
+ U=\min\!\left(L-(r+k)g-u_1-u_2,\;
+ \max\bigl(g,C(r+1)-rg-u_1\bigr)\right),
+ \qquad r=|R|,\;k=|K|.
+\]
+The cap index belongs to the stratum $R$. Substituting the translated point's
+rough set $R\cup K$ instead changes the endpoint; the Table~3 control records
+the distinct values $587/1250$ and $461/1250$.
+The resulting polygon-cell integrations for general $J_T$ remain future work.
+
 \section{Verification, limitations, and further mathematics}
 The project uses Lean \code{v4.34.0-rc2} and a pinned Mathlib revision
-\code{85e3a25}. At the V2d baseline, 15 Comparator suites were independently
+\code{85e3a25}. At the V2e-A baseline, all 16 Comparator suites were independently
 accepted on the VPS. Four positive V2d controls were accepted; four intentionally
 incorrect controls were rejected with unsolved goals. The V2d proof commit is
 \code{52fd36a}; its published verification record is commit
 \href{https://github.com/thinkthoughts/lean-bgp212/commit/90055db}{\code{90055db}}.
-The reported kernel axioms for the V2d development are
+For V2e-A, five positive controls were accepted and four negative controls
+were rejected. The V2e-A proof commit is \code{01644e6}, with VPS
+verification/provenance commit
+\href{https://github.com/thinkthoughts/lean-bgp212/commit/38606c0}{\code{38606c0}}.
+The reported kernel axioms for these developments are
 \code{propext}, \code{Quot.sound}, and \code{Classical.choice}.
 Results and verification scripts are available in
 \href{https://github.com/thinkthoughts/lean-bgp212/tree/main/specs/results}{\code{specs/results}}.
 
-Further work is needed for aggregate Dirichlet integrals over functions of two group
-sums, all branches of the marginal endpoint, general $\JT$ Gram evaluations,
+Further work is needed for polygon-cell integration across the branches of
+the marginal endpoint, general $\JT$ Gram evaluations,
 optimized polynomial coefficients, exact variational positivity certificates, and
 remaining analytic hypotheses. The existing Lean development formalizes the
 \emph{conditional} implication $\mathrm{DHL}[45,2]\Rightarrow H_1\le212$;
