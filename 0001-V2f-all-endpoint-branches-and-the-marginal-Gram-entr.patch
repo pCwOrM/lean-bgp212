@@ -1,0 +1,2623 @@
+From 7a8df0ac4b212c13fbb1308eab7782bcd82bc426 Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Mon, 19 Oct 2026 00:48:03 -0600
+Subject: [PATCH] V2f: all endpoint branches and the marginal Gram entry J_T[1,
+ 1] (eighteenth pair)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Proves exact integrals of every block U^m (L − S)^n over the four branch
+cells of a piece (signed boxTri cells), every piece of V2b's
+decomposition in closed form (two aggregates, and one aggregate for the
+stratum R = ∅), V2b's inclusion–exclusion with a stratum-dependent
+integrand, and J_T(1) = jtSum N g L τ C 2 0 for every N ≥ 1 and data with
+0 ≤ g ≤ C(1), C(N) < N g. At Table 3 a kernel certificate (133 pieces)
+gives the marginal Gram entry J_T[gen 0 ∅, gen 0 ∅] ≈ 1.11935 × 10⁻⁵⁵ as an
+explicit rational, in V2d's J_T form and Definition 4.6's marginal form.
+Adds Comparator/marginal_entry_v2f.json, the certificate generator,
+controls, the result record and the updated V2e roadmap.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                                   |   1 +
+ BGP212/MarginalEntry.lean                     |  86 +++
+ Challenge.lean                                |   1 +
+ Challenge/MarginalEntry.lean                  | 171 +++++
+ Comparator/marginal_entry_v2f.json            |  74 ++
+ Exploratory/V2e/ROADMAP.md                    |  77 +-
+ README.md                                     |  30 +-
+ Solution.lean                                 |   2 +
+ Solution/MarginalEntry.lean                   | 691 ++++++++++++++++++
+ Solution/MarginalEntryCert.lean               | 573 +++++++++++++++
+ .../marginal_entry_v2f_emit.cpython-313.pyc   | Bin 0 -> 13968 bytes
+ specs/checks/marginal_entry_v2f_controls.py   | 294 ++++++++
+ specs/checks/marginal_entry_v2f_emit.py       | 182 +++++
+ specs/results/V2f_marginal_entry.yaml         | 101 +++
+ verify.sh                                     |   2 +-
+ 15 files changed, 2258 insertions(+), 27 deletions(-)
+ create mode 100644 BGP212/MarginalEntry.lean
+ create mode 100644 Challenge/MarginalEntry.lean
+ create mode 100644 Comparator/marginal_entry_v2f.json
+ create mode 100644 Solution/MarginalEntry.lean
+ create mode 100644 Solution/MarginalEntryCert.lean
+ create mode 100644 specs/checks/__pycache__/marginal_entry_v2f_emit.cpython-313.pyc
+ create mode 100644 specs/checks/marginal_entry_v2f_controls.py
+ create mode 100644 specs/checks/marginal_entry_v2f_emit.py
+ create mode 100644 specs/results/V2f_marginal_entry.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index 5eed070..1949409 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -16,3 +16,4 @@ import BGP212.GramGeneral
+ import BGP212.Fibre
+ import BGP212.Aggregate
+ import BGP212.CapCell
++import BGP212.MarginalEntry
+diff --git a/BGP212/MarginalEntry.lean b/BGP212/MarginalEntry.lean
+new file mode 100644
+index 0000000..d866085
+--- /dev/null
++++ b/BGP212/MarginalEntry.lean
+@@ -0,0 +1,86 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.6 (p. 6), Table 3 (p. 39), §9.4, Lemma 9.2 and the display of
++`J_T` (p. 41), Proposition 10.2 (pp. 41–42), §11 (B₂₁, p. 42).
++-/
++import BGP212.CapCell
++
++/-! # V2f: all three endpoint branches and the marginal Gram entry `J_T[1, 1]` (definitions)
++
++Track B. The proofs are in `Solution/MarginalEntry.lean`.
++
++On a piece `(R, K)` (`r = |R|`, `k = |K|`, piece cap `c`, piece total `M`, `L' = L − (r+k) g`)
++the piece region in the aggregates is `P = boxTri c M M` and the endpoint `U` has four cells:
++
++| cell | definition | `U` |
++|---|---|---|
++| `Z₁` | `boxTri A₁ c₂ M` | `C(r+1) − r g − u₁` (cap) |
++| `Z₂` | `boxTri A₁ M M \ Z₁` | `L' − u₁ − u₂` |
++| `Z₃` | `boxTri c M M₃ \ boxTri A₁ M M₃` | `g` |
++| `Z₄` | `(P \ boxTri A₁ M M) \ Z₃` | `L' − u₁ − u₂` |
++
++with `c₁ = C(r+1) − (r+1) g`, `c₂ = L − k g − C(r+1)`, `A₁ = min c c₁`, `M₃ = min M (L' − g)`.
++Every cell integral of `u₁^α u₂^β (p − u₁)^{m₁} (L' − u₁ − u₂)^{m₂}` is `twoPowVal`, a finite
++combination of V2e-B's `boxVal`; `cellsVal` assembles the four cells for the block `U^m (L − S)^n`.
++
++`pieceJ` is the closed form of one piece integral of `U^m (L − S)^n` (two aggregates for `r ≥ 1`,
++one aggregate for `r = 0`, zero for an empty piece), and `jtSum` the signed count over pieces.
++All are defined over an ordered field, so over `ℚ` they are computable. -/
++
++namespace BGP212.V2e
++
++section Formula
++
++variable {K : Type*} [Field K] [LinearOrder K]
++
++/-- `∫_{boxTri A B D} u₁^α u₂^β (p − u₁)^{m₁} (L' − u₁ − u₂)^{m₂}`, expanded into `boxVal`s. -/
++def twoPowVal (A B D p L' : K) (α β m₁ m₂ : ℕ) : K :=
++  ∑ i ∈ Finset.range (m₁ + 1), ∑ j ∈ Finset.range (m₂ + 1), ∑ l ∈ Finset.range (j + 1),
++    (m₁.choose i : K) * p ^ (m₁ - i) * (-1) ^ i * ((m₂.choose j : K) * L' ^ (m₂ - j) * (-1) ^ j) *
++      (j.choose l : K) * boxVal A B D (α + i + l) (β + (j - l))
++
++/-- **Definition.** The four-cell value of `∫_{boxTri c M M} u₁^α u₂^β U^m (L − S)^n` on a piece
++(`r` rough, `k` inclusion–exclusion coordinates). -/
++def cellsVal (g L : K) (C : ℕ → K) (r k : ℕ) (c M : K) (α β m n : ℕ) : K :=
++  let Lp := L - (r + k) * g
++  let c₁ := C (r + 1) - (r + 1) * g
++  let c₂ := L - k * g - C (r + 1)
++  let a := C (r + 1) - r * g
++  let A₁ := min c c₁
++  let M₃ := min M (Lp - g)
++  twoPowVal A₁ c₂ M a Lp α β m n +
++    (twoPowVal A₁ M M 0 Lp α β 0 (m + n) - twoPowVal A₁ c₂ M 0 Lp α β 0 (m + n)) +
++    g ^ m * (twoPowVal c M M₃ 0 Lp α β 0 n - twoPowVal A₁ M M₃ 0 Lp α β 0 n) +
++    ((twoPowVal c M M 0 Lp α β 0 (m + n) - twoPowVal A₁ M M 0 Lp α β 0 (m + n)) -
++      (twoPowVal c M M₃ 0 Lp α β 0 (m + n) - twoPowVal A₁ M M₃ 0 Lp α β 0 (m + n)))
++
++/-- **Definition.** The one-aggregate value for the stratum with no rough coordinates
++(`u₁ = 0`, `U = C(1)` up to `u₂ = c₂`, then `U = L' − u₂`). -/
++def seg0Val (g L : K) (C : ℕ → K) (k : ℕ) (M : K) (β m n : ℕ) : K :=
++  let Lp := L - k * g
++  let X := max 0 (min (L - k * g - C 1) M)
++  C 1 ^ m * innerVal X Lp n β + (innerVal M Lp (m + n) β - innerVal X Lp (m + n) β)
++
++/-- **Definition.** The closed form of one piece integral of `U^m (L − S)^n` in dimension `N`
++(`r` rough, `k` inclusion–exclusion coordinates, weight `yᵗ = 1`). -/
++def pieceJ (N r k : ℕ) (g L τ : K) (C : ℕ → K) (m n : ℕ) : K :=
++  if C r - r * g < 0 ∨ τ - (r + k) * g < 0 then 0
++  else if r = 0 then 1 / ((N - 1).factorial : K) * seg0Val g L C k (τ - k * g) (N - 1) m n
++  else 1 / ((r - 1).factorial : K) * (1 / ((N - r - 1).factorial : K)) *
++    cellsVal g L C r k (C r - r * g) (τ - (r + k) * g) (r - 1) (N - r - 1) m n
++
++/-- **Definition.** One row of the signed count: `Σ_k C(N − r, k) (−1)^k pieceJ N r k`. -/
++def jtRow (N r : ℕ) (g L τ : K) (C : ℕ → K) (m n : ℕ) : K :=
++  ∑ k ∈ Finset.range (N - r + 1), ((N - r).choose k : K) * (-1) ^ k * pieceJ N r k g L τ C m n
++
++/-- **Definition.** The signed count over pieces: `(N + 1) Σ_r C(N, r) Σ_k C(N − r, k) (−1)^k
++pieceJ N r k`. -/
++def jtSum (N : ℕ) (g L τ : K) (C : ℕ → K) (m n : ℕ) : K :=
++  (N + 1) * ∑ r ∈ Finset.range (N + 1), (N.choose r : K) *
++    ∑ k ∈ Finset.range (N - r + 1), ((N - r).choose k : K) * (-1) ^ k * pieceJ N r k g L τ C m n
++
++end Formula
++
++end BGP212.V2e
+diff --git a/Challenge.lean b/Challenge.lean
+index 758de1b..ded4143 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -15,3 +15,4 @@ import Challenge.GramGeneral
+ import Challenge.Fibre
+ import Challenge.Aggregate
+ import Challenge.CapCell
++import Challenge.MarginalEntry
+diff --git a/Challenge/MarginalEntry.lean b/Challenge/MarginalEntry.lean
+new file mode 100644
+index 0000000..73a8b32
+--- /dev/null
++++ b/Challenge/MarginalEntry.lean
+@@ -0,0 +1,171 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.6 (p. 6), Table 3 (p. 39), §9.4, Lemma 9.2 (p. 41),
++Proposition 10.2 (pp. 41–42), §11 (p. 42).
++-/
++import BGP212.MarginalEntry
++import BGP212.Variational
++import Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic
++
++/-! # V2f: all three endpoint branches and the marginal Gram entry `J_T[1, 1]`
++
++Statements only; proofs live in `Solution/MarginalEntry.lean` and the computational certificate in
++`Solution/MarginalEntryCert.lean`. Objects are defined in `BGP212/MarginalEntry.lean` (with V2e-B's
++`boxTri`, `boxVal`, `innerVal`, V2e-A's aggregates and `endpointAgg`, V2d's `jT`, `marginalJ`,
++`endpoint`, V2b's `supportT`, `Qset`, `pieceSet`, V0's `gen`). The general statements keep `g`,
++`L`, `τ`, `C` as parameters; Table 3 enters only through `BGP212.Params` (`g3`, `L3`, `τ3`, `C3`). -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram BGP212.V2d BGP212.V2e BGP212.Params MeasureTheory
++
++/-- `∫_{boxTri A B D} u₁^α u₂^β (p − u₁)^{m₁} (L' − u₁ − u₂)^{m₂} = twoPowVal`. -/
++theorem box_twoPow (A B D p L' : ℝ) (α β m₁ m₂ : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β * (p - q.1) ^ m₁ * (L' - q.1 - q.2) ^ m₂ =
++      twoPowVal A B D p L' α β m₁ m₂ :=
++  sorry
++
++/-- **The four-cell decomposition.** On a piece region `boxTri c M M` the block
++`u₁^α u₂^β U^m (L − S)^n` integrates to `cellsVal`: the cap cell, the `L − S` cell on the cap
++side, the `g` cell and the `L − S` cell on the `g` side, each a signed combination of `boxTri`
++cells (`setIntegral_sdiff`) on which `U` is one affine branch (V2e-B's branch lemmas). -/
++theorem cells_integral (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (α β m n : ℕ) :
++    ∫ q in boxTri c M M, q.1 ^ α * q.2 ^ β *
++        ((endpointAgg g L C r k q.1 q.2) ^ m * (L - ((r + k) * g + q.1 + q.2)) ^ n) =
++      cellsVal g L C r k c M α β m n :=
++  sorry
++
++
++theorem mem_pieceSet_agg {N : ℕ} (R : Finset (Fin N)) (c M : ℝ) (y : Fin N → ℝ)
++    (hy : y ∈ simplexF (Fin N) M) :
++    y ∈ pieceSet N R c M ↔ (aggR R y, aggS R y) ∈ boxTri c M M :=
++  sorry
++
++/-- **A piece, two aggregates.** For a piece with `R` and `Rᶜ` nonempty, the block
++`yᵗ U^m (L − S)^n` integrates to `aggConst R t · aggConst Rᶜ t · cellsVal`. -/
++theorem piece_block {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty)
++    (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ) (t : Fin N → ℕ) (m n : ℕ) :
++    ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        ((endpointAgg g L C R.card k (aggR R y) (aggS R y)) ^ m *
++          (L - ((R.card + k) * g + aggR R y + aggS R y)) ^ n) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        cellsVal g L C R.card k c M (aggExp {i // i ∈ R} (fun i => t i))
++          (aggExp {i // i ∉ R} (fun i => t i)) m n :=
++  sorry
++
++/-- **A piece with no rough coordinates** (`R = ∅`): one aggregate `u₂ = Σ y`, with `U = C(1)`
++up to `u₂ = L − k g − C(1)` and `U = L − k g − u₂` beyond (for `g ≤ C(1)`). -/
++theorem piece_r0 {N : ℕ} (hN : 0 < N) (g L : ℝ) (C : ℕ → ℝ) (hC1 : g ≤ C 1) (k : ℕ)
++    (c M : ℝ) (hc : 0 ≤ c) (hM : 0 ≤ M) (m n : ℕ) :
++    ∫ y in pieceSet N ∅ c M, (endpointAgg g L C 0 k (aggR ∅ y) (aggS ∅ y)) ^ m *
++        (L - (((0 : ℕ) + k) * g + aggR ∅ y + aggS ∅ y)) ^ n =
++      1 / ((N - 1).factorial : ℝ) * seg0Val g L C k M (N - 1) m n :=
++  sorry
++
++/-- **Inclusion–exclusion with a stratum-dependent integrand**: V2b's `indicator_supportT` with the
++integrand allowed to depend on the rough set (`G R` is used on the pieces `Qset R K`). -/
++theorem indicator_supportT_strat {N : ℕ} (g L : ℝ) (C : ℕ → ℝ)
++    (G : Finset (Fin N) → (Fin N → ℝ) → ℝ) (x : Fin N → ℝ) :
++    (supportT N g L C).indicator (fun x => G (roughSet g x) x) x =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator (G R) x :=
++  sorry
++
++/-- **`J_T(1)` as a signed sum of piece integrals.** -/
++theorem jT_one_pieces (N : ℕ) (g L τ : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) :
++    jT N g L τ C (fun _ => 1) = (N + 1 : ℝ) * ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset,
++      (-1 : ℝ) ^ K.card * ∫ y in pieceSet N R (C R.card - R.card * g) (τ - (R.card + K.card) * g),
++        (endpointAgg g L C R.card K.card (aggR R y) (aggS R y)) ^ 2 :=
++  sorry
++
++
++theorem count_by_card (N : ℕ) (F : ℕ → ℕ → ℝ) :
++    ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * F R.card K.card =
++      ∑ r ∈ Finset.range (N + 1), (N.choose r : ℝ) *
++        ∑ k ∈ Finset.range (N - r + 1), ((N - r).choose k : ℝ) * (-1) ^ k * F r k :=
++  sorry
++
++/-- Every piece integral of `U²` is the closed form `pieceJ` at its cardinalities (empty pieces,
++the stratum `R = ∅`, and two aggregates). -/
++theorem piece_eq_pieceJ {N : ℕ} (hN : 0 < N) (g L τ : ℝ) (C : ℕ → ℝ) (hC1 : g ≤ C 1)
++    (hCN : C N - N * g < 0) (R K : Finset (Fin N)) :
++    ∫ y in pieceSet N R (C R.card - R.card * g) (τ - (R.card + K.card) * g),
++        (endpointAgg g L C R.card K.card (aggR R y) (aggS R y)) ^ 2 =
++      pieceJ N R.card K.card g L τ C 2 0 :=
++  sorry
++
++/-- **`J_T(1)` in closed form** (any dimension `N ≥ 1` and data with `0 ≤ g ≤ C(1)` whose full
++rough stratum is empty, `C(N) < N g`): `jT N g L τ C 1 = jtSum N g L τ C 2 0`. -/
++theorem jT_one_eq {N : ℕ} (hN : 0 < N) (g L τ : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (hC1 : g ≤ C 1)
++    (hCN : C N - N * g < 0) :
++    jT N g L τ C (fun _ => 1) = jtSum N g L τ C 2 0 :=
++  sorry
++
++
++theorem twoPowVal_cast (A B D p L' : ℚ) (α β m₁ m₂ : ℕ) :
++    ((twoPowVal A B D p L' α β m₁ m₂ : ℚ) : ℝ) =
++      twoPowVal (A : ℝ) (B : ℝ) (D : ℝ) (p : ℝ) (L' : ℝ) α β m₁ m₂ :=
++  sorry
++
++
++theorem cellsVal_cast (g L : ℚ) (C : ℕ → ℚ) (r k : ℕ) (c M : ℚ) (α β m n : ℕ) :
++    ((cellsVal g L C r k c M α β m n : ℚ) : ℝ) =
++      cellsVal (g : ℝ) (L : ℝ) (fun i => (C i : ℝ)) r k (c : ℝ) (M : ℝ) α β m n :=
++  sorry
++
++
++theorem seg0Val_cast (g L : ℚ) (C : ℕ → ℚ) (k : ℕ) (M : ℚ) (β m n : ℕ) :
++    ((seg0Val g L C k M β m n : ℚ) : ℝ) =
++      seg0Val (g : ℝ) (L : ℝ) (fun i => (C i : ℝ)) k (M : ℝ) β m n :=
++  sorry
++
++
++theorem pieceJ_cast (N r k : ℕ) (g L τ : ℚ) (C : ℕ → ℚ) (m n : ℕ) :
++    ((pieceJ N r k g L τ C m n : ℚ) : ℝ) =
++      pieceJ N r k (g : ℝ) (L : ℝ) (τ : ℝ) (fun i => (C i : ℝ)) m n :=
++  sorry
++
++
++theorem jtSum_cast (N : ℕ) (g L τ : ℚ) (C : ℕ → ℚ) (m n : ℕ) :
++    ((jtSum N g L τ C m n : ℚ) : ℝ) = jtSum N (g : ℝ) (L : ℝ) (τ : ℝ) (fun i => (C i : ℝ)) m n :=
++  sorry
++
++
++theorem pieceJ_tail (r k : ℕ) (h : 16 ≤ r + k) : pieceJ 44 r k g L τ C 2 0 = 0 :=
++  sorry
++
++
++theorem pieceJ_high (r k : ℕ) (h : 14 ≤ r) : pieceJ 44 r k g L τ C 2 0 = 0 :=
++  sorry
++
++
++theorem jtSum_table3 : jtSum 44 g L τ C 2 0 = (196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) :=
++  sorry
++
++
++theorem table3_hyps : 0 ≤ g3 ∧ g3 ≤ C3 1 ∧ C3 44 - ((44 : ℕ) : ℝ) * g3 < 0 :=
++  sorry
++
++/-- **`J_T[1, 1]` at Table 3** (computational certificate `jtSum_table3`): with `F = 1`
++(the generator `gen 0 ∅` of `B₂₁`), `J_T(1) = 45 ∫_{T̂} U(x̂)² dx̂` is the explicit rational
++`V ≈ 1.11935 × 10⁻⁵⁵`. -/
++theorem jT_one_table3 : jT 44 g3 L3 τ3 C3 (fun _ => 1) = ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) :=
++  sorry
++
++
++theorem eval_gen_zero (x : Fin 45 → ℝ) :
++    MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0) = 1 :=
++  sorry
++
++/-- **The marginal Gram entry for the generator `gen 0 ∅`**, in V2d's `J_T` form and in
++Definition 4.6's marginal form (V2d's `marginal_agrees`). -/
++theorem jT_gram_gen00_table3 :
++    jT 44 g3 L3 τ3 C3 (fun x => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++        ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) ∧
++      marginalJ 44 g3 L3 τ3 C3
++          (fun x => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++        ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/marginal_entry_v2f.json b/Comparator/marginal_entry_v2f.json
+new file mode 100644
+index 0000000..6c9f0cc
+--- /dev/null
++++ b/Comparator/marginal_entry_v2f.json
+@@ -0,0 +1,74 @@
++{
++    "challenge_module": "Challenge.MarginalEntry",
++    "solution_module": "Solution.MarginalEntry",
++    "theorem_names": [
++        "BGP212.Challenge.box_twoPow",
++        "BGP212.Challenge.cells_integral",
++        "BGP212.Challenge.mem_pieceSet_agg",
++        "BGP212.Challenge.piece_block",
++        "BGP212.Challenge.piece_r0",
++        "BGP212.Challenge.indicator_supportT_strat",
++        "BGP212.Challenge.jT_one_pieces",
++        "BGP212.Challenge.count_by_card",
++        "BGP212.Challenge.piece_eq_pieceJ",
++        "BGP212.Challenge.jT_one_eq",
++        "BGP212.Challenge.twoPowVal_cast",
++        "BGP212.Challenge.cellsVal_cast",
++        "BGP212.Challenge.seg0Val_cast",
++        "BGP212.Challenge.pieceJ_cast",
++        "BGP212.Challenge.jtSum_cast",
++        "BGP212.Challenge.pieceJ_tail",
++        "BGP212.Challenge.pieceJ_high",
++        "BGP212.Challenge.jtSum_table3",
++        "BGP212.Challenge.table3_hyps",
++        "BGP212.Challenge.jT_one_table3",
++        "BGP212.Challenge.eval_gen_zero",
++        "BGP212.Challenge.jT_gram_gen00_table3"
++    ],
++    "definition_names": [
++        "BGP212.V2e.twoPowVal",
++        "BGP212.V2e.cellsVal",
++        "BGP212.V2e.seg0Val",
++        "BGP212.V2e.pieceJ",
++        "BGP212.V2e.jtRow",
++        "BGP212.V2e.jtSum",
++        "BGP212.V2e.boxTri",
++        "BGP212.V2e.boxVal",
++        "BGP212.V2e.innerVal",
++        "BGP212.V2e.endpointAgg",
++        "BGP212.V2e.aggR",
++        "BGP212.V2e.aggS",
++        "BGP212.V2e.aggExp",
++        "BGP212.V2e.aggConst",
++        "BGP212.V2e.stratumEndpoint",
++        "BGP212.V2e.g3",
++        "BGP212.V2e.L3",
++        "BGP212.V2e.τ3",
++        "BGP212.V2e.C3",
++        "BGP212.Gram.simplexF",
++        "BGP212.Gram.pieceSet",
++        "BGP212.Gram.supportT",
++        "BGP212.Gram.Qset",
++        "BGP212.Gram.roughSet",
++        "BGP212.V2d.roughCount",
++        "BGP212.V2d.roughMass",
++        "BGP212.V2d.hatSupport",
++        "BGP212.V2d.endpoint",
++        "BGP212.V2d.jT",
++        "BGP212.V2d.marginalJ",
++        "BGP212.Var.P",
++        "BGP212.Var.Plam",
++        "BGP212.Var.gen",
++        "BGP212.Params.Bnum",
++        "BGP212.Params.B",
++        "BGP212.Params.C",
++        "BGP212.Params.g",
++        "BGP212.Params.L",
++        "BGP212.Params.τ"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/Exploratory/V2e/ROADMAP.md b/Exploratory/V2e/ROADMAP.md
+index 5bcb2bf..5f0f0c5 100644
+--- a/Exploratory/V2e/ROADMAP.md
++++ b/Exploratory/V2e/ROADMAP.md
+@@ -3,7 +3,8 @@
+ Status:
+ - **V2e-A is proved** (sixteenth pair, `Solution/Aggregate.lean`).
+ - **V2e-B is proved** (seventeenth pair, `Solution/CapCell.lean`): the cap branch, see §3.
+-- This file is the plan for V2f.
++- **V2f is proved** (eighteenth pair, `Solution/MarginalEntry.lean`): all branches and the first marginal Gram entry `J_T[1, 1]`, see §4.
++- This file is the plan for the remaining `J_T` entries and certificates (§6).
+ - Statements marked *exploratory* were checked numerically, not in the kernel.
+ 
+ ## 1. What V2e-A provides (kernel-checked)
+@@ -109,32 +110,43 @@ Every cell integral is therefore an iterated one-variable polynomial integral wi
+ 
+   It is kernel-checked, and a direct 3-dimensional grid integration of the analogous `N = 3` piece agrees.
+ 
+-## 4. V2f: all branches and `J_T` entries
++## 4. V2f: all branches and `J_T[1, 1]` (done)
+ 
+-1. **The other two branches as signed `boxTri` cells.** Each remaining cell is a difference of cells of the V2e-B shape, so `boxVal` covers them.
++**All four cells as signed `boxTri` cells** (`cells_integral`, kernel-checked). On the piece region `P = boxTri c M M`, with `A₁ = min c c₁` and `M₃ = min M (L' − g)`:
+ 
+-   With `A' = min c (C(r) − r g)`:
+-   - **`g` branch** (`U = g`): the cell is `{c₁ ≤ u₁ ≤ A', u₁ + u₂ ≤ min(c₃, M)}`, which equals:
+-
+-     ```text
+-     boxTri A' ∞ (min c₃ M) − boxTri (min c₁ A') ∞ (min c₃ M)
+-     ```
+-
+-     Here `∞` means any `B ≥ M`. Each lower bound is clamped, as in `min c₁ A'`, so that an empty cell contributes 0, not a negative difference.
+-   - **`L − S` branch, cap side:** `{u₁ ≤ min(A', c₁), u₂ ≥ c₂, u₁ + u₂ ≤ M}` is a full-height cell minus the cap cell.
+-   - **`L − S` branch, `g` side:** `{c₁ ≤ u₁ ≤ A', c₃ ≤ u₁ + u₂ ≤ M}` is a difference of four cells.
+-
+-   On both sides of the `L − S` branch, lower bounds are clamped the same way (`min c₁ A'`, `min c₂ M`). This branch is where the τ constraint (`D = M`) is active.
+-2. **The `J_T` integrand.** For generators `(L − S − u)^a ∏_q (P̂_q + u^q)`, `inner_integral` turns `∫₀^U F` into a polynomial in:
+-   - `U`;
+-   - `L − S`;
+-   - power sums of `x̂`.
+-
+-   After the translation and V2c's placements, each term is `yᵗ` times a polynomial in `(u₁, u₂)` on each cell. `two_group_fin` and `box_poly` then give exact rationals.
+-3. **Counting.** Use V2c's `Sig`, `sig_union` and `sig_card` over the 44 outer coordinates, with the cell data indexed by `(r, k)`.
+-   - Only the 59 cap classes above, and the analogous lists for the other branches, contribute.
+-   - Symmetry gives the factor 45 (V2d's `marginal_agrees`).
+-4. **One `J_T` Gram entry at Table 3,** as an exact rational with a small kernel certificate. Then certify `J_T(P⋆) − 4 I_T(P⋆)` directly; the 846 × 846 matrix stays uncertified.
++| cell | set | `U` |
++|---|---|---|
++| `Z₁` | `boxTri A₁ c₂ M` | `C(r+1) − r g − u₁` |
++| `Z₂` | `boxTri A₁ M M \ Z₁` | `L' − u₁ − u₂` |
++| `Z₃` | `boxTri c M M₃ \ boxTri A₁ M M₃` | `g` |
++| `Z₄` | `(P \ boxTri A₁ M M) \ Z₃` | `L' − u₁ − u₂` |
++
++Each set difference is an exact `setIntegral_sdiff`.
++- The clamping of the roadmap's §4.1 is built in, through `min c c₁` and `min M (L' − g)`.
++- `box_twoPow` integrates `u₁^α u₂^β (p − u₁)^{m₁} (L' − u₁ − u₂)^{m₂}` over any cell.
++- So `cellsVal` covers every block `U^m (L − S)^n` that a `J_T` Gram entry needs.
++
++**The stratum-dependent decomposition.** The integrand of `J_T` depends on the rough set of `x̂`.
++- `indicator_supportT_strat` is V2b's inclusion–exclusion with an integrand `G R` that depends on the stratum.
++- `jT_one_pieces` writes `J_T(1)` as `(N+1) Σ_R Σ_{K ⊆ Rᶜ} (−1)^{|K|} ∫_{piece} U²`, using:
++  - `integral_Qset` (translation);
++  - `stratumEndpoint_shift` (aggregates).
++- `piece_block` and `piece_r0` evaluate each piece (two aggregates, or one aggregate for `R = ∅`).
++- `piece_eq_pieceJ` shows the value depends only on `(|R|, |K|)`.
++- `count_by_card` gives `jT_one_eq`. It holds for any `N ≥ 1` and any data with `0 ≤ g ≤ C(1)` and `C(N) < N g`.
++
++**Certificate.** At Table 3:
++- 133 pieces are nonempty (`r ≤ 13`, `r + k ≤ 15`); each is one `decide +kernel` lemma.
++- Every other piece vanishes by linear arithmetic (`pieceJ_tail`, `pieceJ_high`).
++- `jT_one_table3`: `J_T[1, 1] = 45 ∫_{T̂} U² ≈ 1.11935 × 10⁻⁵⁵`, an exact rational with a 145-digit numerator and a 200-digit denominator.
++- It also holds in Definition 4.6's marginal form, for the generator `gen 0 ∅` (`jT_gram_gen00_table3`, via V2d's `marginal_agrees`).
++
++**Independent checks (exploratory).**
++- Monte Carlo at `N = 44`: within 0.42 and 0.15 standard errors in two runs.
++- Polygon clipping of piece `(1, 0)`: exact agreement.
++- Synthetic data at `N = 3`: grid integration with the true rough-set endpoint agrees to 0.4%.
++
++**A planning correction.** The V2c placement counting is not needed for symmetric integrands. A piece value depends only on `(|R|, |K|)`, so the count is binomial (`count_by_card`). Placements return only for entries whose generators have distinguished coordinates (§6).
+ 
+ ## 5. Costs observed in V2e-A and V2e-B
+ 
+@@ -145,3 +157,18 @@ Every cell integral is therefore an iterated one-variable polynomial integral wi
+   - `Solution/CapCell.lean` elaborates in about 5 s, peaking at 3.19 GB.
+   - The Comparator suite takes about 115 s, peaking at 3.16 GB.
+   - Kernel arithmetic is only the certificate's `capPowVal` and a few small constants.
++- **V2f:**
++  - `Solution/MarginalEntry.lean` elaborates in seconds.
++  - The certificate `Solution/MarginalEntryCert.lean` (133 piece lemmas) is described in `specs/results/V2f_marginal_entry.yaml`.
++
++## 6. After V2f: the remaining `J_T` entries
++
++1. **Generators with power sums.** For `F = (L − S − u)^a ∏_q (P̂_q + u^q)`:
++   - `inner_integral` gives `∫₀^U F` as a polynomial in `U`, `L − S` and the power sums of `x̂`;
++   - each product of two such terms expands into monomials `yᵗ` times blocks `U^m (L − S)^n`.
++
++   `piece_block` already accepts any `yᵗ` and any block. What is new is the expansion of the power sums after the translation, together with V2c's placement counting over the distinguished coordinates (`Sig`, `sig_union`, `sig_card`).
++2. **Certificate cost.**
++   - One symmetric entry costs about 133 piece evaluations at a few seconds each.
++   - Entries with `d` distinguished coordinates multiply this by about `3^d` placements, the same scaling as V2c's `I_T` certificate.
++   - Certifying `J_T(P⋆) − 4 I_T(P⋆)` directly, with symmetry-collapsed placements, remains the route to Theorem 11.1. The 846 × 846 matrices stay uncertified.
+diff --git a/README.md b/README.md
+index 6ab6f7f..6b245d4 100644
+--- a/README.md
++++ b/README.md
+@@ -262,6 +262,24 @@ The seventeenth pair is V2e-B (`Challenge/CapCell.lean`, `Solution/CapCell.lean`
+ - `capPieceT3_value` (computational certificate): the cap-branch part of `J_T(1)` on the Table 3
+   piece `({0}, ∅)` of `T̂` is `(L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰`.
+ 
++The eighteenth pair is V2f (`Challenge/MarginalEntry.lean`, `Solution/MarginalEntry.lean`,
++`Solution/MarginalEntryCert.lean`, objects in `BGP212/MarginalEntry.lean`): **all three endpoint
++branches and the first marginal Gram entry `J_T[1, 1]`**.
++
++- `cells_integral`: on a piece region the block `u₁^α u₂^β U^m (L − S)^n` integrates exactly over
++  the four branch cells (cap; `L − S` on the cap side; `g`; `L − S` on the `g` side), each a signed
++  combination of V2e-B's `boxTri` cells (`box_twoPow`, `cellsVal`).
++- `piece_block`, `piece_r0`: every piece integral in closed form (two aggregates; one aggregate for
++  the stratum `R = ∅`).
++- `indicator_supportT_strat`, `jT_one_pieces`: V2b's inclusion–exclusion with a stratum-dependent
++  integrand, so the rough-set-dependent endpoint of Lemma 9.2 is integrated exactly.
++- `jT_one_eq`: `J_T(1) = jtSum N g L τ C 2 0` for every `N ≥ 1` and data with `0 ≤ g ≤ C(1)`,
++  `C(N) < N g`; the count over pieces is binomial (`count_by_card`).
++- `jT_gram_gen00_table3` (computational certificate `jtSum_table3`, 133 kernel-evaluated pieces):
++  at Table 3 the marginal Gram entry of the generator `gen 0 ∅ = 1` is
++  `J_T[1, 1] = 45 ∫_{T̂} U(x̂)² dx̂ ≈ 1.11935 × 10⁻⁵⁵`, an explicit rational, in V2d's `J_T` form and
++  in Definition 4.6's marginal form.
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+@@ -274,7 +292,8 @@ The seventeenth pair is V2e-B (`Challenge/CapCell.lean`, `Solution/CapCell.lean`
+   integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
+   (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d);
+   two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A);
+-  exact polygon-cell integrals of the cap branch and one Table 3 cap-branch certificate (V2e-B).
++  exact polygon-cell integrals of the cap branch and one Table 3 cap-branch certificate (V2e-B);
++  all three endpoint branches and the marginal Gram entry `J_T[1, 1]` at Table 3 (V2f).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -387,6 +406,15 @@ python3 -I specs/checks/capcell_v2eb_controls.py /tmp/v2eb_ctl
+ for f in /tmp/v2eb_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For V2f's certificate and controls:
++
++```text
++python3 -I specs/checks/marginal_entry_v2f_emit.py /tmp/MarginalEntryCert.lean
++cmp /tmp/MarginalEntryCert.lean Solution/MarginalEntryCert.lean
++python3 -I specs/checks/marginal_entry_v2f_controls.py /tmp/v2f_ctl
++for f in /tmp/v2f_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 0f0e7de..1d230b7 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -17,3 +17,5 @@ import Solution.GramGeneral
+ import Solution.Fibre
+ import Solution.Aggregate
+ import Solution.CapCell
++import Solution.MarginalEntryCert
++import Solution.MarginalEntry
+diff --git a/Solution/MarginalEntry.lean b/Solution/MarginalEntry.lean
+new file mode 100644
+index 0000000..5981dde
+--- /dev/null
++++ b/Solution/MarginalEntry.lean
+@@ -0,0 +1,691 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Definition 4.6 (p. 6), Table 3 (p. 39), §9.4, Lemma 9.2 (p. 41),
++Proposition 10.2 (pp. 41–42), §11 (p. 42).
++-/
++import BGP212.MarginalEntry
++import Solution.CapCell
++import Solution.MarginalEntryCert
++
++/-! # V2f: all three endpoint branches and the marginal Gram entry `J_T[1, 1]` (proofs) -/
++
++namespace BGP212.V2e
++
++open BGP212.Gram BGP212.V2d MeasureTheory
++
++/-! ## Products of two affine powers on a cell -/
++
++theorem int_boxTri (A B D : ℝ) (f : ℝ × ℝ → ℝ) (hf : Continuous f) :
++    IntegrableOn f (boxTri A B D) :=
++  hf.continuousOn.integrableOn_compact (boxTri_isCompact A B D)
++
++/-- `∫_{boxTri A B D} u₁^α u₂^β (p − u₁)^{m₁} (L' − u₁ − u₂)^{m₂} = twoPowVal`. -/
++theorem box_twoPow (A B D p L' : ℝ) (α β m₁ m₂ : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β * (p - q.1) ^ m₁ * (L' - q.1 - q.2) ^ m₂ =
++      twoPowVal A B D p L' α β m₁ m₂ := by
++  have hexp : ∀ q : ℝ × ℝ, q.1 ^ α * q.2 ^ β * (p - q.1) ^ m₁ * (L' - q.1 - q.2) ^ m₂ =
++      ∑ i ∈ Finset.range (m₁ + 1), ∑ j ∈ Finset.range (m₂ + 1), ∑ l ∈ Finset.range (j + 1),
++        (m₁.choose i : ℝ) * p ^ (m₁ - i) * (-1) ^ i * ((m₂.choose j : ℝ) * L' ^ (m₂ - j) * (-1) ^ j) *
++          (j.choose l : ℝ) * (q.1 ^ (α + i + l) * q.2 ^ (β + (j - l))) := by
++    intro q
++    have h1 : (p - q.1) ^ m₁ = ∑ i ∈ Finset.range (m₁ + 1),
++        (m₁.choose i : ℝ) * p ^ (m₁ - i) * (-1) ^ i * q.1 ^ i := by
++      rw [show p - q.1 = -q.1 + p by ring, add_pow]
++      refine Finset.sum_congr rfl fun i _ => ?_
++      rw [neg_pow]; ring
++    have h2 : (L' - q.1 - q.2) ^ m₂ = ∑ j ∈ Finset.range (m₂ + 1),
++        (m₂.choose j : ℝ) * L' ^ (m₂ - j) * (-1) ^ j *
++          ∑ l ∈ Finset.range (j + 1), (j.choose l : ℝ) * q.1 ^ l * q.2 ^ (j - l) := by
++      rw [show L' - q.1 - q.2 = -(q.1 + q.2) + L' by ring, add_pow]
++      refine Finset.sum_congr rfl fun j _ => ?_
++      rw [neg_pow, add_pow]
++      have : (∑ l ∈ Finset.range (j + 1), q.1 ^ l * q.2 ^ (j - l) * (j.choose l : ℝ)) =
++          ∑ l ∈ Finset.range (j + 1), (j.choose l : ℝ) * q.1 ^ l * q.2 ^ (j - l) :=
++        Finset.sum_congr rfl fun l _ => by ring
++      rw [this]; ring
++    rw [h1, h2, Finset.mul_sum (Finset.range (m₁ + 1)), Finset.sum_mul (Finset.range (m₁ + 1))]
++    refine Finset.sum_congr rfl fun i _ => ?_
++    rw [Finset.mul_sum (Finset.range (m₂ + 1))]
++    refine Finset.sum_congr rfl fun j _ => ?_
++    rw [Finset.mul_sum (Finset.range (j + 1)), Finset.mul_sum (Finset.range (j + 1))]
++    refine Finset.sum_congr rfl fun l _ => ?_
++    ring
++  simp_rw [hexp]
++  rw [integral_finsetSum _ fun i _ => integrable_finsetSum _ fun j _ =>
++    integrable_finsetSum _ fun l _ => int_boxTri A B D _ (by fun_prop)]
++  refine Finset.sum_congr rfl fun i _ => ?_
++  rw [integral_finsetSum _ fun j _ => integrable_finsetSum _ fun l _ =>
++    int_boxTri A B D _ (by fun_prop)]
++  refine Finset.sum_congr rfl fun j _ => ?_
++  rw [integral_finsetSum _ fun l _ => int_boxTri A B D _ (by fun_prop)]
++  refine Finset.sum_congr rfl fun l _ => ?_
++  rw [integral_const_mul, box_monomial]
++
++/-! ## The four cells of a piece -/
++
++theorem continuous_endpointAgg (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) :
++    Continuous fun q : ℝ × ℝ => endpointAgg g L C r k q.1 q.2 := by
++  unfold endpointAgg; fun_prop
++
++/-- **The four-cell decomposition.** On a piece region `boxTri c M M` the block
++`u₁^α u₂^β U^m (L − S)^n` integrates to `cellsVal`: the cap cell, the `L − S` cell on the cap
++side, the `g` cell and the `L − S` cell on the `g` side, each a signed combination of `boxTri`
++cells (`setIntegral_sdiff`) on which `U` is one affine branch (V2e-B's branch lemmas). -/
++theorem cells_integral (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (α β m n : ℕ) :
++    ∫ q in boxTri c M M, q.1 ^ α * q.2 ^ β *
++        ((endpointAgg g L C r k q.1 q.2) ^ m * (L - ((r + k) * g + q.1 + q.2)) ^ n) =
++      cellsVal g L C r k c M α β m n := by
++  set Lp := L - (r + k) * g with hLp
++  set c₁ := C (r + 1) - (r + 1) * g with hc₁
++  set c₂ := L - k * g - C (r + 1) with hc₂
++  set a := C (r + 1) - r * g with ha
++  set A₁ := min c c₁ with hA₁
++  set M₃ := min M (Lp - g) with hM₃
++  set f : ℝ × ℝ → ℝ := fun q => q.1 ^ α * q.2 ^ β *
++    ((endpointAgg g L C r k q.1 q.2) ^ m * (L - ((r + k) * g + q.1 + q.2)) ^ n) with hf
++  have hfc : Continuous f := by
++    simp only [hf]; have := continuous_endpointAgg g L C r k; fun_prop
++  -- branch polynomials, in the shape of `box_twoPow`
++  set fcap : ℝ × ℝ → ℝ := fun q => q.1 ^ α * q.2 ^ β * (a - q.1) ^ m * (Lp - q.1 - q.2) ^ n
++  set fL : ℝ × ℝ → ℝ := fun q => q.1 ^ α * q.2 ^ β * (0 - q.1) ^ 0 * (Lp - q.1 - q.2) ^ (m + n)
++  set fg : ℝ × ℝ → ℝ := fun q => q.1 ^ α * q.2 ^ β * (0 - q.1) ^ 0 * (Lp - q.1 - q.2) ^ n
++  have hS : ∀ q : ℝ × ℝ, L - ((r + k) * g + q.1 + q.2) = Lp - q.1 - q.2 := fun q => by
++    simp only [hLp]; ring
++  -- the sets
++  have hA₁c : A₁ ≤ c := min_le_left _ _
++  have hA₁c₁ : A₁ ≤ c₁ := min_le_right _ _
++  have hM₃M : M₃ ≤ M := min_le_left _ _
++  have hM₃L : M₃ ≤ Lp - g := min_le_right _ _
++  have hmeas : ∀ A B D, MeasurableSet (boxTri A B D) := fun A B D =>
++    (boxTri_isClosed A B D).measurableSet
++  have hZ₁P₁ : (boxTri A₁ c₂ M) ⊆ (boxTri A₁ M M) := by
++    rintro q ⟨h1, h2, h3, -, h5⟩; exact ⟨h1, h2, h3, by linarith, h5⟩
++  have hP₁P : (boxTri A₁ M M) ⊆ (boxTri c M M) := by
++    rintro q ⟨h1, h2, h3, h4, h5⟩; exact ⟨h1, le_trans h2 hA₁c, h3, h4, h5⟩
++  have hQ₁Q : (boxTri A₁ M M₃) ⊆ (boxTri c M M₃) := by
++    rintro q ⟨h1, h2, h3, h4, h5⟩; exact ⟨h1, le_trans h2 hA₁c, h3, h4, h5⟩
++  have hQP : (boxTri c M M₃) ⊆ (boxTri c M M) := by
++    rintro q ⟨h1, h2, h3, h4, h5⟩; exact ⟨h1, h2, h3, h4, le_trans h5 hM₃M⟩
++  have hZ₃ : (boxTri c M M₃) \ (boxTri A₁ M M₃) ⊆ (boxTri c M M) \ (boxTri A₁ M M) := by
++    rintro q ⟨hq, hq₁⟩
++    refine ⟨hQP hq, fun hp => hq₁ ⟨hp.1, hp.2.1, hp.2.2.1, hp.2.2.2.1, hq.2.2.2.2⟩⟩
++  -- the integrand on each cell
++  have e₁ : ∀ q ∈ (boxTri A₁ c₂ M), f q = fcap q := by
++    rintro q ⟨h1, h2, h3, h4, h5⟩
++    simp only [hf, fcap, hS q]
++    rw [endpointAgg_cap g L C r k q.1 q.2 (le_trans h2 hA₁c₁) h4,
++      show C (r + 1) - (↑r * g + q.1) = a - q.1 by rw [ha]; ring]
++    ring
++  have e₂ : ∀ q ∈ (boxTri A₁ M M) \ (boxTri A₁ c₂ M), f q = fL q := by
++    rintro q ⟨⟨h1, h2, h3, h4, h5⟩, hz⟩
++    have h6 : c₂ ≤ q.2 := by
++      by_contra hc; push Not at hc; exact hz ⟨h1, h2, h3, hc.le, h5⟩
++    simp only [hf, fL, hS q]
++    rw [endpointAgg_LBranch_cap g L C r k q.1 q.2 (le_trans h2 hA₁c₁) h6, hS q, pow_zero, mul_one,
++      ← pow_add]
++  have e₃ : ∀ q ∈ (boxTri c M M₃) \ (boxTri A₁ M M₃), f q = g ^ m * fg q := by
++    rintro q ⟨⟨h1, h2, h3, h4, h5⟩, hq₁⟩
++    have h6 : c₁ ≤ q.1 := by
++      by_contra hc; push Not at hc
++      exact hq₁ ⟨h1, le_min h2 hc.le, h3, h4, h5⟩
++    simp only [hf, fg, hS q]
++    rw [endpointAgg_gBranch g L C r k q.1 q.2 h6 (by
++      have := le_trans h5 hM₃L; simp only [hLp] at this; linarith), pow_zero, mul_one]
++    ring
++  have e₄ : ∀ q ∈ ((boxTri c M M) \ (boxTri A₁ M M)) \ ((boxTri c M M₃) \ (boxTri A₁ M M₃)), f q = fL q := by
++    rintro q ⟨⟨⟨h1, h2, h3, h4, h5⟩, hp₁⟩, hz⟩
++    have h6 : c₁ ≤ q.1 := by
++      by_contra hc; push Not at hc
++      exact hp₁ ⟨h1, le_min h2 hc.le, h3, h4, h5⟩
++    have h7 : Lp - g ≤ q.1 + q.2 := by
++      by_contra hc; push Not at hc
++      apply hz
++      refine ⟨⟨h1, h2, h3, h4, le_min h5 hc.le⟩, fun hq₁ => hp₁ ?_⟩
++      exact ⟨hq₁.1, hq₁.2.1, hq₁.2.2.1, hq₁.2.2.2.1, h5⟩
++    simp only [hf, fL, hS q]
++    rw [endpointAgg_LBranch_g g L C r k q.1 q.2 h6 (by simp only [hLp] at h7; linarith), hS q,
++      pow_zero, mul_one, ← pow_add]
++  -- integrability
++  have iP : ∀ φ : ℝ × ℝ → ℝ, Continuous φ → ∀ A B D, IntegrableOn φ (boxTri A B D) :=
++    fun φ hφ A B D => int_boxTri A B D φ hφ
++  have cfL : Continuous fL := by simp only [fL]; fun_prop
++  have cfg : Continuous fg := by simp only [fg]; fun_prop
++  -- assemble
++  have sd : ∀ (φ : ℝ × ℝ → ℝ) (S T : Set (ℝ × ℝ)), MeasurableSet T → IntegrableOn φ S → T ⊆ S →
++      ∫ q in S \ T, φ q = (∫ q in S, φ q) - ∫ q in T, φ q :=
++    fun φ S T hT hS hTS => setIntegral_sdiff hT hS hTS
++  have s₁ : ∫ q in boxTri c M M, f q =
++      (∫ q in boxTri A₁ M M, f q) + ∫ q in boxTri c M M \ boxTri A₁ M M, f q := by
++    rw [sd f _ _ (hmeas _ _ _) (iP f hfc _ _ _) hP₁P]; ring
++  have s₂ : ∫ q in boxTri A₁ M M, f q =
++      (∫ q in boxTri A₁ c₂ M, f q) + ∫ q in boxTri A₁ M M \ boxTri A₁ c₂ M, f q := by
++    rw [sd f _ _ (hmeas _ _ _) (iP f hfc _ _ _) hZ₁P₁]; ring
++  have s₃ : ∫ q in boxTri c M M \ boxTri A₁ M M, f q =
++      (∫ q in boxTri c M M₃ \ boxTri A₁ M M₃, f q) +
++        ∫ q in (boxTri c M M \ boxTri A₁ M M) \ (boxTri c M M₃ \ boxTri A₁ M M₃), f q := by
++    rw [sd f _ _ ((hmeas _ _ _).diff (hmeas _ _ _))
++      ((iP f hfc _ _ _).mono_set Set.diff_subset) hZ₃]; ring
++  have i₁ : ∫ q in (boxTri A₁ c₂ M), f q = twoPowVal A₁ c₂ M a Lp α β m n := by
++    rw [setIntegral_congr_fun (hmeas _ _ _) e₁, box_twoPow]
++  have i₂ : ∫ q in (boxTri A₁ M M) \ (boxTri A₁ c₂ M), f q =
++      twoPowVal A₁ M M 0 Lp α β 0 (m + n) - twoPowVal A₁ c₂ M 0 Lp α β 0 (m + n) := by
++    rw [setIntegral_congr_fun ((hmeas _ _ _).diff (hmeas _ _ _)) e₂,
++      sd fL _ _ (hmeas _ _ _) (iP fL cfL _ _ _) hZ₁P₁, box_twoPow, box_twoPow]
++  have i₃ : ∫ q in (boxTri c M M₃) \ (boxTri A₁ M M₃), f q =
++      g ^ m * (twoPowVal c M M₃ 0 Lp α β 0 n - twoPowVal A₁ M M₃ 0 Lp α β 0 n) := by
++    rw [setIntegral_congr_fun ((hmeas _ _ _).diff (hmeas _ _ _)) e₃, integral_const_mul,
++      sd fg _ _ (hmeas _ _ _) (iP fg cfg _ _ _) hQ₁Q, box_twoPow, box_twoPow]
++  have i₄ : ∫ q in ((boxTri c M M) \ (boxTri A₁ M M)) \ ((boxTri c M M₃) \ (boxTri A₁ M M₃)), f q =
++      (twoPowVal c M M 0 Lp α β 0 (m + n) - twoPowVal A₁ M M 0 Lp α β 0 (m + n)) -
++        (twoPowVal c M M₃ 0 Lp α β 0 (m + n) - twoPowVal A₁ M M₃ 0 Lp α β 0 (m + n)) := by
++    rw [setIntegral_congr_fun (((hmeas _ _ _).diff (hmeas _ _ _)).diff
++      ((hmeas _ _ _).diff (hmeas _ _ _))) e₄,
++      sd fL _ _ ((hmeas _ _ _).diff (hmeas _ _ _))
++        ((iP fL cfL _ _ _).mono_set Set.diff_subset) hZ₃,
++      sd fL _ _ (hmeas _ _ _) (iP fL cfL _ _ _) hP₁P,
++      sd fL _ _ (hmeas _ _ _) (iP fL cfL _ _ _) hQ₁Q,
++      box_twoPow, box_twoPow, box_twoPow, box_twoPow]
++  rw [s₁, s₂, s₃, i₁, i₂, i₃, i₄, cellsVal]
++  simp only [← hc₁, ← hc₂, ← ha, ← hLp]
++  rw [← hA₁, ← hM₃]
++  ring
++
++/-! ## Piece integrals -/
++
++theorem mem_pieceSet_agg {N : ℕ} (R : Finset (Fin N)) (c M : ℝ) (y : Fin N → ℝ)
++    (hy : y ∈ simplexF (Fin N) M) :
++    y ∈ pieceSet N R c M ↔ (aggR R y, aggS R y) ∈ boxTri c M M := by
++  have hsum := sum_eq_aggR_add_aggS R y
++  have h1 : 0 ≤ aggR R y := Finset.sum_nonneg fun i _ => hy.1 i
++  have h2 : 0 ≤ aggS R y := Finset.sum_nonneg fun i _ => hy.1 i
++  simp only [pieceSet, boxTri, Set.mem_ofPred_eq]
++  constructor
++  · rintro ⟨-, hc, hM⟩
++    exact ⟨h1, hc, h2, by linarith, by linarith⟩
++  · rintro ⟨-, hc, -, -, hM⟩
++    exact ⟨hy.1, hc, by linarith⟩
++
++/-- **A piece, two aggregates.** For a piece with `R` and `Rᶜ` nonempty, the block
++`yᵗ U^m (L − S)^n` integrates to `aggConst R t · aggConst Rᶜ t · cellsVal`. -/
++theorem piece_block {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty)
++    (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ) (t : Fin N → ℕ) (m n : ℕ) :
++    ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        ((endpointAgg g L C R.card k (aggR R y) (aggS R y)) ^ m *
++          (L - ((R.card + k) * g + aggR R y + aggS R y)) ^ n) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        cellsVal g L C R.card k c M (aggExp {i // i ∈ R} (fun i => t i))
++          (aggExp {i // i ∉ R} (fun i => t i)) m n := by
++  set Φ : ℝ × ℝ → ℝ := fun q => (endpointAgg g L C R.card k q.1 q.2) ^ m *
++    (L - ((R.card + k) * g + q.1 + q.2)) ^ n with hΦ
++  have hΦc : Continuous Φ := by
++    simp only [hΦ]; have := continuous_endpointAgg g L C R.card k; fun_prop
++  set Z := boxTri c M M
++  have hZm : MeasurableSet Z := (boxTri_isClosed _ _ _).measurableSet
++  have step1 : ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        ((endpointAgg g L C R.card k (aggR R y) (aggS R y)) ^ m *
++          (L - ((R.card + k) * g + aggR R y + aggS R y)) ^ n) =
++      ∫ y in simplexF (Fin N) M, (∏ i, y i ^ t i) * Z.indicator Φ (aggR R y, aggS R y) := by
++    rw [setIntegral_congr_fun (pieceSet_measurableSet N R c M) (g := fun y =>
++      (∏ i, y i ^ t i) * Z.indicator Φ (aggR R y, aggS R y)) (fun y hy => by
++        simp only
++        rw [Set.indicator_of_mem ((mem_pieceSet_agg R c M y ⟨hy.1, hy.2.2⟩).mp hy)])]
++    refine (setIntegral_eq_of_subset_of_forall_sdiff_eq_zero (simplexF_measurableSet M)
++      (pieceSet_subset_simplexF N R c M) fun y hy => ?_).symm
++    rw [Set.indicator_of_notMem (fun h => hy.2 ((mem_pieceSet_agg R c M y hy.1).mpr h)), mul_zero]
++  obtain ⟨Bd, hBd⟩ := (tri_isCompact M).exists_bound_of_continuousOn hΦc.continuousOn
++  rw [step1, two_group_fin R hR hRc M t _ (hΦc.measurable.indicator hZm) Bd (fun q hq => by
++    rw [← Real.norm_eq_abs, norm_indicator_eq_indicator_norm]
++    by_cases h : q ∈ Z
++    · rw [Set.indicator_of_mem h]; exact hBd q hq
++    · rw [Set.indicator_of_notMem h]; exact le_trans (norm_nonneg _) (hBd q hq))]
++  congr 1
++  rw [← cells_integral]
++  have hfun : (fun q : ℝ × ℝ => q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++      q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * Z.indicator Φ q) =
++      Z.indicator (fun q : ℝ × ℝ => q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++        q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * Φ q) := by
++    funext q; by_cases h : q ∈ Z
++    · rw [Set.indicator_of_mem h, Set.indicator_of_mem h]
++    · rw [Set.indicator_of_notMem h, Set.indicator_of_notMem h, mul_zero]
++  rw [hfun, setIntegral_indicator hZm, Set.inter_eq_right.mpr (boxTri_subset_tri _ _ _)]
++
++/-- **A piece with no rough coordinates** (`R = ∅`): one aggregate `u₂ = Σ y`, with `U = C(1)`
++up to `u₂ = L − k g − C(1)` and `U = L − k g − u₂` beyond (for `g ≤ C(1)`). -/
++theorem piece_r0 {N : ℕ} (hN : 0 < N) (g L : ℝ) (C : ℕ → ℝ) (hC1 : g ≤ C 1) (k : ℕ)
++    (c M : ℝ) (hc : 0 ≤ c) (hM : 0 ≤ M) (m n : ℕ) :
++    ∫ y in pieceSet N ∅ c M, (endpointAgg g L C 0 k (aggR ∅ y) (aggS ∅ y)) ^ m *
++        (L - (((0 : ℕ) + k) * g + aggR ∅ y + aggS ∅ y)) ^ n =
++      1 / ((N - 1).factorial : ℝ) * seg0Val g L C k M (N - 1) m n := by
++  have : Nonempty (Fin N) := ⟨⟨0, hN⟩⟩
++  have hset : pieceSet N ∅ c M = simplexF (Fin N) M := by
++    ext y; simp [pieceSet, simplexF, hc]
++  have hagg : ∀ y : Fin N → ℝ, aggR ∅ y = 0 ∧ aggS ∅ y = ∑ i, y i := fun y => by
++    simp [aggR, aggS]
++  set h : ℝ → ℝ := fun s => (endpointAgg g L C 0 k 0 s) ^ m * (L - (((0 : ℕ) + k) * g + 0 + s)) ^ n
++    with hh
++  have hhc : Continuous h := by
++    simp only [hh]; have := continuous_endpointAgg g L C 0 k
++    exact ((this.comp (continuous_const.prodMk continuous_id)).pow m).mul (by fun_prop)
++  rw [hset, setIntegral_congr_fun (simplexF_measurableSet M) (g := fun y =>
++    (∏ i, y i ^ (fun _ => (0 : ℕ)) i) * h (∑ i, y i)) (fun y _ => by
++      simp only [hh, (hagg y).1, (hagg y).2, pow_zero, Finset.prod_const_one, one_mul])]
++  obtain ⟨Bd, hBd⟩ := (isCompact_Icc (a := (0 : ℝ)) (b := M)).exists_bound_of_continuousOn
++    hhc.continuousOn
++  rw [one_group M (fun _ => 0) h hhc.measurable Bd (fun s hs => by
++    rw [← Real.norm_eq_abs]; exact hBd s hs), aggConst_zero, aggExp_zero, Fintype.card_fin]
++  congr 1
++  rw [integral_Icc_eq_integral_Ioc, ← intervalIntegral.integral_of_le hM]
++  set X := max 0 (min (L - k * g - C 1) M) with hX
++  have hX0 : 0 ≤ X := le_max_left _ _
++  have hXM : X ≤ M := max_le hM (min_le_right _ _)
++  have hcont : Continuous fun s => s ^ (N - 1) * h s := by fun_prop
++  rw [← intervalIntegral.integral_add_adjacent_intervals (hcont.intervalIntegrable 0 X)
++    (hcont.intervalIntegrable X M)]
++  have hLp : ∀ s : ℝ, L - (((0 : ℕ) + k) * g + 0 + s) = L - k * g - s := fun s => by push_cast; ring
++  have a1 : ∫ s in (0 : ℝ)..X, s ^ (N - 1) * h s =
++      ∫ s in (0 : ℝ)..X, C 1 ^ m * ((L - k * g - s) ^ n * s ^ (N - 1)) := by
++    refine intervalIntegral.integral_congr_ae (Filter.Eventually.of_forall fun s hs => ?_)
++    rw [Set.uIoc_of_le hX0] at hs
++    have hXe : X = min (L - k * g - C 1) M := max_eq_right (by
++      by_contra hc'; push Not at hc'
++      have : X = 0 := max_eq_left hc'.le
++      linarith [hs.1, hs.2])
++    have hs2 : s ≤ L - k * g - C 1 := le_trans hs.2 (hXe ▸ min_le_left _ _)
++    simp only [hh]
++    rw [endpointAgg_cap g L C 0 k 0 s (by push_cast; linarith) (by push_cast; linarith), hLp]
++    push_cast; ring
++  have a2 : ∫ s in X..M, s ^ (N - 1) * h s =
++      ∫ s in X..M, (L - k * g - s) ^ (m + n) * s ^ (N - 1) := by
++    refine intervalIntegral.integral_congr_ae (Filter.Eventually.of_forall fun s hs => ?_)
++    rw [Set.uIoc_of_le hXM] at hs
++    have hs2 : L - k * g - C 1 ≤ s := by
++      by_contra hc'; push Not at hc'
++      have : s ≤ min (L - k * g - C 1) M := le_min hc'.le hs.2
++      linarith [hs.1, le_max_right 0 (min (L - k * g - C 1) M)]
++    simp only [hh]
++    rw [endpointAgg_LBranch_cap g L C 0 k 0 s (by push_cast; linarith) (by push_cast; linarith),
++      hLp, pow_add]; ring
++  rw [a1, a2, intervalIntegral.integral_const_mul, innerVal_eq,
++    ← intervalIntegral.integral_interval_sub_left (a := 0) (b := M) (c := X)
++      ((by fun_prop : Continuous fun s : ℝ => (L - k * g - s) ^ (m + n) * s ^ (N - 1)).intervalIntegrable _ _)
++      ((by fun_prop : Continuous fun s : ℝ => (L - k * g - s) ^ (m + n) * s ^ (N - 1)).intervalIntegrable _ _),
++    innerVal_eq, innerVal_eq, seg0Val]
++
++/-! ## Stratified inclusion–exclusion -/
++
++/-- **Inclusion–exclusion with a stratum-dependent integrand**: V2b's `indicator_supportT` with the
++integrand allowed to depend on the rough set (`G R` is used on the pieces `Qset R K`). -/
++theorem indicator_supportT_strat {N : ℕ} (g L : ℝ) (C : ℕ → ℝ)
++    (G : Finset (Fin N) → (Fin N → ℝ) → ℝ) (x : Fin N → ℝ) :
++    (supportT N g L C).indicator (fun x => G (roughSet g x) x) x =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator (G R) x := by
++  classical
++  set R0 := roughSet g x with hR0
++  have hrow : ∀ R : Finset (Fin N),
++      ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator (G R) x =
++        if R = R0 then (if (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card then G R x else 0)
++        else 0 := by
++    intro R
++    have hmem : ∀ K, x ∈ Qset g L C R K ↔
++        ((∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card ∧ R ⊆ R0) ∧ K ⊆ R0 := by
++      intro K
++      simp only [Qset, Set.mem_setOf_eq, Finset.mem_union]
++      constructor
++      · rintro ⟨h0, hg, hL, hC⟩
++        exact ⟨⟨h0, hL, hC, fun i hi => (mem_roughSet g x i).mpr (hg i (Or.inl hi))⟩,
++          fun i hi => (mem_roughSet g x i).mpr (hg i (Or.inr hi))⟩
++      · rintro ⟨⟨h0, hL, hC, hRs⟩, hKs⟩
++        refine ⟨h0, fun i hi => ?_, hL, hC⟩
++        rcases hi with hi | hi
++        · exact (mem_roughSet g x i).mp (hRs hi)
++        · exact (mem_roughSet g x i).mp (hKs hi)
++    by_cases hb : (∀ i, 0 ≤ x i) ∧ ∑ i, x i ≤ L ∧ ∑ i ∈ R, x i ≤ C R.card ∧ R ⊆ R0
++    · have hsum : ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator (G R) x =
++          G R x * ∑ K ∈ (Rᶜ ∩ R0).powerset, (-1 : ℝ) ^ K.card := by
++        rw [Finset.mul_sum]
++        have hfilt : (Rᶜ ∩ R0).powerset = Rᶜ.powerset.filter (· ⊆ R0) := by
++          ext K; simp [Finset.subset_inter_iff]
++        rw [hfilt, Finset.sum_filter]
++        refine Finset.sum_congr rfl fun K _ => ?_
++        by_cases hK : K ⊆ R0
++        · rw [Set.indicator_of_mem ((hmem K).mpr ⟨hb, hK⟩), if_pos hK]; ring
++        · rw [Set.indicator_of_notMem (fun h => hK ((hmem K).mp h).2), if_neg hK]; ring
++      rw [hsum, sum_powerset_neg_one]
++      have hiff : Rᶜ ∩ R0 = ∅ ↔ R = R0 := by
++        constructor
++        · intro h
++          refine Finset.Subset.antisymm hb.2.2.2 fun i hi => ?_
++          by_contra hiR
++          have : i ∈ Rᶜ ∩ R0 := Finset.mem_inter.mpr ⟨Finset.mem_compl.mpr hiR, hi⟩
++          rw [h] at this; simp at this
++        · rintro rfl; ext i; simp
++      by_cases hRR : R = R0
++      · rw [if_pos (hiff.mpr hRR), if_pos hRR, if_pos ⟨hb.1, hb.2.1, hb.2.2.1⟩, mul_one]
++      · rw [if_neg (fun h => hRR (hiff.mp h)), if_neg hRR, mul_zero]
++    · have hz : ∀ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator (G R) x = 0 := by
++        intro K _
++        rw [Set.indicator_of_notMem (fun h => hb ((hmem K).mp h).1), mul_zero]
++      rw [Finset.sum_eq_zero hz]
++      by_cases hRR : R = R0
++      · subst hRR
++        rw [if_pos rfl, if_neg]
++        rintro ⟨h0, hL, hC⟩
++        exact hb ⟨h0, hL, hC, Finset.Subset.refl _⟩
++      · rw [if_neg hRR]
++  rw [Finset.sum_congr rfl fun R _ => hrow R, Finset.sum_ite_eq' Finset.univ R0]
++  simp only [Finset.mem_univ, if_true, Set.indicator_apply, supportT, Set.mem_setOf_eq, ← hR0]
++
++theorem continuous_stratumEndpoint {n : ℕ} (g L : ℝ) (C : ℕ → ℝ) (R : Finset (Fin n)) :
++    Continuous fun x : Fin n → ℝ => stratumEndpoint g L C R x := by
++  unfold stratumEndpoint aggR; fun_prop
++
++/-- **`J_T(1)` as a signed sum of piece integrals.** -/
++theorem jT_one_pieces (N : ℕ) (g L τ : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) :
++    jT N g L τ C (fun _ => 1) = (N + 1 : ℝ) * ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset,
++      (-1 : ℝ) ^ K.card * ∫ y in pieceSet N R (C R.card - R.card * g) (τ - (R.card + K.card) * g),
++        (endpointAgg g L C R.card K.card (aggR R y) (aggS R y)) ^ 2 := by
++  classical
++  unfold jT
++  congr 1
++  simp only [intervalIntegral.integral_const, smul_eq_mul, mul_one, sub_zero]
++  rw [hatSupport_eq, ← integral_indicator (supportT_measurableSet N g τ C)]
++  have hfun : (supportT N g τ C).indicator (fun x => (endpoint g L C x) ^ 2) =
++      fun x => (supportT N g τ C).indicator
++        (fun x => (fun R x => (stratumEndpoint g L C R x) ^ 2) (roughSet g x) x) x := by
++    funext x
++    congr 1
++  rw [hfun]
++  simp_rw [indicator_supportT_strat g τ C (fun R x => (stratumEndpoint g L C R x) ^ 2)]
++  have hint : ∀ R K, Integrable ((Qset g τ C R K).indicator
++      (fun x : Fin N → ℝ => (stratumEndpoint g L C R x) ^ 2)) := by
++    intro R K
++    rw [integrable_indicator_iff (Qset_measurableSet g τ C R K)]
++    refine (((continuous_stratumEndpoint g L C R).pow 2).continuousOn.integrableOn_compact
++      (simplexF_isCompact (ι := Fin N) τ)).mono_set ?_
++    exact fun x hx => ⟨hx.1, hx.2.2.1⟩
++  rw [integral_finsetSum _ fun R _ => integrable_finsetSum _ fun K _ => (hint R K).const_mul _]
++  refine Finset.sum_congr rfl fun R _ => ?_
++  rw [integral_finsetSum _ fun K _ => (hint R K).const_mul _]
++  refine Finset.sum_congr rfl fun K hK => ?_
++  have hRK : Disjoint R K := Finset.disjoint_left.mpr fun i hiR hiK =>
++    (Finset.mem_compl.mp (Finset.mem_powerset.mp hK hiK)) hiR
++  rw [integral_const_mul, integral_Qset g τ C hg R K hRK]
++  congr 1
++  refine setIntegral_congr_fun (pieceSet_measurableSet _ _ _ _) fun y _ => ?_
++  rw [stratumEndpoint_shift g L C R K hRK y]
++
++/-! ## Counting by cardinalities -/
++
++theorem count_by_card (N : ℕ) (F : ℕ → ℕ → ℝ) :
++    ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * F R.card K.card =
++      ∑ r ∈ Finset.range (N + 1), (N.choose r : ℝ) *
++        ∑ k ∈ Finset.range (N - r + 1), ((N - r).choose k : ℝ) * (-1) ^ k * F r k := by
++  classical
++  have hin : ∀ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * F R.card K.card =
++      ∑ k ∈ Finset.range (N - R.card + 1), ((N - R.card).choose k : ℝ) * (-1) ^ k * F R.card k := by
++    intro R
++    rw [Finset.sum_powerset_apply_card (fun k => (-1 : ℝ) ^ k * F R.card k),
++      Finset.card_compl, Fintype.card_fin]
++    refine Finset.sum_congr rfl fun k _ => ?_
++    rw [nsmul_eq_mul]; ring
++  simp_rw [hin]
++  rw [← Finset.powerset_univ, Finset.sum_powerset_apply_card
++    (fun r => ∑ k ∈ Finset.range (N - r + 1), ((N - r).choose k : ℝ) * (-1) ^ k * F r k),
++    Finset.card_univ, Fintype.card_fin]
++  refine Finset.sum_congr rfl fun r _ => ?_
++  rw [nsmul_eq_mul]
++
++/-! ## Each piece in closed form, and `J_T(1)` -/
++
++/-- Every piece integral of `U²` is the closed form `pieceJ` at its cardinalities (empty pieces,
++the stratum `R = ∅`, and two aggregates). -/
++theorem piece_eq_pieceJ {N : ℕ} (hN : 0 < N) (g L τ : ℝ) (C : ℕ → ℝ) (hC1 : g ≤ C 1)
++    (hCN : C N - N * g < 0) (R K : Finset (Fin N)) :
++    ∫ y in pieceSet N R (C R.card - R.card * g) (τ - (R.card + K.card) * g),
++        (endpointAgg g L C R.card K.card (aggR R y) (aggS R y)) ^ 2 =
++      pieceJ N R.card K.card g L τ C 2 0 := by
++  unfold pieceJ
++  by_cases he : C R.card - R.card * g < 0 ∨ τ - (R.card + K.card) * g < 0
++  · rw [if_pos he, pieceSet_empty N R _ _ (by
++      rintro ⟨h1, h2⟩; rcases he with h | h <;> linarith), Measure.restrict_empty,
++      integral_zero_measure]
++  rw [if_neg he]
++  push Not at he
++  by_cases hr : R.card = 0
++  · rw [if_pos hr]
++    have hR : R = ∅ := Finset.card_eq_zero.mp hr
++    subst hR
++    have := piece_r0 hN g L C hC1 K.card _ (τ - (0 + K.card) * g) (by simpa using he.1)
++      (by simpa using he.2) 2 0
++    simp only [pow_zero, mul_one, Finset.card_empty] at this ⊢
++    rw [show τ - ((0 : ℕ) + K.card) * g = τ - (0 + K.card) * g by push_cast; ring]
++    convert this using 2
++    · simp
++    · congr 1; push_cast; ring
++  · rw [if_neg hr]
++    have hRne : R.Nonempty := Finset.card_pos.mp (Nat.pos_of_ne_zero hr)
++    have hRc : Rᶜ.Nonempty := by
++      by_contra h
++      rw [Finset.not_nonempty_iff_eq_empty, Finset.compl_eq_empty_iff] at h
++      subst h
++      rw [Finset.card_univ, Fintype.card_fin] at he
++      linarith [he.1]
++    have key := piece_block R hRne hRc g L C K.card (C R.card - R.card * g)
++      (τ - (R.card + K.card) * g) (fun _ => 0) 2 0
++    simp only [pow_zero, Finset.prod_const_one, one_mul, mul_one] at key
++    rw [key, aggConst_zero, aggConst_zero, aggExp_zero, aggExp_zero, Fintype.card_coe,
++      card_compl_subtype]
++
++/-- **`J_T(1)` in closed form** (any dimension `N ≥ 1` and data with `0 ≤ g ≤ C(1)` whose full
++rough stratum is empty, `C(N) < N g`): `jT N g L τ C 1 = jtSum N g L τ C 2 0`. -/
++theorem jT_one_eq {N : ℕ} (hN : 0 < N) (g L τ : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (hC1 : g ≤ C 1)
++    (hCN : C N - N * g < 0) :
++    jT N g L τ C (fun _ => 1) = jtSum N g L τ C 2 0 := by
++  rw [jT_one_pieces N g L τ C hg]
++  simp_rw [piece_eq_pieceJ hN g L τ C hC1 hCN]
++  rw [count_by_card N (fun r k => pieceJ N r k g L τ C 2 0), jtSum]
++
++/-! ## Rational values -/
++
++theorem twoPowVal_cast (A B D p L' : ℚ) (α β m₁ m₂ : ℕ) :
++    ((twoPowVal A B D p L' α β m₁ m₂ : ℚ) : ℝ) =
++      twoPowVal (A : ℝ) (B : ℝ) (D : ℝ) (p : ℝ) (L' : ℝ) α β m₁ m₂ := by
++  simp [twoPowVal, boxVal_cast]
++
++theorem cellsVal_cast (g L : ℚ) (C : ℕ → ℚ) (r k : ℕ) (c M : ℚ) (α β m n : ℕ) :
++    ((cellsVal g L C r k c M α β m n : ℚ) : ℝ) =
++      cellsVal (g : ℝ) (L : ℝ) (fun i => (C i : ℝ)) r k (c : ℝ) (M : ℝ) α β m n := by
++  simp only [cellsVal]
++  push_cast [twoPowVal_cast, Rat.cast_min]
++  rfl
++
++theorem seg0Val_cast (g L : ℚ) (C : ℕ → ℚ) (k : ℕ) (M : ℚ) (β m n : ℕ) :
++    ((seg0Val g L C k M β m n : ℚ) : ℝ) =
++      seg0Val (g : ℝ) (L : ℝ) (fun i => (C i : ℝ)) k (M : ℝ) β m n := by
++  simp only [seg0Val]
++  push_cast [innerVal_cast, Rat.cast_min, Rat.cast_max]
++  rfl
++
++theorem pieceJ_cast (N r k : ℕ) (g L τ : ℚ) (C : ℕ → ℚ) (m n : ℕ) :
++    ((pieceJ N r k g L τ C m n : ℚ) : ℝ) =
++      pieceJ N r k (g : ℝ) (L : ℝ) (τ : ℝ) (fun i => (C i : ℝ)) m n := by
++  unfold pieceJ
++  have hcond : (C r - r * g < 0 ∨ τ - (r + k) * g < 0) ↔
++      ((C r : ℝ) - r * (g : ℝ) < 0 ∨ (τ : ℝ) - (r + k) * (g : ℝ) < 0) := by
++    constructor <;> rintro (h | h)
++    · left; exact_mod_cast h
++    · right; exact_mod_cast h
++    · left; exact_mod_cast h
++    · right; exact_mod_cast h
++  by_cases h : C r - r * g < 0 ∨ τ - (r + k) * g < 0
++  · rw [if_pos h, if_pos (hcond.mp h)]; simp
++  · rw [if_neg h, if_neg (fun h' => h (hcond.mpr h'))]
++    split_ifs
++    · push_cast [seg0Val_cast]; rfl
++    · push_cast [cellsVal_cast]; rfl
++
++theorem jtSum_cast (N : ℕ) (g L τ : ℚ) (C : ℕ → ℚ) (m n : ℕ) :
++    ((jtSum N g L τ C m n : ℚ) : ℝ) = jtSum N (g : ℝ) (L : ℝ) (τ : ℝ) (fun i => (C i : ℝ)) m n := by
++  simp [jtSum, pieceJ_cast]
++
++/-! ## Table 3: the marginal Gram entry `J_T[1, 1]` -/
++
++theorem table3_hyps : 0 ≤ g3 ∧ g3 ≤ C3 1 ∧ C3 44 - ((44 : ℕ) : ℝ) * g3 < 0 := by
++  have h1 : BGP212.Params.C 1 = 777 / 1250 := by decide +kernel
++  have h44 : BGP212.Params.C 44 = 1081 / 1250 := by decide +kernel
++  simp only [g3, C3, h1, h44, BGP212.Params.g]
++  refine ⟨by norm_num, by norm_num, by norm_num⟩
++
++/-- **`J_T[1, 1]` at Table 3** (computational certificate `jtSum_table3`): with `F = 1`
++(the generator `gen 0 ∅` of `B₂₁`), `J_T(1) = 45 ∫_{T̂} U(x̂)² dx̂` is the explicit rational
++`V ≈ 1.11935 × 10⁻⁵⁵`. -/
++theorem jT_one_table3 : jT 44 g3 L3 τ3 C3 (fun _ => 1) = ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  obtain ⟨h0, h1, h2⟩ := table3_hyps
++  rw [jT_one_eq (by norm_num) g3 L3 τ3 C3 h0 h1 h2,
++    show jtSum 44 g3 L3 τ3 C3 2 0 = ((jtSum 44 BGP212.Params.g BGP212.Params.L BGP212.Params.τ
++      BGP212.Params.C 2 0 : ℚ) : ℝ) from (jtSum_cast 44 _ _ _ _ 2 0).symm, jtSum_table3]
++
++theorem eval_gen_zero (x : Fin 45 → ℝ) :
++    MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0) = 1 := by
++  simp [BGP212.Var.gen, BGP212.Var.Plam]
++
++/-- **The marginal Gram entry for the generator `gen 0 ∅`**, in V2d's `J_T` form and in
++Definition 4.6's marginal form (V2d's `marginal_agrees`). -/
++theorem jT_gram_gen00_table3 :
++    jT 44 g3 L3 τ3 C3 (fun x => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++        ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) ∧
++      marginalJ 44 g3 L3 τ3 C3
++          (fun x => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++        ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  have hF : (fun x : Fin 45 → ℝ => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++      fun _ => 1 := funext eval_gen_zero
++  rw [hF]
++  refine ⟨jT_one_table3, ?_⟩
++  rw [marginal_agrees 44 g3 L3 τ3 C3 g_nonneg tau_le_L capStep_table3 C_zero_table3 _
++    continuous_const, jT_one_table3]
++
++end BGP212.V2e
++
++/-! ## Comparator wrappers -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram BGP212.V2d BGP212.V2e BGP212.Params MeasureTheory
++
++theorem box_twoPow (A B D p L' : ℝ) (α β m₁ m₂ : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β * (p - q.1) ^ m₁ * (L' - q.1 - q.2) ^ m₂ =
++      twoPowVal A B D p L' α β m₁ m₂ := by
++  apply BGP212.V2e.box_twoPow <;> assumption
++
++theorem cells_integral (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (α β m n : ℕ) :
++    ∫ q in boxTri c M M, q.1 ^ α * q.2 ^ β *
++        ((endpointAgg g L C r k q.1 q.2) ^ m * (L - ((r + k) * g + q.1 + q.2)) ^ n) =
++      cellsVal g L C r k c M α β m n := by
++  apply BGP212.V2e.cells_integral <;> assumption
++
++theorem mem_pieceSet_agg {N : ℕ} (R : Finset (Fin N)) (c M : ℝ) (y : Fin N → ℝ)
++    (hy : y ∈ simplexF (Fin N) M) :
++    y ∈ pieceSet N R c M ↔ (aggR R y, aggS R y) ∈ boxTri c M M := by
++  apply BGP212.V2e.mem_pieceSet_agg <;> assumption
++
++theorem piece_block {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty)
++    (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ) (t : Fin N → ℕ) (m n : ℕ) :
++    ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        ((endpointAgg g L C R.card k (aggR R y) (aggS R y)) ^ m *
++          (L - ((R.card + k) * g + aggR R y + aggS R y)) ^ n) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        cellsVal g L C R.card k c M (aggExp {i // i ∈ R} (fun i => t i))
++          (aggExp {i // i ∉ R} (fun i => t i)) m n := by
++  apply BGP212.V2e.piece_block <;> assumption
++
++theorem piece_r0 {N : ℕ} (hN : 0 < N) (g L : ℝ) (C : ℕ → ℝ) (hC1 : g ≤ C 1) (k : ℕ)
++    (c M : ℝ) (hc : 0 ≤ c) (hM : 0 ≤ M) (m n : ℕ) :
++    ∫ y in pieceSet N ∅ c M, (endpointAgg g L C 0 k (aggR ∅ y) (aggS ∅ y)) ^ m *
++        (L - (((0 : ℕ) + k) * g + aggR ∅ y + aggS ∅ y)) ^ n =
++      1 / ((N - 1).factorial : ℝ) * seg0Val g L C k M (N - 1) m n := by
++  apply BGP212.V2e.piece_r0 <;> assumption
++
++theorem indicator_supportT_strat {N : ℕ} (g L : ℝ) (C : ℕ → ℝ)
++    (G : Finset (Fin N) → (Fin N → ℝ) → ℝ) (x : Fin N → ℝ) :
++    (supportT N g L C).indicator (fun x => G (roughSet g x) x) x =
++      ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * (Qset g L C R K).indicator (G R) x := by
++  apply BGP212.V2e.indicator_supportT_strat <;> assumption
++
++theorem jT_one_pieces (N : ℕ) (g L τ : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) :
++    jT N g L τ C (fun _ => 1) = (N + 1 : ℝ) * ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset,
++      (-1 : ℝ) ^ K.card * ∫ y in pieceSet N R (C R.card - R.card * g) (τ - (R.card + K.card) * g),
++        (endpointAgg g L C R.card K.card (aggR R y) (aggS R y)) ^ 2 := by
++  apply BGP212.V2e.jT_one_pieces <;> assumption
++
++theorem count_by_card (N : ℕ) (F : ℕ → ℕ → ℝ) :
++    ∑ R : Finset (Fin N), ∑ K ∈ Rᶜ.powerset, (-1 : ℝ) ^ K.card * F R.card K.card =
++      ∑ r ∈ Finset.range (N + 1), (N.choose r : ℝ) *
++        ∑ k ∈ Finset.range (N - r + 1), ((N - r).choose k : ℝ) * (-1) ^ k * F r k := by
++  apply BGP212.V2e.count_by_card <;> assumption
++
++theorem piece_eq_pieceJ {N : ℕ} (hN : 0 < N) (g L τ : ℝ) (C : ℕ → ℝ) (hC1 : g ≤ C 1)
++    (hCN : C N - N * g < 0) (R K : Finset (Fin N)) :
++    ∫ y in pieceSet N R (C R.card - R.card * g) (τ - (R.card + K.card) * g),
++        (endpointAgg g L C R.card K.card (aggR R y) (aggS R y)) ^ 2 =
++      pieceJ N R.card K.card g L τ C 2 0 := by
++  apply BGP212.V2e.piece_eq_pieceJ <;> assumption
++
++theorem jT_one_eq {N : ℕ} (hN : 0 < N) (g L τ : ℝ) (C : ℕ → ℝ) (hg : 0 ≤ g) (hC1 : g ≤ C 1)
++    (hCN : C N - N * g < 0) :
++    jT N g L τ C (fun _ => 1) = jtSum N g L τ C 2 0 := by
++  apply BGP212.V2e.jT_one_eq <;> assumption
++
++theorem twoPowVal_cast (A B D p L' : ℚ) (α β m₁ m₂ : ℕ) :
++    ((twoPowVal A B D p L' α β m₁ m₂ : ℚ) : ℝ) =
++      twoPowVal (A : ℝ) (B : ℝ) (D : ℝ) (p : ℝ) (L' : ℝ) α β m₁ m₂ := by
++  apply BGP212.V2e.twoPowVal_cast <;> assumption
++
++theorem cellsVal_cast (g L : ℚ) (C : ℕ → ℚ) (r k : ℕ) (c M : ℚ) (α β m n : ℕ) :
++    ((cellsVal g L C r k c M α β m n : ℚ) : ℝ) =
++      cellsVal (g : ℝ) (L : ℝ) (fun i => (C i : ℝ)) r k (c : ℝ) (M : ℝ) α β m n := by
++  apply BGP212.V2e.cellsVal_cast <;> assumption
++
++theorem seg0Val_cast (g L : ℚ) (C : ℕ → ℚ) (k : ℕ) (M : ℚ) (β m n : ℕ) :
++    ((seg0Val g L C k M β m n : ℚ) : ℝ) =
++      seg0Val (g : ℝ) (L : ℝ) (fun i => (C i : ℝ)) k (M : ℝ) β m n := by
++  apply BGP212.V2e.seg0Val_cast <;> assumption
++
++theorem pieceJ_cast (N r k : ℕ) (g L τ : ℚ) (C : ℕ → ℚ) (m n : ℕ) :
++    ((pieceJ N r k g L τ C m n : ℚ) : ℝ) =
++      pieceJ N r k (g : ℝ) (L : ℝ) (τ : ℝ) (fun i => (C i : ℝ)) m n := by
++  apply BGP212.V2e.pieceJ_cast <;> assumption
++
++theorem jtSum_cast (N : ℕ) (g L τ : ℚ) (C : ℕ → ℚ) (m n : ℕ) :
++    ((jtSum N g L τ C m n : ℚ) : ℝ) = jtSum N (g : ℝ) (L : ℝ) (τ : ℝ) (fun i => (C i : ℝ)) m n := by
++  apply BGP212.V2e.jtSum_cast <;> assumption
++
++theorem pieceJ_tail (r k : ℕ) (h : 16 ≤ r + k) : pieceJ 44 r k g L τ C 2 0 = 0 := by
++  apply BGP212.V2e.pieceJ_tail <;> assumption
++
++theorem pieceJ_high (r k : ℕ) (h : 14 ≤ r) : pieceJ 44 r k g L τ C 2 0 = 0 := by
++  apply BGP212.V2e.pieceJ_high <;> assumption
++
++theorem jtSum_table3 : jtSum 44 g L τ C 2 0 = (196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  apply BGP212.V2e.jtSum_table3 <;> assumption
++
++theorem table3_hyps : 0 ≤ g3 ∧ g3 ≤ C3 1 ∧ C3 44 - ((44 : ℕ) : ℝ) * g3 < 0 := by
++  apply BGP212.V2e.table3_hyps <;> assumption
++
++theorem jT_one_table3 : jT 44 g3 L3 τ3 C3 (fun _ => 1) = ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  apply BGP212.V2e.jT_one_table3 <;> assumption
++
++theorem eval_gen_zero (x : Fin 45 → ℝ) :
++    MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0) = 1 := by
++  apply BGP212.V2e.eval_gen_zero <;> assumption
++
++theorem jT_gram_gen00_table3 :
++    jT 44 g3 L3 τ3 C3 (fun x => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++        ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) ∧
++      marginalJ 44 g3 L3 τ3 C3
++          (fun x => MvPolynomial.eval₂ (algebraMap ℚ ℝ) x (BGP212.Var.gen 0 0)) =
++        ((196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  apply BGP212.V2e.jT_gram_gen00_table3 <;> assumption
++
++end BGP212.Challenge
+diff --git a/Solution/MarginalEntryCert.lean b/Solution/MarginalEntryCert.lean
+new file mode 100644
+index 0000000..39cb2fe
+--- /dev/null
++++ b/Solution/MarginalEntryCert.lean
+@@ -0,0 +1,573 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), §9.4, Lemma 9.2 and the display of `J_T` (p. 41).
++-/
++import BGP212.MarginalEntry
++
++/-! # V2f: the kernel certificate for `J_T[1, 1]` at Table 3
++
++COMPUTATIONAL CERTIFICATE (generated by `specs/checks/marginal_entry_v2f_emit.py`). The closed form
++`jtSum 44 g L τ C 2 0` (Table 3 data from `BGP212.Params`) is evaluated over `ℚ`:
++
++* the 133 nonempty pieces `(r, k)` (`r ≤ 13`, `r + k ≤ 15`) are evaluated by the Lean kernel, one
++  `decide +kernel` lemma `pj_r_k` per piece;
++* every other piece vanishes by `pieceJ_tail` (`τ < (r + k) g` once `r + k ≥ 16`) or
++  `pieceJ_high` (`C(r) < r g` once `r ≥ 14`), proved by linear arithmetic;
++* rows and the total are assembled by `decide +kernel` on the resulting numerals.
++
++The integral identity that gives this number its meaning, `jT_one_eq`, is proved in
++`Solution/MarginalEntry.lean`. -/
++
++namespace BGP212.V2e
++
++open BGP212.Params
++
++/-- Pieces with `r + k ≥ 16` are empty at Table 3 (`τ − 16 g = −53/1250`). -/
++theorem pieceJ_tail (r k : ℕ) (h : 16 ≤ r + k) : pieceJ 44 r k g L τ C 2 0 = 0 := by
++  unfold pieceJ
++  rw [if_pos (Or.inr ?_)]
++  have : (16 : ℚ) ≤ r + k := by exact_mod_cast h
++  rw [show τ = 249 / 250 from rfl, show g = 41 / 625 from rfl]
++  linarith
++
++/-- Pieces with `r ≥ 14` are empty at Table 3 (`C(r) = 1081/1250 < 14 g`). -/
++theorem pieceJ_high (r k : ℕ) (h : 14 ≤ r) : pieceJ 44 r k g L τ C 2 0 = 0 := by
++  unfold pieceJ
++  rw [if_pos (Or.inl ?_)]
++  have hr : (14 : ℚ) ≤ r := by exact_mod_cast h
++  have hC : C r = 4 * (1081 / 5000) := by
++    rw [C, B, if_neg (by omega), if_neg (by omega)]
++  rw [hC, show g = 41 / 625 from rfl]
++  linarith
++
++/-- `jtSum` as a sum of rows (definitional). -/
++theorem jtSum_eq_rows {K : Type*} [Field K] [LinearOrder K] (N : ℕ) (g L τ : K) (C : ℕ → K)
++    (m n : ℕ) : jtSum N g L τ C m n =
++      (N + 1) * ∑ r ∈ Finset.range (N + 1), (N.choose r : K) * jtRow N r g L τ C m n := rfl
++
++theorem jtRow_high (r : ℕ) (h : 14 ≤ r) : jtRow 44 r g L τ C 2 0 = 0 :=
++  Finset.sum_eq_zero fun k _ => by rw [pieceJ_high r k h, mul_zero]
++
++theorem pj_0_0 : pieceJ 44 0 0 g L τ C 2 0 = (1267130976405365673481537698717349112815307709573704378107071986343338958610098547589252485229158213391151268605887386564822342804246182620251 / 509411326830947981140679870613536431386592953335355813048783141437051043276529327386015211232006549835205078125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_1 : pieceJ 44 0 1 g L τ C 2 0 = (1345155999950147549933387212330744785606399022461660560709425703991755338577340322113538169727271465180132097214989366997337845698259734326863 / 11279822236970991010972197135014020980703129680997164431794483846106130243980292249261765391565859317779541015625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_2 : pieceJ 44 0 2 g L τ C 2 0 = (40261331969593421696789667125212937898324295009277498370568002476396021849329083510282041357748502535366255476710058103214194840816076092393 / 8773195073199659675200597771677571873880211974108905669173487435860323523095782860536928637884557247161865234375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_3 : pieceJ 44 0 3 g L τ C 2 0 = (10811734974270307550254716770784237070289015275815748574645207982116746812707911733655543454975302684856111720712537660370423801482499009713 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_4 : pieceJ 44 0 4 g L τ C 2 0 = (239473783528737341673728643400422842651882272552893659217069468647535265089759338770193851542358097875148946168318504510036303361627637929 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_5 : pieceJ 44 0 5 g L τ C 2 0 = (248254665648767029125203267231952224770534647483291730768341480831209067555590730434054660410269244874583284067266657446818952214280919 / 5263917043919795805120358663006543124328127184465343401504092461516194113857469716322157182730734348297119140625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_6 : pieceJ 44 0 6 g L τ C 2 0 = (3435064856170223883179149392853050387116620799744680893141553438994365556587989032482695087751285240399760240367527245364335488306211 / 7178068696254267006982307267736195169538355251543650092960126083885719246169276885893850703723728656768798828125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_7 : pieceJ 44 0 7 g L τ C 2 0 = (32194649691240873970627745012307071001430909059224022553710566626087224005103395896891335488194139507822988631984675614704081 / 11212035869821460435672469338602734363418240629329471210210580705245175803241863832226954400539398193359375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_8 : pieceJ 44 0 8 g L τ C 2 0 = (1606984101470266126718539098551947066750300193308751060740380800396724670607485732067072291040451877896029519755190823249369 / 180911757522177704787513271757062444558062700950122811651673819673645515759830004753894172608852386474609375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_9 : pieceJ 44 0 9 g L τ C 2 0 = (39886272112495671796838209513182889320695732306047664970510959968341561964473737032106664182126228973440178099399 / 3435768466958789146815635915068986865900329027247845663423954365445212033591815270483493804931640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_10 : pieceJ 44 0 10 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_11 : pieceJ 44 0 11 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_12 : pieceJ 44 0 12 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_13 : pieceJ 44 0 13 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_14 : pieceJ 44 0 14 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_0_15 : pieceJ 44 0 15 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_0 : pieceJ 44 1 0 g L τ C 2 0 = (2130337556482036989826514289086266886111372261608937646901869242780781102108342265876633510710171268783675063693637991657917841322351881307 / 17863971868506094361268185507940757209258350173524921045828368082068532060602272792948497226461768150329589843750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_1 : pieceJ 44 1 1 g L τ C 2 0 = (2588228483759575207404339322450979265274816325847842071094989821572460306117638117415481622510021187866640099090257559910324906385672379401 / 563991111848549550548609856750701049035156484049858221589724192305306512199014612463088269578292965888977050781250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_2 : pieceJ 44 1 2 g L τ C 2 0 = (540586748713515375657256807094514693133101762630662578501964843736635748154600791769960552956954671048059804039384181844264699487400235647 / 3947937782939846853840268997254907343246095388349007551128069346137145585393102287241617887048050761222839355468750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_3 : pieceJ 44 1 3 g L τ C 2 0 = (11973689176436867083659263241423423109153797606559459186729280425880097711425089120881052881664087344291479610712070605467740214975816527 / 3947937782939846853840268997254907343246095388349007551128069346137145585393102287241617887048050761222839355468750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_4 : pieceJ 44 1 4 g L τ C 2 0 = (186190999236575271843902441542738561580482646003175683186797003485396414597623038128705057076398716150941400457523075440320038831127087 / 3947937782939846853840268997254907343246095388349007551128069346137145585393102287241617887048050761222839355468750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_5 : pieceJ 44 1 5 g L τ C 2 0 = (111134451229036655044031303886422151031113061099324802895895147168408336187257715448111910263519755893006527778413398527919017151791 / 232231634290579226696486411603229843720358552255823973595768785066890916787829546308330463944002985954284667968750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_6 : pieceJ 44 1 6 g L τ C 2 0 = (4360097261697483131186637536207987395420536940708914855038119094032458114394226102909269020682477912763583644227019521358863132871 / 1518437608823018020707795768174964362786959764749618288895411286975825225151193187400622264249250292778015136718750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_7 : pieceJ 44 1 7 g L τ C 2 0 = (1606984101470266126718539098551947066750300193308751060740380800396724670607485732067072291040451877896029519755190823249369 / 180911757522177704787513271757062444558062700950122811651673819673645515759830004753894172608852386474609375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_8 : pieceJ 44 1 8 g L τ C 2 0 = (39886272112495671796838209513182889320695732306047664970510959968341561964473737032106664182126228973440178099399 / 3435768466958789146815635915068986865900329027247845663423954365445212033591815270483493804931640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_9 : pieceJ 44 1 9 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_10 : pieceJ 44 1 10 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_11 : pieceJ 44 1 11 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_12 : pieceJ 44 1 12 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_13 : pieceJ 44 1 13 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_1_14 : pieceJ 44 1 14 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_0 : pieceJ 44 2 0 g L τ C 2 0 = (3660121088144785877441539772763828773006112523592984488750924261657444120542569651267601361799971995830941503155430408788582185694210465351 / 797563188472696334109145251970688352170928361282627788106680675987302138463252987321538967080414295196533203125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_1 : pieceJ 44 2 1 g L τ C 2 0 = (10811734974270306334368999057355841958557521733315751166298537426911925535823755707930205710561354767023849517445791427129948305354481284981 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_2 : pieceJ 44 2 2 g L τ C 2 0 = (239473783528737341650054134723457502139375470893799875530389052542675446834828059633690365311034513951609500932358894961333194748215290413 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_3 : pieceJ 44 2 3 g L τ C 2 0 = (248254665648767029125202497830437617543566540767802881137253815813415392101879686652587872905553517784813873610916975444827247567763987 / 5263917043919795805120358663006543124328127184465343401504092461516194113857469716322157182730734348297119140625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_4 : pieceJ 44 2 4 g L τ C 2 0 = (37785713417872462714970643321380664307991775852234128354433662992976634628280979637352837336168669703371371467100986281061634581215557 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_5 : pieceJ 44 2 5 g L τ C 2 0 = (226725057608269122821705151882815344561867920916859075788390489157698301122052871686407928340580863827910998596536808018243270972709 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_6 : pieceJ 44 2 6 g L τ C 2 0 = (1606984101470266126718539098551947066750300193308751060740380800396724670607485732067072291040451877896029519755190823249369 / 180911757522177704787513271757062444558062700950122811651673819673645515759830004753894172608852386474609375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_7 : pieceJ 44 2 7 g L τ C 2 0 = (39886272112495671796838209513182889320695732306047664970510959968341561964473737032106664182126228973440178099399 / 3435768466958789146815635915068986865900329027247845663423954365445212033591815270483493804931640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_8 : pieceJ 44 2 8 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_9 : pieceJ 44 2 9 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_10 : pieceJ 44 2 10 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_11 : pieceJ 44 2 11 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_12 : pieceJ 44 2 12 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_2_13 : pieceJ 44 2 13 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_0 : pieceJ 44 3 0 g L τ C 2 0 = (1544533567752694813355872671004622989111969767108629422331989950452891263976802577118683595933970522123463288027669559866785500666711199623 / 11279822236970991010972197135014020980703129680997164431794483846106130243980292249261765391565859317779541015625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_1 : pieceJ 44 3 1 g L τ C 2 0 = (34210540504105318073260247243783831348006917019030292985020594047791385815874771760478622983736402805410999779924337698354955866772039119 / 11279822236970991010972197135014020980703129680997164431794483846106130243980292249261765391565859317779541015625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_2 : pieceJ 44 3 2 g L τ C 2 0 = (35464952235538147012263190320709875728718456062628228334371714950019612952539702699439166031601669277102231296357539262805368155527857 / 751988149131399400731479809000934732046875312066477628786298923073742016265352816617451026104390621185302734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_3 : pieceJ 44 3 3 g L τ C 2 0 = (317527003511533300125803559564594349453129244394422348028186797332497354732537113579628269823679828412550011128829735704614439935943 / 663518955115940647704246890294942410629595863588068495987910814476831190822370132309515611268579959869384765625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_4 : pieceJ 44 3 4 g L τ C 2 0 = (13336768094604066048335597169577373054734294890869982418851220973758190007641846218935879581490467950035226155434946079858557286097 / 4644632685811584533929728232064596874407171045116479471915375701337818335756590926166609278880059719085693359375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_5 : pieceJ 44 3 5 g L τ C 2 0 = (1606984101470266126718539098551947066750300193308751060740380800396724670607485732067072291040451877896029519755190823249369 / 180911757522177704787513271757062444558062700950122811651673819673645515759830004753894172608852386474609375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_6 : pieceJ 44 3 6 g L τ C 2 0 = (39886272112495671796838209513182889320695732306047664970510959968341561964473737032106664182126228973440178099399 / 3435768466958789146815635915068986865900329027247845663423954365445212033591815270483493804931640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_7 : pieceJ 44 3 7 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_8 : pieceJ 44 3 8 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_9 : pieceJ 44 3 9 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_10 : pieceJ 44 3 10 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_11 : pieceJ 44 3 11 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_3_12 : pieceJ 44 3 12 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_0 : pieceJ 44 4 0 g L τ C 2 0 = (1629073357336290417709192798116822974639939212656323621971437577293825603523015441565048918143134757138483657558329298984201487504548691 / 537134392236713857665342720714953380033482365761769734847356373624101440189537726155322161503136157989501953125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_1 : pieceJ 44 4 1 g L τ C 2 0 = (1541954445023393163570137169405369981100273748234205942683984372331290342540209062577273030115353033749867333632952271828462010544247 / 32695136918756495683977383000040640523777187481151201251578214046684435489797948548584827221930027008056640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_2 : pieceJ 44 4 2 g L τ C 2 0 = (1799319686565355366760197952937458257695557393268957910794168214878022060573997127105324938289165989112876603266478594262600092327613 / 3759940745656997003657399045004673660234376560332388143931494615368710081326764083087255130521953105926513671875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_3 : pieceJ 44 4 3 g L τ C 2 0 = (2606035144922633595651783180406511378165660520342783965157988228530931223144049987072680004031646300951219935945571399297933982343 / 907571904124102725020751493621817780056573652494024724397257320951067950665080985572785721160471439361572265625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_4 : pieceJ 44 4 4 g L τ C 2 0 = (233788868034198726913393223674632915112033003572398468564722929860339561463854134095746073945131384409872835389429550266629770899 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_5 : pieceJ 44 4 5 g L τ C 2 0 = (39886272112495671796838209513182889320695732306047664970510959968341561964473737032106664182126228973440178099399 / 3435768466958789146815635915068986865900329027247845663423954365445212033591815270483493804931640625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_6 : pieceJ 44 4 6 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_7 : pieceJ 44 4 7 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_8 : pieceJ 44 4 8 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_9 : pieceJ 44 4 9 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_10 : pieceJ 44 4 10 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_4_11 : pieceJ 44 4 11 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_0 : pieceJ 44 5 0 g L τ C 2 0 = (545614649767771846274428367218652567871555490139512762137746436195694557102320002639949804842982924237035985087820649831581437279857 / 11569048448175375395868920138475918954567312493330425058250752662672954096390043332576169632375240325927734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_1 : pieceJ 44 5 1 g L τ C 2 0 = (37785713417871340604066668494620561711388363137452668111900057665935829618816016005219051705312497259702538062143797937667850720642433 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_2 : pieceJ 44 5 2 g L τ C 2 0 = (226725057608269122534767017990869951354505440654258623606979523948353227013818631784613720037809146746484271307511795891228913230817 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_3 : pieceJ 44 5 3 g L τ C 2 0 = (207443538628392836657846692029875256061127258643174191335419278307857814441089705013617995652136309447372035616732185385249013 / 23353669227683211202840987857171886088412276772250858036841581461917453921284248963274876587092876434326171875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_4 : pieceJ 44 5 4 g L τ C 2 0 = (916642213862139067937714246348354932346083412462343801991420170065024039772117497511356565445013760453491224477101579718289033 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_5 : pieceJ 44 5 5 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_6 : pieceJ 44 5 6 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_7 : pieceJ 44 5 7 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_8 : pieceJ 44 5 8 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_9 : pieceJ 44 5 9 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_5_10 : pieceJ 44 5 10 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_0 : pieceJ 44 6 0 g L τ C 2 0 = (9446428353004786429307348704118351723250922502643076146789050787141511371098298179640187030825529366024075855639113343132467595282951 / 19739688914699234269201344986274536716230476941745037755640346730685727926965511436208089435240253806114196777343750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_1 : pieceJ 44 6 1 g L τ C 2 0 = (1531926064920508425965986471524059512680157351555977779082974796342318737924770368397362377923333462036232518523675960996630892763 / 533505105802682007275712026656068559898120998425541560963252614342857511539608417194813227979466319084167480468750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_2 : pieceJ 44 6 2 g L τ C 2 0 = (58447217008549681658287489110539818454065329471852027619171821705583169911469091227756255639305266964329623786767598589736573309 / 6579896304899744756400448328758178905410158980581679251880115576895242642321837145402696478413417935371398925781250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_3 : pieceJ 44 6 3 g L τ C 2 0 = (4275463226282855407459627261432845224933510301468492929059419385280526241994580222093893344171250526671882302614814539113 / 368284649241576041888866303219734262136056212648464295148050275764206942796796795391855994239449501037597656250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_4 : pieceJ 44 6 4 g L τ C 2 0 = (319594128771327119854895118071793595536073283949054743461 / 67644432582820638320789791257927682342529296875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_5 : pieceJ 44 6 5 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_6 : pieceJ 44 6 6 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_7 : pieceJ 44 6 7 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_8 : pieceJ 44 6 8 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_6_9 : pieceJ 44 6 9 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_0 : pieceJ 44 7 0 g L τ C 2 0 = (110705594246648397347013929536923067486739920296534707049218583742692509277515480304747545366142578323675506340770920719810508449 / 38554079911521941932033876926317454523887650276845776866485052208370562357354514523843924678203620715066790580749511718750000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_1 : pieceJ 44 7 1 g L τ C 2 0 = (2927044121015788512640056864990497609696926426852938411770275130550195455838413352911263054370607861238715175990022238585351 / 329522050525828563521657067746303030118697865614066468944316685541628738097047132682426706651312997564673423767089843750000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_2 : pieceJ 44 7 2 g L τ C 2 0 = (983690562609610088858313980897144768167524432744005867727309305578787403664818081062093759492669355386180134362378293731 / 84734241563784487762711817420477922030522308300759949157110004853561675510669262689766867424623342230916023254394531250000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_3 : pieceJ 44 7 3 g L τ C 2 0 = (3730499874138949150113330189442823347457932283626582409481941313295085741098584504778948388330131456339130387349523841407 / 789587556587969370768053799450981468649219077669801510225613869227429117078620457448323577409610152244567871093750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_4 : pieceJ 44 7 4 g L τ C 2 0 = (1588410203098952258125636475916964169077481162133040764613064119060901625137533575406925149738216206763095636137 / 4386525158934707414927952574621304685412796675909300331131280051809306907983909695758484303951263427734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_5 : pieceJ 44 7 5 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_6 : pieceJ 44 7 6 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_7 : pieceJ 44 7 7 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_7_8 : pieceJ 44 7 8 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_0 : pieceJ 44 8 0 g L τ C 2 0 = (2158050927135299055952789846124961289957606318804944876123102712412388627074913157429826984965122700918372094790438267711600313 / 242950017411682883313247322907994298045913562359938926223265805916132036024190909984099562279880046844482421875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_1 : pieceJ 44 8 1 g L τ C 2 0 = (2820437580972430388549328959964722201385089668175932126568615440229979008921218215969539121662723430130813624658503093782857 / 242950017411682883313247322907994298045913562359938926223265805916132036024190909984099562279880046844482421875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_2 : pieceJ 44 8 2 g L τ C 2 0 = (24869999160926327175089851417424312881834875109603979415886186917148403752908923879964822295561103896849574583884281780219 / 5263917043919795805120358663006543124328127184465343401504092461516194113857469716322157182730734348297119140625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_3 : pieceJ 44 8 3 g L τ C 2 0 = (28591855413611461035082119880538702381752824352710634793256942980487234290215757203793029615933100557416356534359750801 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_4 : pieceJ 44 8 4 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_5 : pieceJ 44 8 5 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_6 : pieceJ 44 8 6 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_8_7 : pieceJ 44 8 7 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_0 : pieceJ 44 9 0 g L τ C 2 0 = (712229518686375236361962174639998543309433850574329086963181393422046013790343584724643634147157034653759322230573497312239 / 61351014497899718008395788613129873243917566252509829854360051999023241420250229793964535929262638092041015625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_1 : pieceJ 44 9 1 g L τ C 2 0 = (174403920708657429887749138668000140720095744155916875958855444419516706930142531781159096394610639086923011731442272451 / 36913864263112172546426077580691045752651663285170711090491531988192104585255748361305450089275836944580078125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_2 : pieceJ 44 9 2 g L τ C 2 0 = (3176872823734605815464038973267712143645895219400515924065053753187916267491027273332436183953478797457794355153258057 / 8773195073199659675200597771677571873880211974108905669173487435860323523095782860536928637884557247161865234375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_3 : pieceJ 44 9 3 g L τ C 2 0 = (2898714477036002783379727126374003537915089070670831884971579702429442080167627763947833148535805789 / 1391920214255662872128702213794313875047579360660799727557150606838121120745199732482433319091796875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_4 : pieceJ 44 9 4 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_5 : pieceJ 44 9 5 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_9_6 : pieceJ 44 9 6 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_10_0 : pieceJ 44 10 0 g L τ C 2 0 = (74554806000361953488054840038356402848140037903143192029152698209401538916690877587351638250948557264276334205735760936413 / 15791751131759387415361075989019629372984381553396030204512277384548582341572409148966471548192203044891357421875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_10_1 : pieceJ 44 10 1 g L τ C 2 0 = (288805215672995334011228691347192432320774114191278869185784364320635420714961133072516083578339119258330787033113467 / 797563188472696334109145251970688352170928361282627788106680675987302138463252987321538967080414295196533203125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_10_2 : pieceJ 44 10 2 g L τ C 2 0 = (42588426185660546003076368694355091281524300752056148192045251641567720583337672175951732448138668907863194981 / 20450338165966572669465262871043291081305855417503276618120017333007747140083409931321511976420879364013671875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_10_3 : pieceJ 44 10 3 g L τ C 2 0 = (9766377426970819951022333881151553870973510317483884419467023006192458797147198836470112136582163224834041 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_10_4 : pieceJ 44 10 4 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_10_5 : pieceJ 44 10 5 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_11_0 : pieceJ 44 11 0 g L τ C 2 0 = (139687783149894320710675345472882339820927836669627757550520088944530647655970340098698260542253921421758800006564891 / 404916695686138138855412204846657163409855937266564877038776343193553393373651516640165937133133411407470703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_11_1 : pieceJ 44 11 1 g L τ C 2 0 = (32732448153072580521642431310060346230610553513395931768701404550624085952964465713277977708885403893653108050549 / 15791751131759387415361075989019629372984381553396030204512277384548582341572409148966471548192203044891357421875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_11_2 : pieceJ 44 11 2 g L τ C 2 0 = (33793622962566291081754149050510497553843837003646259376915364081003619367291345454913882825543817386969 / 273213687400681443172336954827329227906304179124498792465610335372812843279799466245094663463532924652099609375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_11_3 : pieceJ 44 11 3 g L τ C 2 0 = (6100074715523458243010215842604877924086610565988483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_11_4 : pieceJ 44 11 4 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_12_0 : pieceJ 44 12 0 g L τ C 2 0 = (139223996547088321513742956755391870911453507498076613462856641071258467380163082391194168687625547758831282910281 / 78958755658796937076805379945098146864921907766980151022561386922742911707862045744832357740961015224456787109375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_12_1 : pieceJ 44 12 1 g L τ C 2 0 = (1921934539604493927186692854777633355485840382336241336476330222236883787202225162266211561277488100297 / 16501307347710958636740936247669414182846793681709540443586496744564871830274199737687013112008571624755859375000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_12_2 : pieceJ 44 12 2 g L τ C 2 0 = (5974302573368501504303636983224664798464831298404483382921182669713718535089070673536450861963 / 26319585219598979025601793315032715621640635922326717007520462307580970569287348581610785913653671741485595703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_12_3 : pieceJ 44 12 3 g L τ C 2 0 = (23441651527923 / 49503285641595710202835342768346027497727845911867916584014892578125000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_13_0 : pieceJ 44 13 0 g L τ C 2 0 = (3405244357999441569796722413249055302606221294599067971411391329256286915230632890039 / 676180554752565308841840363705309420903041885100134871433227856662995236547430977225303649902343750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_13_1 : pieceJ 44 13 1 g L τ C 2 0 = (2050619996534331046958860642840289065683248043727433291859631151710863396263 / 676180554752565308841840363705309420903041885100134871433227856662995236547430977225303649902343750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem pj_13_2 : pieceJ 44 13 2 g L τ C 2 0 = (1869470363085366388973602436697045207893612005579135327931 / 3947937782939846853840268997254907343246095388349007551128069346137145585393102287241617887048050761222839355468750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  decide +kernel
++
++theorem jtRow_0 : jtRow 44 0 g L τ C 2 0 = (10583831078172763699897860608500963592399295633966068898108144504383106619917484239395482872218256024836144070192420419887643240500045354451 / 80242637864631033614639613765343645187928768055874137218050189962137105394168745675642639980651438236236572265625000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 0).choose (16 + x) : ℕ) : ℚ) *
++      (-1) ^ (16 + x) * pieceJ 44 0 (16 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 0 (16 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 0 + 1 = 16 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_0_0, pj_0_1, pj_0_2, pj_0_3, pj_0_4, pj_0_5, pj_0_6, pj_0_7, pj_0_8, pj_0_9, pj_0_10, pj_0_11, pj_0_12, pj_0_13, pj_0_14, pj_0_15]
++  decide +kernel
++
++theorem jtRow_1 : jtRow 44 1 g L τ C 2 0 = (14476127533093093483186165819097778727120399877110736790425542903504650907031533349618609488709727633866252814845443921224470380626756617 / 1071091940351026032675945901205921849004610919544482365535708876024077046418270242611470166593790054321289062500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 1).choose (15 + x) : ℕ) : ℚ) *
++      (-1) ^ (15 + x) * pieceJ 44 1 (15 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 1 (15 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 1 + 1 = 15 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_1_0, pj_1_1, pj_1_2, pj_1_3, pj_1_4, pj_1_5, pj_1_6, pj_1_7, pj_1_8, pj_1_9, pj_1_10, pj_1_11, pj_1_12, pj_1_13, pj_1_14]
++  decide +kernel
++
++theorem jtRow_2 : jtRow 44 2 g L τ C 2 0 = (4810514144164115431989491252599950369955614353814282774567886334719033308056029881082289814160942960871831551559004220312598064680448959 / 5015164866539439600914975860333977824245548003492133576128136872633569087135546604727664998790714889764785766601562500000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 2).choose (14 + x) : ℕ) : ℚ) *
++      (-1) ^ (14 + x) * pieceJ 44 2 (14 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 2 (14 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 2 + 1 = 14 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_2_0, pj_2_1, pj_2_2, pj_2_3, pj_2_4, pj_2_5, pj_2_6, pj_2_7, pj_2_8, pj_2_9, pj_2_10, pj_2_11, pj_2_12, pj_2_13]
++  decide +kernel
++
++theorem jtRow_3 : jtRow 44 3 g L τ C 2 0 = (313267728048911027126514174517028877981972780069029485090854168244899639753160994979407755651367990690082909604163940558741597417954247 / 6746305165652506585509687281706950347310484258969595952030193687862518088504959479223543894477188587188720703125000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 3).choose (13 + x) : ℕ) : ℚ) *
++      (-1) ^ (13 + x) * pieceJ 44 3 (13 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 3 (13 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 3 + 1 = 13 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_3_0, pj_3_1, pj_3_2, pj_3_3, pj_3_4, pj_3_5, pj_3_6, pj_3_7, pj_3_8, pj_3_9, pj_3_10, pj_3_11, pj_3_12]
++  decide +kernel
++
++theorem jtRow_4 : jtRow 44 4 g L τ C 2 0 = (298879981540551858482963654241774584879470858316819282497937446143356807337369697989972830646872304345856668300765533036628317682137 / 200303289883197538982651726412997967673243533082477120575960656431680970146480547100509284064173698425292968750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 4).choose (12 + x) : ℕ) : ℚ) *
++      (-1) ^ (12 + x) * pieceJ 44 4 (12 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 4 (12 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 4 + 1 = 12 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_4_0, pj_4_1, pj_4_2, pj_4_3, pj_4_4, pj_4_5, pj_4_6, pj_4_7, pj_4_8, pj_4_9, pj_4_10, pj_4_11]
++  decide +kernel
++
++theorem jtRow_5 : jtRow 44 5 g L τ C 2 0 = (2208650018046489970552649817607493662823931341142044209930229418136187456249319883624995127467707408046013039023616349430717565143703 / 72306552801096096224180750865474493466045703083315156614067204141705963102437770828601060202345252037048339843750000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 5).choose (11 + x) : ℕ) : ℚ) *
++      (-1) ^ (11 + x) * pieceJ 44 5 (11 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 5 (11 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 5 + 1 = 11 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_5_0, pj_5_1, pj_5_2, pj_5_3, pj_5_4, pj_5_5, pj_5_6, pj_5_7, pj_5_8, pj_5_9, pj_5_10]
++  decide +kernel
++
++theorem jtRow_6 : jtRow 44 6 g L τ C 2 0 = (1647528704122667347498921119568838268335553585375467209143496831057161245056191549711654270852181254668775206775806322500349440977891 / 4386597536599829837600298885838785936940105987054452834586743717930161761547891430268464318942278623580932617187500000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 6).choose (10 + x) : ℕ) : ℚ) *
++      (-1) ^ (10 + x) * pieceJ 44 6 (10 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 6 (10 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 6 + 1 = 10 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_6_0, pj_6_1, pj_6_2, pj_6_3, pj_6_4, pj_6_5, pj_6_6, pj_6_7, pj_6_8, pj_6_9]
++  decide +kernel
++
++theorem jtRow_7 : jtRow 44 7 g L τ C 2 0 = (66771246574832394335756518943930475858724140408009040218314554669294344308683888465811836888568012993971989459670777506705009329 / 26179958772810655529444754623706282117016547668096867049920884258203883192261951506907280418090522289276123046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 7).choose (9 + x) : ℕ) : ℚ) *
++      (-1) ^ (9 + x) * pieceJ 44 7 (9 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 7 (9 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 7 + 1 = 9 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_7_0, pj_7_1, pj_7_2, pj_7_3, pj_7_4, pj_7_5, pj_7_6, pj_7_7, pj_7_8]
++  decide +kernel
++
++theorem jtRow_8 : jtRow 44 8 g L τ C 2 0 = (23878651749196565508491913320882365672850431613094444698234892672399161041917291152481337226266106531216396010857022106021907527 / 2819955559242747752743049283753505245175782420249291107948620961526532560995073062315441347891464829444885253906250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 8).choose (8 + x) : ℕ) : ℚ) *
++      (-1) ^ (8 + x) * pieceJ 44 8 (8 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 8 (8 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 8 + 1 = 8 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_8_0, pj_8_1, pj_8_2, pj_8_3, pj_8_4, pj_8_5, pj_8_6, pj_8_7]
++  decide +kernel
++
++theorem jtRow_9 : jtRow 44 9 g L τ C 2 0 = (22589991302581573425003593355602689691200613165939396268835221421249618920517253987317824174352141171761183047937707788825157 / 1973968891469923426920134498627453671623047694174503775564034673068572792696551143620808943524025380611419677734375000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 9).choose (7 + x) : ℕ) : ℚ) *
++      (-1) ^ (7 + x) * pieceJ 44 9 (7 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 9 (7 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 9 + 1 = 7 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_9_0, pj_9_1, pj_9_2, pj_9_3, pj_9_4, pj_9_5, pj_9_6]
++  decide +kernel
++
++theorem jtRow_10 : jtRow 44 10 g L τ C 2 0 = (430326393394932289622814553068049379549735253672270137948148030958556715662067736278068002058135362098444410427514841701 / 91387448679163121616672893454974707019585541396967767387223827456878370032247738130593006644630804657936096191406250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 10).choose (6 + x) : ℕ) : ℚ) *
++      (-1) ^ (6 + x) * pieceJ 44 10 (6 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 10 (6 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 10 + 1 = 6 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_10_0, pj_10_1, pj_10_2, pj_10_3, pj_10_4, pj_10_5]
++  decide +kernel
++
++theorem jtRow_11 : jtRow 44 11 g L τ C 2 0 = (141842275340837354571873389749214778413264500203500440256971444257493044042832163327388949782588455182919308280937247 / 411243519056234047275028020547386181588134936286354953242507223555952665145114821587668529900838620960712432861328125000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 11).choose (5 + x) : ℕ) : ℚ) *
++      (-1) ^ (5 + x) * pieceJ 44 11 (5 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 11 (5 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 11 + 1 = 5 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_11_0, pj_11_1, pj_11_2, pj_11_3, pj_11_4]
++  decide +kernel
++
++theorem jtRow_12 : jtRow 44 12 g L τ C 2 0 = (2531340041099484112061728274569312468437199028081787359986808837070044674728155676986156433506863912095569282447 / 1435613739250853401396461453547239033907671050308730018592025216777143849233855377178770140744745731353759765625000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 12).choose (4 + x) : ℕ) : ℚ) *
++      (-1) ^ (4 + x) * pieceJ 44 12 (4 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 12 (4 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 12 + 1 = 4 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_12_0, pj_12_1, pj_12_2, pj_12_3]
++  decide +kernel
++
++theorem jtRow_13 : jtRow 44 13 g L τ C 2 0 = (1325453930475799393337472474819368828195920953332809515980932250213298083545136982982667381417822111 / 263195852195989790256017933150327156216406359223267170075204623075809705692873485816107859136536717414855957031250000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 29, (((44 - 13).choose (3 + x) : ℕ) : ℚ) *
++      (-1) ^ (3 + x) * pieceJ 44 13 (3 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail 13 (3 + x) (by omega), mul_zero]
++  rw [jtRow, show 44 - 13 + 1 = 3 + 29 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, pj_13_0, pj_13_1, pj_13_2]
++  decide +kernel
++
++/-- **`J_T[1, 1]` at Table 3** as a rational. -/
++theorem jtSum_table3 : jtSum 44 g L τ C 2 0 = (196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) := by
++  have hz : ∑ x ∈ Finset.range 31, ((Nat.choose 44 (14 + x) : ℕ) : ℚ) *
++      jtRow 44 (14 + x) g L τ C 2 0 = 0 :=
++    Finset.sum_eq_zero fun x _ => by rw [jtRow_high (14 + x) (by omega), mul_zero]
++  rw [jtSum_eq_rows, show 44 + 1 = 14 + 31 from rfl, Finset.sum_range_add, hz, add_zero]
++  simp only [Finset.sum_range_succ, Finset.sum_range_zero, jtRow_0, jtRow_1, jtRow_2, jtRow_3, jtRow_4, jtRow_5, jtRow_6, jtRow_7, jtRow_8, jtRow_9, jtRow_10, jtRow_11, jtRow_12, jtRow_13]
++  decide +kernel
++
++end BGP212.V2e
+diff --git a/specs/checks/__pycache__/marginal_entry_v2f_emit.cpython-313.pyc b/specs/checks/__pycache__/marginal_entry_v2f_emit.cpython-313.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..d52e3418fa824af972755d9a02e0b4436e832745
+GIT binary patch
+literal 13968
+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
+F{|~u}3_$<@
+
+literal 0
+HcmV?d00001
+
+diff --git a/specs/checks/marginal_entry_v2f_controls.py b/specs/checks/marginal_entry_v2f_controls.py
+new file mode 100644
+index 0000000..00be3a8
+--- /dev/null
++++ b/specs/checks/marginal_entry_v2f_controls.py
+@@ -0,0 +1,294 @@
++#!/usr/bin/env python3
++"""Positive and negative controls for V2f (all endpoint branches; the marginal entry J_T[1, 1]).
++
++Writes Lean files into the given directory (default /tmp/v2f_ctl). Each `ok_*` file must be
++accepted and each `nc_*` file rejected. Independent checks run here first:
++
++  (a) small synthetic data (N = 3, g = 3/10, L = 1, τ = 9/10, C = 0, 1/2, 3/5, 7/10, 7/10, …;
++      the hypotheses of jT_one_eq hold): the closed form jtSum 3 … 2 0 against a direct midpoint
++      grid integration of 4 ∫_{T̂} U(x)² with the true rough-set endpoint (no stratification,
++      no translation, no aggregates);
++  (b) Table 3, piece (r, k) = (1, 0) in dimension 44: pieceJ against exact polygon clipping of
++      the four branch cells in the (u₁, u₂) plane (no boxVal, no signed cells);
++  (c) Table 3, N = 44: J_T[1, 1] against a Monte Carlo estimate (uniform samples of the τ-simplex,
++      true rough-set endpoint), |z| < 4.
++
++  ok_small / nc_small_*     jtSum on the synthetic data; nc_small_gcell assigns the L − S value
++                            on the g cell, nc_small_U the first power U instead of U².
++  ok_piece / nc_piece       pieceJ 44 1 0 at Table 3 equals the clipping value; the cap-only
++                            value (all of the piece on the cap branch) is rejected.
++  ok_entry / nc_entry_*     J_T[1, 1] at Table 3 (jT_one_table3); nc_entry_capindex uses C(r) for
++                            C(r+1) in the endpoint, nc_entry_U the first power.
++
++Usage: python3 -I specs/checks/marginal_entry_v2f_controls.py [dir] [--mc SAMPLES]
++Check: for f in DIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++"""
++import itertools
++import math
++import os
++import random
++import sys
++from fractions import Fraction as Fr
++from math import comb, factorial as fact
++
++sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
++import marginal_entry_v2f_emit as E  # noqa: E402
++
++OUT = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "/tmp/v2f_ctl"
++MC = int(sys.argv[sys.argv.index("--mc") + 1]) if "--mc" in sys.argv else 100000
++os.makedirs(OUT, exist_ok=True)
++
++
++# ---- the closed form with arbitrary data (mirror of BGP212/MarginalEntry.lean) ------------------
++def jt_closed(N, g, L, tau, Cf, m=2, n=0, variant=None):
++    E.G, E.L, E.TAU, E.N = g, L, tau, N
++    E.C = Cf
++    if variant == "gcell":           # the g cell evaluated with the L − S value
++        orig = E.cells
++
++        def cells(r, k, c, M, al, be, m_, n_):
++            Lp = L - (r + k) * g
++            c1 = Cf(r + 1) - (r + 1) * g
++            A1 = min(c, c1)
++            M3 = min(M, Lp - g)
++            v = orig(r, k, c, M, al, be, m_, n_)
++            tp = E.twopow
++            v -= g ** m_ * (tp(c, M, M3, 0, Lp, al, be, 0, n_) - tp(A1, M, M3, 0, Lp, al, be, 0, n_))
++            v += tp(c, M, M3, 0, Lp, al, be, 0, m_ + n_) - tp(A1, M, M3, 0, Lp, al, be, 0, m_ + n_)
++            return v
++        E.cells = cells
++    try:
++        tot = (N + 1) * sum(comb(N, r) * sum(comb(N - r, k) * (-1) ** k * E.pieceJ(r, k, m, n)
++                                             for k in range(N - r + 1)) for r in range(N + 1))
++    finally:
++        if variant == "gcell":
++            E.cells = orig
++    return tot
++
++
++def restore_table3():
++    E.G, E.L, E.TAU, E.N = Fr(41, 625), Fr(53, 50), Fr(249, 250), 44
++    E.C = lambda m: Fr(0) if m == 0 else 4 * Fr(E.BNUM[min(m, 10) - 1], 5000)
++
++
++# ---- (a) synthetic data, N = 3 -----------------------------------------------------------------
++gs, Ls, ts = Fr(3, 10), Fr(1), Fr(9, 10)
++CS = [Fr(0), Fr(1, 2), Fr(3, 5), Fr(7, 10)]
++Cs = lambda m: CS[min(m, 3)]
++assert Cs(3) - 3 * gs < 0 and gs <= Cs(1)
++v_small = jt_closed(3, gs, Ls, ts, Cs)
++v_small_g = jt_closed(3, gs, Ls, ts, Cs, variant="gcell")
++v_small_U = jt_closed(3, gs, Ls, ts, Cs, m=1)
++
++
++def grid(N, n, g, L, tau, Cf):
++    h = float(tau) / n
++    gf, Lf, tf = float(g), float(L), float(tau)
++    Cv = [float(Cf(m)) for m in range(N + 2)]
++    tot = 0.0
++    for idx in itertools.product(range(n), repeat=N):
++        x = [(i + 0.5) * h for i in idx]
++        S = sum(x)
++        if S > tf:
++            continue
++        R = [v for v in x if v > gf]
++        s = len(R)
++        rho = sum(R)
++        if rho > Cv[s]:
++            continue
++        U = min(Lf - S, max(gf, Cv[s + 1] - rho))
++        tot += U * U
++    return (N + 1) * tot * h ** N
++
++
++g_small = grid(3, 200, gs, Ls, ts, Cs)
++assert abs(g_small - float(v_small)) / float(v_small) < 1e-2, (g_small, float(v_small))
++assert abs(g_small - float(v_small_g)) / float(v_small) > 5e-2
++
++# ---- (b) Table 3, piece (1, 0) in dimension 44, by polygon clipping ------------------------------
++restore_table3()
++G, L, TAU, C = E.G, E.L, E.TAU, E.C
++
++
++def clip(poly, a, b, c):
++    out = []
++    for i in range(len(poly)):
++        P, Q = poly[i], poly[(i + 1) % len(poly)]
++        fP = a * P[0] + b * P[1] - c
++        fQ = a * Q[0] + b * Q[1] - c
++        if fP <= 0:
++            out.append(P)
++        if (fP < 0 < fQ) or (fQ < 0 < fP):
++            t = fP / (fP - fQ)
++            out.append((P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])))
++    return out
++
++
++def pmul(p, q):
++    o = {}
++    for (a, b), c in p.items():
++        for (d, e), f in q.items():
++            o[(a + d, b + e)] = o.get((a + d, b + e), 0) + c * f
++    return o
++
++
++def ppow(p, n):
++    o = {(0, 0): Fr(1)}
++    for _ in range(n):
++        o = pmul(o, p)
++    return o
++
++
++def tri_int(f, A, B, Cc):
++    xs = {(0, 0): A[0], (1, 0): B[0] - A[0], (0, 1): Cc[0] - A[0]}
++    ys = {(0, 0): A[1], (1, 0): B[1] - A[1], (0, 1): Cc[1] - A[1]}
++    jac = abs((B[0] - A[0]) * (Cc[1] - A[1]) - (Cc[0] - A[0]) * (B[1] - A[1]))
++    tot = Fr(0)
++    for (i, j), c in f.items():
++        for (u, v), w in pmul(ppow(xs, i), ppow(ys, j)).items():
++            tot += c * w * Fr(fact(u) * fact(v), fact(u + v + 2))
++    return jac * tot
++
++
++def poly_on(cons, f):
++    big = Fr(10)
++    P = [(Fr(0), Fr(0)), (big, Fr(0)), (big, big), (Fr(0), big)]
++    for (a, b, c) in cons:
++        P = clip(P, a, b, c)
++    if len(P) < 3:
++        return Fr(0)
++    return sum(tri_int(f, P[0], P[i], P[i + 1]) for i in range(1, len(P) - 1))
++
++
++r, k, Nn = 1, 0, 44
++c = C(r) - r * G
++M = TAU - (r + k) * G
++Lp = L - (r + k) * G
++c1, c2, c3 = C(r + 1) - (r + 1) * G, L - k * G - C(r + 1), Lp - G
++al, be = r - 1, Nn - r - 1
++wt = {(al, be): Fr(1)}
++base = [(-1, 0, 0), (0, -1, 0), (1, 0, c), (1, 1, M)]
++capP = pmul(wt, ppow({(0, 0): C(r + 1) - r * G, (1, 0): Fr(-1)}, 2))
++LsP = pmul(wt, ppow({(0, 0): Lp, (1, 0): Fr(-1), (0, 1): Fr(-1)}, 2))
++gP = {(al, be): G ** 2}
++v_clip = (poly_on(base + [(1, 0, c1), (0, 1, c2)], capP)
++          + poly_on(base + [(1, 0, c1), (0, -1, -c2)], LsP)
++          + poly_on(base + [(-1, 0, -c1), (1, 1, c3)], gP)
++          + poly_on(base + [(-1, 0, -c1), (-1, -1, -c3)], LsP)) / (fact(al) * fact(be))
++v_piece = E.pieceJ(1, 0)
++assert v_clip == v_piece, (float(v_clip), float(v_piece))
++v_piece_caponly = poly_on(base, capP) / (fact(al) * fact(be))
++assert v_piece_caponly != v_piece
++
++# ---- (c) Table 3, N = 44: the entry, its variants, Monte Carlo ----------------------------------
++v_entry = jt_closed(44, G, L, TAU, C)
++restore_table3()
++assert v_entry == (45 * sum(comb(44, r) * E.row(r) for r in range(45)))
++Cshift = lambda m: C(m - 1) if m >= 1 else Fr(0)      # C(r) in place of C(r+1) inside U
++v_entry_capindex = None
++# the cap index enters only through C(r+1); shifting the function by one realizes C(r)
++v_entry_U = jt_closed(44, G, L, TAU, C, m=1)
++restore_table3()
++
++
++def jt_capindex():
++    # U with C(s) in place of C(s+1): same pieces, endpoint built from C(r)
++    E.G, E.L, E.TAU, E.N = G, L, TAU, 44
++    orig_cells, orig_seg0 = E.cells, E.seg0
++    E.C = lambda m: (Fr(0) if m == 0 else 4 * Fr(E.BNUM[min(m, 10) - 1], 5000))
++    Cpiece = E.C
++
++    def cells(r, k, c_, M_, al_, be_, m_, n_):
++        saved = E.C
++        E.C = lambda mm: Cpiece(mm - 1) if mm >= 1 else Fr(0)
++        try:
++            return orig_cells(r, k, c_, M_, al_, be_, m_, n_)
++        finally:
++            E.C = saved
++
++    def seg0(k_, M_, be_, m_, n_):
++        saved = E.C
++        E.C = lambda mm: Cpiece(mm - 1) if mm >= 1 else Fr(0)
++        try:
++            return orig_seg0(k_, M_, be_, m_, n_)
++        finally:
++            E.C = saved
++    E.cells, E.seg0 = cells, seg0
++    try:
++        return 45 * sum(comb(44, r) * sum(comb(44 - r, k) * (-1) ** k * E.pieceJ(r, k)
++                                          for k in range(45 - r)) for r in range(45))
++    finally:
++        E.cells, E.seg0 = orig_cells, orig_seg0
++        restore_table3()
++
++
++v_entry_capindex = jt_capindex()
++assert len({v_entry, v_entry_capindex, v_entry_U}) == 3
++
++random.seed(11)
++gf, Lf, tf = float(G), float(L), float(TAU)
++Cv = [float(C(m)) for m in range(47)]
++s1 = s2 = 0.0
++for _ in range(MC):
++    e = [random.expovariate(1.0) for _ in range(45)]
++    T = sum(e)
++    x = [tf * v / T for v in e[:44]]
++    S = sum(x)
++    R = [v for v in x if v > gf]
++    rho = sum(R)
++    val = 0.0
++    if rho <= Cv[len(R)]:
++        U = min(Lf - S, max(gf, Cv[len(R) + 1] - rho))
++        val = U * U
++    s1 += val
++    s2 += val * val
++vol = tf ** 44 / math.factorial(44)
++mean = s1 / MC
++est = 45 * vol * mean
++err = 45 * vol * math.sqrt(max(s2 / MC - mean * mean, 0) / MC)
++z = (est - float(v_entry)) / err
++assert abs(z) < 4, z
++
++
++def q(v, field="ℚ"):
++    v = Fr(v)
++    return f"({v.numerator} / {v.denominator} : {field})"
++
++
++HEAD = """import Solution.MarginalEntry
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++"""
++SMALL = """def Csm : ℕ → ℚ := fun m => if m = 0 then 0 else if m = 1 then 1 / 2 else if m = 2 then 3 / 5 else 7 / 10
++
++theorem ctl : jtSum 3 (3 / 10 : ℚ) 1 (9 / 10) Csm {M} 0 = {V} := by decide +kernel
++"""
++PIECE = """theorem ctl : pieceJ 44 1 0 BGP212.Params.g BGP212.Params.L BGP212.Params.τ BGP212.Params.C 2 0 =
++    {V} := by
++  rw [pj_1_0]
++  all_goals norm_num
++"""
++ENTRY = """theorem ctl : jT 44 g3 L3 τ3 C3 (fun _ => 1) = (({V} : ℚ) : ℝ) := by
++  rw [jT_one_table3]
++  all_goals norm_num
++"""
++files = {
++    "ok_small": SMALL.replace("{M}", "2").replace("{V}", q(v_small)),
++    "nc_small_gcell": SMALL.replace("{M}", "2").replace("{V}", q(v_small_g)),
++    "nc_small_U": SMALL.replace("{M}", "2").replace("{V}", q(v_small_U)),
++    "ok_small_U": SMALL.replace("{M}", "1").replace("{V}", q(v_small_U)),
++    "ok_piece": PIECE.replace("{V}", q(v_clip)),
++    "nc_piece": PIECE.replace("{V}", q(v_piece_caponly)),
++    "ok_entry": ENTRY.replace("{V}", q(v_entry)),
++    "nc_entry_capindex": ENTRY.replace("{V}", q(v_entry_capindex)),
++    "nc_entry_U": ENTRY.replace("{V}", q(v_entry_U)),
++}
++for name, body in files.items():
++    open(os.path.join(OUT, name + ".lean"), "w").write(HEAD + body)
++print("wrote", len(files), "control files to", OUT)
++print("(a) N = 3 synthetic: closed form", float(v_small), " grid", g_small,
++      " g-cell variant", float(v_small_g))
++print("(b) piece (1, 0): clipping = pieceJ =", float(v_piece), " cap-only", float(v_piece_caponly))
++print("(c) J_T[1,1] =", float(v_entry), " MC", est, "±", err, " z =", round(z, 2))
++print("    variants: cap index C(r)", float(v_entry_capindex), " first power U", float(v_entry_U))
+diff --git a/specs/checks/marginal_entry_v2f_emit.py b/specs/checks/marginal_entry_v2f_emit.py
+new file mode 100644
+index 0000000..8b0e50e
+--- /dev/null
++++ b/specs/checks/marginal_entry_v2f_emit.py
+@@ -0,0 +1,182 @@
++#!/usr/bin/env python3
++"""Emit Solution/MarginalEntryCert.lean: the kernel certificate for J_T[1, 1] at Table 3.
++
++The closed form `jtSum 44 g L τ C 2 0` (BGP212/MarginalEntry.lean) is mirrored here in exact
++rational arithmetic (standard library only). Each row `jtRow 44 r … = Σ_k C(44 − r, k) (−1)^k
++pieceJ 44 r k …` is one `decide +kernel` lemma; the outer sum over `r` is assembled by `norm_num`.
++
++Usage: python3 -I specs/checks/marginal_entry_v2f_emit.py [output path] [--rows a,b,...]
++"""
++import sys
++from fractions import Fraction as Fr
++from math import comb, factorial as fact
++
++G, L, TAU = Fr(41, 625), Fr(53, 50), Fr(249, 250)
++BNUM = [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
++N = 44
++
++
++def C(m):
++    return Fr(0) if m == 0 else 4 * Fr(BNUM[min(m, 10) - 1], 5000)
++
++
++def inner(X, D, p, t):
++    return sum(comb(p, j) * D ** (p - j) * (-1) ** j * X ** (t + j + 1) / (t + j + 1) for j in range(p + 1))
++
++
++def boxval(A, B, D, a, b):
++    if not (A >= 0 and B >= 0):
++        return Fr(0)
++    E = max(Fr(0), min(A, D - B))
++    F = max(Fr(0), min(A, D))
++    return (B ** (b + 1) * E ** (a + 1) / (a + 1) + (inner(F, D, b + 1, a) - inner(E, D, b + 1, a))) / (b + 1)
++
++
++def twopow(A, B, D, p, Lp, al, be, m1, m2):
++    return sum(comb(m1, i) * p ** (m1 - i) * (-1) ** i * (comb(m2, j) * Lp ** (m2 - j) * (-1) ** j)
++               * comb(j, l) * boxval(A, B, D, al + i + l, be + (j - l))
++               for i in range(m1 + 1) for j in range(m2 + 1) for l in range(j + 1))
++
++
++def cells(r, k, c, M, al, be, m, n):
++    Lp = L - (r + k) * G
++    c1 = C(r + 1) - (r + 1) * G
++    c2 = L - k * G - C(r + 1)
++    a = C(r + 1) - r * G
++    A1 = min(c, c1)
++    M3 = min(M, Lp - G)
++    return (twopow(A1, c2, M, a, Lp, al, be, m, n)
++            + (twopow(A1, M, M, 0, Lp, al, be, 0, m + n) - twopow(A1, c2, M, 0, Lp, al, be, 0, m + n))
++            + G ** m * (twopow(c, M, M3, 0, Lp, al, be, 0, n) - twopow(A1, M, M3, 0, Lp, al, be, 0, n))
++            + ((twopow(c, M, M, 0, Lp, al, be, 0, m + n) - twopow(A1, M, M, 0, Lp, al, be, 0, m + n))
++               - (twopow(c, M, M3, 0, Lp, al, be, 0, m + n) - twopow(A1, M, M3, 0, Lp, al, be, 0, m + n))))
++
++
++def seg0(k, M, be, m, n):
++    Lp = L - k * G
++    X = max(Fr(0), min(L - k * G - C(1), M))
++    return C(1) ** m * inner(X, Lp, n, be) + (inner(M, Lp, m + n, be) - inner(X, Lp, m + n, be))
++
++
++def pieceJ(r, k, m=2, n=0):
++    if C(r) - r * G < 0 or TAU - (r + k) * G < 0:
++        return Fr(0)
++    if r == 0:
++        return Fr(1, fact(N - 1)) * seg0(k, TAU - k * G, N - 1, m, n)
++    return Fr(1, fact(r - 1)) * Fr(1, fact(N - r - 1)) * cells(r, k, C(r) - r * G, TAU - (r + k) * G,
++                                                             r - 1, N - r - 1, m, n)
++
++
++def row(r):
++    return sum(comb(N - r, k) * (-1) ** k * pieceJ(r, k) for k in range(N - r + 1))
++
++
++def lit(x):
++    x = Fr(x)
++    return f"({x.numerator} : ℚ)" if x.denominator == 1 else f"({x.numerator} / {x.denominator} : ℚ)"
++
++
++HEADER = """/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), §9.4, Lemma 9.2 and the display of `J_T` (p. 41).
++-/
++import BGP212.MarginalEntry
++
++/-! # V2f: the kernel certificate for `J_T[1, 1]` at Table 3
++
++COMPUTATIONAL CERTIFICATE (generated by `specs/checks/marginal_entry_v2f_emit.py`). The closed form
++`jtSum 44 g L τ C 2 0` (Table 3 data from `BGP212.Params`) is evaluated over `ℚ`:
++
++* the 133 nonempty pieces `(r, k)` (`r ≤ 13`, `r + k ≤ 15`) are evaluated by the Lean kernel, one
++  `decide +kernel` lemma `pj_r_k` per piece;
++* every other piece vanishes by `pieceJ_tail` (`τ < (r + k) g` once `r + k ≥ 16`) or
++  `pieceJ_high` (`C(r) < r g` once `r ≥ 14`), proved by linear arithmetic;
++* rows and the total are assembled by `decide +kernel` on the resulting numerals.
++
++The integral identity that gives this number its meaning, `jT_one_eq`, is proved in
++`Solution/MarginalEntry.lean`. -/
++
++namespace BGP212.V2e
++
++open BGP212.Params
++
++/-- Pieces with `r + k ≥ 16` are empty at Table 3 (`τ − 16 g = −53/1250`). -/
++theorem pieceJ_tail (r k : ℕ) (h : 16 ≤ r + k) : pieceJ 44 r k g L τ C 2 0 = 0 := by
++  unfold pieceJ
++  rw [if_pos (Or.inr ?_)]
++  have : (16 : ℚ) ≤ r + k := by exact_mod_cast h
++  rw [show τ = 249 / 250 from rfl, show g = 41 / 625 from rfl]
++  linarith
++
++/-- Pieces with `r ≥ 14` are empty at Table 3 (`C(r) = 1081/1250 < 14 g`). -/
++theorem pieceJ_high (r k : ℕ) (h : 14 ≤ r) : pieceJ 44 r k g L τ C 2 0 = 0 := by
++  unfold pieceJ
++  rw [if_pos (Or.inl ?_)]
++  have hr : (14 : ℚ) ≤ r := by exact_mod_cast h
++  have hC : C r = 4 * (1081 / 5000) := by
++    rw [C, B, if_neg (by omega), if_neg (by omega)]
++  rw [hC, show g = 41 / 625 from rfl]
++  linarith
++
++/-- `jtSum` as a sum of rows (definitional). -/
++theorem jtSum_eq_rows {K : Type*} [Field K] [LinearOrder K] (N : ℕ) (g L τ : K) (C : ℕ → K)
++    (m n : ℕ) : jtSum N g L τ C m n =
++      (N + 1) * ∑ r ∈ Finset.range (N + 1), (N.choose r : K) * jtRow N r g L τ C m n := rfl
++
++theorem jtRow_high (r : ℕ) (h : 14 ≤ r) : jtRow 44 r g L τ C 2 0 = 0 :=
++  Finset.sum_eq_zero fun k _ => by rw [pieceJ_high r k h, mul_zero]
++"""
++
++
++def main():
++    out = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "Solution/MarginalEntryCert.lean"
++    only = None
++    if "--pieces" in sys.argv:
++        only = [tuple(int(v) for v in x.split(":")) for x in sys.argv[sys.argv.index("--pieces") + 1].split(",")]
++    lines = [HEADER]
++    vals = {}
++    for r in range(14):
++        for k in range(16 - r):
++            vals[(r, k)] = pieceJ(r, k)
++    pieces = only if only else sorted(vals)
++    for (r, k) in pieces:
++        lines.append(f"theorem pj_{r}_{k} : pieceJ 44 {r} {k} g L τ C 2 0 = {lit(vals[(r, k)])} := by\n"
++                     "  decide +kernel\n")
++    if only is None:
++        rowv = {}
++        for r in range(14):
++            K = 16 - r                       # nonzero k: 0 … 15 − r
++            rowv[r] = sum(comb(N - r, k) * (-1) ** k * vals[(r, k)] for k in range(K))
++            tail = (N - r + 1) - K
++            names = ", ".join(f"pj_{r}_{k}" for k in range(K))
++            lines.append(
++                f"theorem jtRow_{r} : jtRow 44 {r} g L τ C 2 0 = {lit(rowv[r])} := by\n"
++                f"  have hz : ∑ x ∈ Finset.range {tail}, (((44 - {r}).choose ({K} + x) : ℕ) : ℚ) *\n"
++                f"      (-1) ^ ({K} + x) * pieceJ 44 {r} ({K} + x) g L τ C 2 0 = 0 :=\n"
++                f"    Finset.sum_eq_zero fun x _ => by rw [pieceJ_tail {r} ({K} + x) (by omega), mul_zero]\n"
++                f"  rw [jtRow, show 44 - {r} + 1 = {K} + {tail} from rfl, Finset.sum_range_add, hz, add_zero]\n"
++                f"  simp only [Finset.sum_range_succ, Finset.sum_range_zero, {names}]\n"
++                "  decide +kernel\n")
++        total = (N + 1) * sum(comb(N, r) * rowv[r] for r in range(14))
++        assert total == (N + 1) * sum(comb(N, r) * row(r) for r in range(N + 1))
++        lines.append(
++            "/-- **`J_T[1, 1]` at Table 3** as a rational. -/\n"
++            f"theorem jtSum_table3 : jtSum 44 g L τ C 2 0 = {lit(total)} := by\n"
++            "  have hz : ∑ x ∈ Finset.range 31, ((Nat.choose 44 (14 + x) : ℕ) : ℚ) *\n"
++            "      jtRow 44 (14 + x) g L τ C 2 0 = 0 :=\n"
++            "    Finset.sum_eq_zero fun x _ => by rw [jtRow_high (14 + x) (by omega), mul_zero]\n"
++            "  rw [jtSum_eq_rows, show 44 + 1 = 14 + 31 from rfl, Finset.sum_range_add, hz, add_zero]\n"
++            "  simp only [Finset.sum_range_succ, Finset.sum_range_zero, "
++            + ", ".join(f"jtRow_{r}" for r in range(14)) + "]\n"
++            "  decide +kernel\n")
++        print("J_T[1,1] =", float(total))
++        print("value", total.numerator, "/", total.denominator)
++    lines.append("end BGP212.V2e\n")
++    open(out, "w").write("\n".join(lines))
++    print("wrote", out, "with", len(pieces), "piece lemmas")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/specs/results/V2f_marginal_entry.yaml b/specs/results/V2f_marginal_entry.yaml
+new file mode 100644
+index 0000000..cc049eb
+--- /dev/null
++++ b/specs/results/V2f_marginal_entry.yaml
+@@ -0,0 +1,101 @@
++# Result record: eighteenth Challenge/Solution pair (V2f, all endpoint branches and J_T[1, 1])
++
++identity:
++  id: V2f
++  statement: "J_T(1) = (N+1) ∫_{T̂} U(x̂)² dx̂ = jtSum N g L τ C 2 0 for every N ≥ 1 and data with 0 ≤ g ≤ C(1), C(N) < N g (all three branches of Lemma 9.2's endpoint, every piece of V2b's decomposition); at Table 3 the marginal Gram entry J_T[gen 0 ∅, gen 0 ∅] is an explicit rational"
++  source: "Source/bgp212.pdf: Definition 4.6 (p. 6), Table 3 (p. 39), §9.4, Lemma 9.2 and the display of J_T (p. 41), Proposition 10.2 (pp. 41–42), §11 (p. 42)"
++  builds_on: "V2e-B (boxTri, boxVal, innerVal, box_monomial, branch lemmas), V2e-A (two_group_fin, one_group, aggregates, endpointAgg, stratumEndpoint_shift, endpoint_eq_stratum), V2d (jT, marginalJ, marginal_agrees, hatSupport_eq, Table 3 facts), V2b (indicator_supportT's proof, integral_Qset, pieceSet, Qset), V0 (gen); A0–V2e-B unchanged"
++  base_commit: "ab0c476 (V2e-B verified at 25a7376)"
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++scope:
++  proved_integral_identities: >
++    box_twoPow (u₁^α u₂^β (p − u₁)^{m₁} (L' − u₁ − u₂)^{m₂} on any cell), cells_integral (the four
++    branch cells of a piece as signed boxTri cells, any block U^m (L − S)^n), mem_pieceSet_agg,
++    piece_block (two aggregates, any monomial weight yᵗ and block), piece_r0 (the stratum R = ∅),
++    indicator_supportT_strat (inclusion–exclusion with a stratum-dependent integrand),
++    jT_one_pieces, count_by_card, piece_eq_pieceJ, jT_one_eq (J_T(1) in closed form).
++  rational_values: "twoPowVal_cast, cellsVal_cast, seg0Val_cast, pieceJ_cast, jtSum_cast"
++  table3: >
++    pieceJ_tail (pieces with r + k ≥ 16 vanish), pieceJ_high (r ≥ 14), table3_hyps,
++    jT_one_table3, eval_gen_zero, jT_gram_gen00_table3 (the entry in V2d's J_T form and in
++    Definition 4.6's marginal form via marginal_agrees).
++  computational_certificate: >
++    jtSum_table3: jtSum 44 g L τ C 2 0 = 196405301342598493830210603911544843582810204587055080769623409436245894353192939488221872912132381844932553462651053065161718578698716871038141 / 1754639014639931935040119554335514374776042394821781133834697487172064704619156572107385727576911449432373046875000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
++    ≈ 1.1193487646 × 10⁻⁵⁵ (Solution/MarginalEntryCert.lean, generated by
++    specs/checks/marginal_entry_v2f_emit.py: 133 piece lemmas by decide +kernel, 14 rows and the
++    total by decide +kernel on numerals).
++  gram_entry: "J_T[(0, ∅), (0, ∅)] at Table 3, the generator gen 0 ∅ = 1 of B₂₁"
++  unproved_assumptions: "none (axioms: propext, Quot.sound, Classical.choice)"
++  outside_V2f: >
++    J_T entries of generators with power sums (the expansion of P̂_q after translation and V2c's
++    placement counting), the 846 × 846 matrices (not generated), P⋆ and Theorem 11.1, and
++    unconditional H₁ ≤ 212.
++
++verification:
++  definitions: BGP212/MarginalEntry.lean
++  challenge: Challenge/MarginalEntry.lean
++  solution: [Solution/MarginalEntry.lean, Solution/MarginalEntryCert.lean]
++  comparator_config: Comparator/marginal_entry_v2f.json
++  certificate_generator: specs/checks/marginal_entry_v2f_emit.py
++  controls_script: specs/checks/marginal_entry_v2f_controls.py
++  roadmap: Exploratory/V2e/ROADMAP.md
++  challenge_theorems: [box_twoPow, cells_integral, mem_pieceSet_agg, piece_block, piece_r0,
++    indicator_supportT_strat, jT_one_pieces, count_by_card, piece_eq_pieceJ, jT_one_eq,
++    twoPowVal_cast, cellsVal_cast, seg0Val_cast, pieceJ_cast, jtSum_cast, pieceJ_tail, pieceJ_high,
++    jtSum_table3, table3_hyps, jT_one_table3, eval_gen_zero, jT_gram_gen00_table3]
++  independent_checks:
++    - "Monte Carlo at N = 44, Table 3 (uniform samples of the τ-simplex, true rough-set endpoint): 1.11979e-55 ± 1.05e-58 (400 000 samples, z = 0.42) and 1.11966e-55 ± 2.09e-58 (100 000 samples in the controls, z = 0.15)"
++    - "piece (r, k) = (1, 0) at Table 3: exact polygon clipping of the four branch cells equals pieceJ"
++    - "synthetic data N = 3 (g = 3/10, L = 1, τ = 9/10, C = 0, 1/2, 3/5, 7/10): the closed form 0.03768 against a direct 200³ grid integration of 4∫U² with the true rough-set endpoint, 0.037845 (0.44%); the g-cell-as-L−S variant 0.0468"
++    - "Table 3 prototype in N = 1, 2, 3 (with the r = N stratum) against grid integration: relative 1.0e-6, 7.4e-5, 1.6e-3"
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  controls:
++    - change: "jtSum 3 on the synthetic data (U² and U)"
++      result: "accepted (ok_small, ok_small_U)"
++    - change: "the synthetic value with the g cell given the L − S value; the U value claimed for U²"
++      result: "rejected (nc_small_gcell, nc_small_U)"
++    - change: "pieceJ 44 1 0 at Table 3 equals the clipping value; the cap-only value"
++      result: "accepted (ok_piece); rejected (nc_piece)"
++    - change: "J_T[1, 1] at Table 3; with C(r) for C(r+1) in the endpoint; the first power U"
++      result: "accepted (ok_entry); rejected (nc_entry_capindex, nc_entry_U)"
++    - change: "jT_one_eq stated with jtSum … 1 0 (first power) in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.jT_one_eq'"
++  resources:
++    new_mathlib_modules: none
++    proof_module: "Solution/MarginalEntry.lean elaborates in about 6 s"
++    certificate_build: "Solution/MarginalEntryCert.lean about 324 s, peak 3.56 GB; 133 piece lemmas at about 2–4 s each; memory is released between declarations"
++    certificate_design: "whole-row kernel evaluation reached 5.55 GB (one row), so the certificate is split per piece; empty pieces vanish by linear arithmetic, not by evaluation"
++    comparator_suite: "about 497 seconds in the build container, peak 3.16 GB (it replays the certificate)"
++    development_builds: "only the V2f modules and their dependencies; the 18-suite regression is left to the VPS"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
++    the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 497 seconds for the V2f comparator suite in the build container"
++  run_date: 2026-10-19
++  commit_hash: PENDING_VPS
++
++next_development:
++  J_T entries with power sums: >
++    Expand ∫₀^U F for generators (L − S − u)^a ∏_q (P̂_q + u^q) into monomials yᵗ times blocks
++    U^m (L − S)^n after the translation; piece_block already accepts both; add V2c's placement
++    counting for the distinguished coordinates.
++  certificates: "Symmetry-collapsed placements, then J_T(P⋆) − 4 I_T(P⋆) directly"
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 66bd34c..d6c0e6e 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json Comparator/gram_general_v2c.json Comparator/fibre_v2d.json Comparator/aggregate_v2e.json Comparator/capcell_v2eb.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json Comparator/gram_general_v2c.json Comparator/fibre_v2d.json Comparator/aggregate_v2e.json Comparator/capcell_v2eb.json Comparator/marginal_entry_v2f.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
