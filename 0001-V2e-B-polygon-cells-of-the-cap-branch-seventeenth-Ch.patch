@@ -1,0 +1,1610 @@
+From d4148504c3f8250ffd11cf44a1159b9f04a693bf Mon Sep 17 00:00:00 2001
+From: thinkthoughts <dth26b@gmail.com>
+Date: Sun, 18 Oct 2026 20:23:17 -0600
+Subject: [PATCH] V2e-B: polygon cells of the cap branch (seventeenth
+ Challenge/Solution pair)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Proves exact integrals over cells {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ D}
+(monomials, cap powers, rational polynomials; boxVal computable over ℚ)
+with boundary cases, the three branches of Lemma 9.2's endpoint in the
+two aggregates, the cap cell of a piece and its closed-form piece
+integral via V2e-A's two-aggregate theorem (including r = 0). At Table 3
+the τ constraint is inactive on the cap branch (every cap cell is a
+rectangle), and a kernel certificate evaluates the cap-branch part of
+J_T(1) on the piece ({0}, ∅). Adds Comparator/capcell_v2eb.json,
+controls, the result record and the updated V2e roadmap.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01DyEq5SJg3P8RhuwC4Kgon8
+---
+ BGP212.lean                           |   1 +
+ BGP212/CapCell.lean                   |  88 ++++
+ Challenge.lean                        |   1 +
+ Challenge/CapCell.lean                | 181 +++++++
+ Comparator/capcell_v2eb.json          |  62 +++
+ Exploratory/V2e/ROADMAP.md            |  89 +++-
+ README.md                             |  27 +-
+ Solution.lean                         |   1 +
+ Solution/CapCell.lean                 | 656 ++++++++++++++++++++++++++
+ specs/checks/capcell_v2eb_controls.py | 213 +++++++++
+ specs/results/V2e_B_capcell.yaml      | 108 +++++
+ verify.sh                             |   2 +-
+ 12 files changed, 1408 insertions(+), 21 deletions(-)
+ create mode 100644 BGP212/CapCell.lean
+ create mode 100644 Challenge/CapCell.lean
+ create mode 100644 Comparator/capcell_v2eb.json
+ create mode 100644 Solution/CapCell.lean
+ create mode 100644 specs/checks/capcell_v2eb_controls.py
+ create mode 100644 specs/results/V2e_B_capcell.yaml
+
+diff --git a/BGP212.lean b/BGP212.lean
+index b955137..5eed070 100644
+--- a/BGP212.lean
++++ b/BGP212.lean
+@@ -15,3 +15,4 @@ import BGP212.GramEntry
+ import BGP212.GramGeneral
+ import BGP212.Fibre
+ import BGP212.Aggregate
++import BGP212.CapCell
+diff --git a/BGP212/CapCell.lean b/BGP212/CapCell.lean
+new file mode 100644
+index 0000000..41a467e
+--- /dev/null
++++ b/BGP212/CapCell.lean
+@@ -0,0 +1,88 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), §9.4, Lemma 9.2 and the display of `J_T` (p. 41),
++Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.Aggregate
++import BGP212.Params
++
++/-! # V2e-B: polygon cells of the cap branch (definitions)
++
++Track B. The objects of the cap-branch cell integration; the theorems are proved in
++`Solution/CapCell.lean`.
++
++On a V2b piece `(R, K)` with `r = |R|`, `k = |K|`, aggregates `u₁ = Σ_R y`, `u₂ = Σ_{Rᶜ} y`, the
++endpoint of Lemma 9.2 is `U = endpointAgg g L C r k u₁ u₂` (V2e-A). It takes the **cap value**
++`U = C(r+1) − r g − u₁` exactly on
++
++  `u₁ ≤ c₁ = C(r+1) − (r+1) g`   (the `max` picks the cap, `U ≥ g`),
++  `u₂ ≤ c₂ = L − k g − C(r+1)`   (the `min` picks the cap, `U ≤ L − S`).
++
++Intersected with the piece (`u₁ ≤ c`, `u₁ + u₂ ≤ M`) this is the cell
++
++  `capCell = boxTri (min c c₁) c₂ M`,   `boxTri A B D = {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ D}`,
++
++a polygon with at most five sides. `boxVal A B D α β` is the exact value of
++`∫_{boxTri A B D} u₁^α u₂^β` over any ordered field (so over `ℚ` it is computable). -/
++
++namespace BGP212.V2e
++
++open BGP212.Gram BGP212.V2d MeasureTheory
++
++/-- **Definition.** The cell `{0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ D}` (a box cut by an
++anti-diagonal). -/
++def boxTri (A B D : ℝ) : Set (ℝ × ℝ) :=
++  {q | 0 ≤ q.1 ∧ q.1 ≤ A ∧ 0 ≤ q.2 ∧ q.2 ≤ B ∧ q.1 + q.2 ≤ D}
++
++section Formula
++
++variable {K : Type*} [Field K] [LinearOrder K]
++
++/-- `∫₀^X (D − u)^p u^t du`, expanded (V2d's `inner_integral`). -/
++def innerVal (X D : K) (p t : ℕ) : K :=
++  ∑ j ∈ Finset.range (p + 1),
++    (p.choose j : K) * D ^ (p - j) * (-1) ^ j * X ^ (t + j + 1) / (t + j + 1)
++
++/-- **Definition.** The exact value of `∫_{boxTri A B D} u₁^α u₂^β`: with
++`E = max 0 (min A (D − B))` (end of the full-height part) and `F = max 0 (min A D)` (end of the
++cell), `(B^{β+1} E^{α+1}/(α+1) + ∫_E^F u^α (D − u)^{β+1} du) / (β + 1)`; zero if `A < 0` or
++`B < 0`. -/
++def boxVal (A B D : K) (α β : ℕ) : K :=
++  if 0 ≤ A ∧ 0 ≤ B then
++    (B ^ (β + 1) * (max 0 (min A (D - B))) ^ (α + 1) / (α + 1) +
++      (innerVal (max 0 (min A D)) D (β + 1) α - innerVal (max 0 (min A (D - B))) D (β + 1) α)) /
++      (β + 1)
++  else 0
++
++/-- **Definition.** `∫_{boxTri A B D} u₁^α u₂^β (a − u₁)^m`, by the binomial expansion of the
++cap power. -/
++def capPowVal (A B D a : K) (α β m : ℕ) : K :=
++  ∑ i ∈ Finset.range (m + 1), (m.choose i : K) * a ^ (m - i) * (-1) ^ i * boxVal A B D (α + i) β
++
++end Formula
++
++/-- **Definition.** The cap-branch cell of a piece: `r` rough and `k` inclusion–exclusion
++coordinates, piece cap `c` (`Σ_R y ≤ c`) and piece total `M` (`Σ y ≤ M`). -/
++noncomputable def capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) : Set (ℝ × ℝ) :=
++  boxTri (min c (C (r + 1) - (r + 1) * g)) (L - k * g - C (r + 1)) M
++
++/-! ## Table 3 data and the worked certificate -/
++
++/-- Table 3's `g`, `L`, `τ` and cap function over `ℝ`. -/
++noncomputable def g3 : ℝ := (BGP212.Params.g : ℝ)
++noncomputable def L3 : ℝ := (BGP212.Params.L : ℝ)
++noncomputable def τ3 : ℝ := (BGP212.Params.τ : ℝ)
++noncomputable def C3 (m : ℕ) : ℝ := (BGP212.Params.C m : ℝ)
++
++/-- **Definition (worked certificate).** The cap-branch part of `J_T(1)` on the piece
++`(R, K) = ({0}, ∅)` of `T̂ = supportT 44 g τ C` (V2b's decomposition, translated): the integral
++over `pieceSet 44 {0} (C(1) − g) (τ − g)` of `U²` (the squared fibre length `(∫₀^U 1 du)²`)
++restricted to the cap branch. -/
++noncomputable def capPieceT3 : ℝ :=
++  ∫ y in pieceSet 44 {0} (C3 1 - g3) (τ3 - g3),
++    (capCell g3 L3 C3 1 0 (C3 1 - g3) (τ3 - g3)).indicator
++      (fun q => (endpointAgg g3 L3 C3 1 0 q.1 q.2) ^ 2) (aggR {0} y, aggS {0} y)
++
++end BGP212.V2e
+diff --git a/Challenge.lean b/Challenge.lean
+index 9542b43..758de1b 100644
+--- a/Challenge.lean
++++ b/Challenge.lean
+@@ -14,3 +14,4 @@ import Challenge.GramEntry
+ import Challenge.GramGeneral
+ import Challenge.Fibre
+ import Challenge.Aggregate
++import Challenge.CapCell
+diff --git a/Challenge/CapCell.lean b/Challenge/CapCell.lean
+new file mode 100644
+index 0000000..6e155d2
+--- /dev/null
++++ b/Challenge/CapCell.lean
+@@ -0,0 +1,181 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), §9.4, Lemma 9.2 (p. 41), Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.CapCell
++import Mathlib.MeasureTheory.Integral.IntervalIntegral.Basic
++import Mathlib.Algebra.MvPolynomial.CommRing
++
++/-! # V2e-B: polygon cells of the cap branch
++
++Statements only; proofs live in `Solution/CapCell.lean`. Objects are defined in
++`BGP212/CapCell.lean` (with V2e-A's `tri`, `aggR`, `aggS`, `aggExp`, `aggConst`, `endpointAgg`,
++V2b's `simplexF`, `pieceSet`). The general statements keep `g`, `L`, `C` as parameters; Table 3
++enters only through `BGP212.Params` in the last four statements. -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++/-- **Fubini on a cell**: `∫_{boxTri A B D} f = ∫_{[0,A]} ∫_{[0, min B (D − u)]} f(u, s) ds du`. -/
++theorem boxTri_integral (A B D : ℝ) (f : ℝ × ℝ → ℝ) (hf : Continuous f) :
++    ∫ q in boxTri A B D, f q =
++      ∫ u in Set.Icc 0 A, ∫ s in Set.Icc 0 (min B (D - u)), f (u, s) :=
++  sorry
++
++/-- **Monomials on a cell**: `∫_{boxTri A B D} u₁^α u₂^β = boxVal A B D α β`. -/
++theorem box_monomial (A B D : ℝ) (α β : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β = boxVal A B D α β :=
++  sorry
++
++/-- `boxVal` commutes with the cast `ℚ → ℝ`: over `ℚ` it is the computable certificate value. -/
++theorem boxVal_cast (A B D : ℚ) (α β : ℕ) :
++    ((boxVal A B D α β : ℚ) : ℝ) = boxVal (A : ℝ) (B : ℝ) (D : ℝ) α β :=
++  sorry
++
++/-- **Empty cell** (`A < 0` or `B < 0`). -/
++theorem boxVal_empty (A B D : ℝ) (α β : ℕ) (h : A < 0 ∨ B < 0) : boxVal A B D α β = 0 :=
++  sorry
++
++/-- **Cell beyond the diagonal** (`D ≤ 0`): only the null set `u₁ = u₂ = 0` remains. -/
++theorem boxVal_nonpos (A B D : ℝ) (α β : ℕ) (hD : D ≤ 0) : boxVal A B D α β = 0 :=
++  sorry
++
++/-- **Rectangular cell** (`A + B ≤ D`, the anti-diagonal inactive): the product of two
++one-variable moments. -/
++theorem boxVal_rect (A B D : ℝ) (α β : ℕ) (hA : 0 ≤ A) (hB : 0 ≤ B) (hD : A + B ≤ D) :
++    boxVal A B D α β = A ^ (α + 1) / (α + 1) * (B ^ (β + 1) / (β + 1)) :=
++  sorry
++
++/-- `∫_{boxTri A B D} u₁^α u₂^β (a − u₁)^m = capPowVal A B D a α β m`. -/
++theorem box_capPow (A B D a : ℝ) (α β m : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β * (a - q.1) ^ m = capPowVal A B D a α β m :=
++  sorry
++
++/-- **Rational polynomials on a cell**: for `P ∈ ℚ[u₁, u₂]`,
++`∫_{boxTri A B D} P(u₁, u₂) = Σ_d coeff_d(P) · boxVal A B D d₀ d₁`. -/
++theorem box_poly (A B D : ℝ) (P : MvPolynomial (Fin 2) ℚ) :
++    ∫ q in boxTri A B D, MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] P =
++      ∑ d ∈ P.support, ((P.coeff d : ℚ) : ℝ) * boxVal A B D (d 0) (d 1) :=
++  sorry
++
++/-- **Cap branch**: `u₁ ≤ C(r+1) − (r+1) g` and `u₂ ≤ L − k g − C(r+1)` give
++`U = C(r+1) − r g − u₁`. -/
++theorem endpointAgg_cap (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g) (h₂ : u₂ ≤ L - k * g - C (r + 1)) :
++    endpointAgg g L C r k u₁ u₂ = C (r + 1) - (r * g + u₁) :=
++  sorry
++
++/-- **`g` branch**: `u₁ ≥ C(r+1) − (r+1) g` and `u₁ + u₂ ≤ L − (r+k+1) g` give `U = g`. -/
++theorem endpointAgg_gBranch (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : C (r + 1) - (r + 1) * g ≤ u₁)
++    (h₂ : u₁ + u₂ ≤ L - (r + k + 1) * g) : endpointAgg g L C r k u₁ u₂ = g :=
++  sorry
++
++/-- **`L − S` branch**, cap side: `u₁ ≤ C(r+1) − (r+1) g` and `u₂ ≥ L − k g − C(r+1)`. -/
++theorem endpointAgg_LBranch_cap (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g)
++    (h₂ : L - k * g - C (r + 1) ≤ u₂) :
++    endpointAgg g L C r k u₁ u₂ = L - ((r + k) * g + u₁ + u₂) :=
++  sorry
++
++/-- **`L − S` branch**, `g` side: `u₁ ≥ C(r+1) − (r+1) g` and `u₁ + u₂ ≥ L − (r+k+1) g`. -/
++theorem endpointAgg_LBranch_g (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : C (r + 1) - (r + 1) * g ≤ u₁)
++    (h₂ : L - (r + k + 1) * g ≤ u₁ + u₂) :
++    endpointAgg g L C r k u₁ u₂ = L - ((r + k) * g + u₁ + u₂) :=
++  sorry
++
++/-- **The τ constraint is inactive on the cap branch**: there `g ≤ U ≤ L − S`, so
++`S = (r+k) g + u₁ + u₂ ≤ L − g`. -/
++theorem cap_total_le (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g) (h₂ : u₂ ≤ L - k * g - C (r + 1)) :
++    (r + k) * g + u₁ + u₂ ≤ L - g :=
++  sorry
++
++
++theorem mem_capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ) :
++    q ∈ capCell g L C r k c M ↔ q ∈ tri M ∧ q.1 ≤ c ∧ q.1 ≤ C (r + 1) - (r + 1) * g ∧
++      q.2 ≤ L - k * g - C (r + 1) :=
++  sorry
++
++/-- On the cap cell the endpoint takes the cap value. -/
++theorem endpointAgg_on_capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ)
++    (hq : q ∈ capCell g L C r k c M) :
++    endpointAgg g L C r k q.1 q.2 = C (r + 1) - (r * g + q.1) :=
++  sorry
++
++/-- **Rectangular cap cells**: if `L − g ≤ τ`, the piece total `M = τ − (r+k) g` never cuts the
++cap cell (`A + B ≤ M`). -/
++theorem capCell_rect (g L τ : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c : ℝ) (hτ : L - g ≤ τ) :
++    min c (C (r + 1) - (r + 1) * g) + (L - k * g - C (r + 1)) ≤ τ - (r + k) * g :=
++  sorry
++
++/-- **Empty cap cells**: if `L − k g < C(r+1)` the cap branch is empty on the piece. -/
++theorem capCell_empty (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (h : L - k * g < C (r + 1)) :
++    capCell g L C r k c M = ∅ :=
++  sorry
++
++/-- **The inner integral on the cap cell**, a polynomial in `(u₁, u₂)`:
++`∫₀^U (L − S − u)^p u^t du` with `U = C(r+1) − r g − u₁`, `L − S = L − (r+k) g − u₁ − u₂`. -/
++theorem cap_inner (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ)
++    (hq : q ∈ capCell g L C r k c M) (p t : ℕ) :
++    ∫ u in (0 : ℝ)..endpointAgg g L C r k q.1 q.2, (L - ((r + k) * g + q.1 + q.2) - u) ^ p * u ^ t =
++      innerVal (C (r + 1) - (r * g + q.1)) (L - ((r + k) * g + q.1 + q.2)) p t :=
++  sorry
++
++/-- On a piece, restricting to the cap cell makes the piece constraints automatic:
++the integral over `pieceSet N R c M` equals the integral over the simplex `Σ y ≤ M`. -/
++theorem piece_cap_eq {N : ℕ} (R : Finset (Fin N)) (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ)
++    (G : (Fin N → ℝ) → ℝ) (Φ : ℝ × ℝ → ℝ) :
++    ∫ y in pieceSet N R c M, G y * (capCell g L C r k c M).indicator Φ (aggR R y, aggS R y) =
++      ∫ y in simplexF (Fin N) M, G y * (capCell g L C r k c M).indicator Φ (aggR R y, aggS R y) :=
++  sorry
++
++/-- **The cap branch on a piece.** For a piece `(R, K)` of V2b's decomposition (`R`, `Rᶜ`
++nonempty, `k = |K|`, piece cap `c`, piece total `M`), a monomial weight `yᵗ` and the `m`-th power
++of the endpoint restricted to the cap branch:
++`∫_{pieceSet} yᵗ · 1_cap · U^m = aggConst R t · aggConst Rᶜ t ·
++capPowVal (min c c₁) c₂ M (C(r+1) − r g) (aggExp R t) (aggExp Rᶜ t) m`. -/
++theorem cap_branch_piece {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty)
++    (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ) (t : Fin N → ℕ) (m : ℕ) :
++    ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        (capCell g L C R.card k c M).indicator
++          (fun q => (endpointAgg g L C R.card k q.1 q.2) ^ m) (aggR R y, aggS R y) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        capPowVal (min c (C (R.card + 1) - (R.card + 1) * g)) (L - k * g - C (R.card + 1)) M
++          (C (R.card + 1) - R.card * g) (aggExp {i // i ∈ R} (fun i => t i))
++          (aggExp {i // i ∉ R} (fun i => t i)) m :=
++  sorry
++
++/-- **`r = 0`**: with no rough coordinates `u₁ = 0` and `U = C(1)` on the cap branch; the piece
++integral is a one-aggregate integral over `u₂ ∈ [0, min c₂ M]`. -/
++theorem cap_branch_r0 {N : ℕ} (hN : 0 < N) (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ)
++    (t : Fin N → ℕ) (m : ℕ) (hc : 0 ≤ c) (hc₁ : 0 ≤ C 1 - g) :
++    ∫ y in pieceSet N ∅ c M, (∏ i, y i ^ t i) *
++        (capCell g L C 0 k c M).indicator
++          (fun q => (endpointAgg g L C 0 k q.1 q.2) ^ m) (aggR ∅ y, aggS ∅ y) =
++      aggConst (Fin N) t * (C 1 ^ m *
++        ((max 0 (min (L - k * g - C 1) (M - 0))) ^ (aggExp (Fin N) t + 1) /
++          (aggExp (Fin N) t + 1))) :=
++  sorry
++
++/-- At Table 3, `L − g ≤ τ` (`τ − (L − g) = 1/625`). -/
++theorem tau_ge_table3 : BGP212.Params.L - BGP212.Params.g ≤ BGP212.Params.τ :=
++  sorry
++
++/-- **Every Table 3 cap cell is a rectangle**: the piece total `τ − (r+k) g` never cuts it. -/
++theorem capCell_rect_table3 (r k : ℕ) (c : ℝ) :
++    min c (C3 (r + 1) - (r + 1) * g3) + (L3 - k * g3 - C3 (r + 1)) ≤ τ3 - (r + k) * g3 :=
++  sorry
++
++/-- **Empty Table 3 cap cells**: with one rough coordinate the cap branch is empty once
++`k ≥ 7` (`L − 7 g = 751/1250 < C(2) = 794/1250`). -/
++theorem capCell_empty_table3 (k : ℕ) (hk : 7 ≤ k) (c M : ℝ) : capCell g3 L3 C3 1 k c M = ∅ :=
++  sorry
++
++/-- **The worked certificate**: the cap-branch part of `J_T(1)` on the Table 3 piece
++`({0}, ∅)` of `T̂` (`N = 44`) is the explicit rational
++`V = (L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰`. -/
++theorem capPieceT3_value : capPieceT3 =
++    ((2257149812841095726960561293190503471927130196106096204396001203694562350987314959143203078094677121622739446201 / 21569915559007524956605042855904290630373696306163850230268666519073406107054324820637702941894531250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) :=
++  sorry
++
++end BGP212.Challenge
+diff --git a/Comparator/capcell_v2eb.json b/Comparator/capcell_v2eb.json
+new file mode 100644
+index 0000000..8c690db
+--- /dev/null
++++ b/Comparator/capcell_v2eb.json
+@@ -0,0 +1,62 @@
++{
++    "challenge_module": "Challenge.CapCell",
++    "solution_module": "Solution.CapCell",
++    "theorem_names": [
++        "BGP212.Challenge.boxTri_integral",
++        "BGP212.Challenge.box_monomial",
++        "BGP212.Challenge.boxVal_cast",
++        "BGP212.Challenge.boxVal_empty",
++        "BGP212.Challenge.boxVal_nonpos",
++        "BGP212.Challenge.boxVal_rect",
++        "BGP212.Challenge.box_capPow",
++        "BGP212.Challenge.box_poly",
++        "BGP212.Challenge.endpointAgg_cap",
++        "BGP212.Challenge.endpointAgg_gBranch",
++        "BGP212.Challenge.endpointAgg_LBranch_cap",
++        "BGP212.Challenge.endpointAgg_LBranch_g",
++        "BGP212.Challenge.cap_total_le",
++        "BGP212.Challenge.mem_capCell",
++        "BGP212.Challenge.endpointAgg_on_capCell",
++        "BGP212.Challenge.capCell_rect",
++        "BGP212.Challenge.capCell_empty",
++        "BGP212.Challenge.cap_inner",
++        "BGP212.Challenge.piece_cap_eq",
++        "BGP212.Challenge.cap_branch_piece",
++        "BGP212.Challenge.cap_branch_r0",
++        "BGP212.Challenge.tau_ge_table3",
++        "BGP212.Challenge.capCell_rect_table3",
++        "BGP212.Challenge.capCell_empty_table3",
++        "BGP212.Challenge.capPieceT3_value"
++    ],
++    "definition_names": [
++        "BGP212.V2e.boxTri",
++        "BGP212.V2e.innerVal",
++        "BGP212.V2e.boxVal",
++        "BGP212.V2e.capPowVal",
++        "BGP212.V2e.capCell",
++        "BGP212.V2e.g3",
++        "BGP212.V2e.L3",
++        "BGP212.V2e.τ3",
++        "BGP212.V2e.C3",
++        "BGP212.V2e.capPieceT3",
++        "BGP212.V2e.tri",
++        "BGP212.V2e.aggR",
++        "BGP212.V2e.aggS",
++        "BGP212.V2e.aggExp",
++        "BGP212.V2e.aggConst",
++        "BGP212.V2e.endpointAgg",
++        "BGP212.Gram.simplexF",
++        "BGP212.Gram.pieceSet",
++        "BGP212.Params.Bnum",
++        "BGP212.Params.B",
++        "BGP212.Params.C",
++        "BGP212.Params.g",
++        "BGP212.Params.L",
++        "BGP212.Params.τ"
++    ],
++    "permitted_axioms": [
++        "propext",
++        "Quot.sound",
++        "Classical.choice"
++    ]
++}
+diff --git a/Exploratory/V2e/ROADMAP.md b/Exploratory/V2e/ROADMAP.md
+index a4f7b71..5bcb2bf 100644
+--- a/Exploratory/V2e/ROADMAP.md
++++ b/Exploratory/V2e/ROADMAP.md
+@@ -2,7 +2,8 @@
+ 
+ Status:
+ - **V2e-A is proved** (sixteenth pair, `Solution/Aggregate.lean`).
+-- This file is the plan for V2e-B and V2f.
++- **V2e-B is proved** (seventeenth pair, `Solution/CapCell.lean`): the cap branch, see §3.
++- This file is the plan for V2f.
+ - Statements marked *exploratory* were checked numerically, not in the kernel.
+ 
+ ## 1. What V2e-A provides (kernel-checked)
+@@ -43,7 +44,7 @@ Here `u₁ = Σ_R y`, `u₂ = Σ_{Rᶜ} y`, and `tri M = {u₁, u₂ ≥ 0, u₁
+ - `tri_cut` integrates `u₁^α u₂^β` over the triangle cut by `u₁ ≤ c`.
+ - It is closed-form, via V2d's `inner_integral`.
+ 
+-## 2. The cells of one piece (exploratory, verified exactly at 20 000 random points)
++## 2. The cells of one piece (kernel-checked in V2e-B; first verified exactly at 20 000 random points)
+ 
+ Fix a piece `(R, K)` with `r = |R|` and `k = |K|`. The branches of `U` switch along three lines in the `(u₁, u₂)` plane:
+ 
+@@ -53,6 +54,8 @@ Fix a piece `(R, K)` with `r = |R|` and `k = |K|`. The branches of `U` switch al
+ | `min`, cap side (`u₁ ≤ c₁`): `L − S` vs `C(r+1) − ρ₁` | `u₂ = c₂ := L − k g − C(r+1)` | horizontal (`u₁` cancels) |
+ | `min`, `g` side (`u₁ ≥ c₁`): `L − S` vs `g` | `u₁ + u₂ = c₃ := L − (r+k+1) g` | anti-diagonal |
+ 
++The four branch lemmas `endpointAgg_cap`, `endpointAgg_gBranch`, `endpointAgg_LBranch_cap` and `endpointAgg_LBranch_g` (V2e-B) prove this classification.
++
+ On each cell `U` is affine, with three possible values:
+ - `L − (r+k) g − u₁ − u₂`;
+ - `C(r+1) − r g − u₁`;
+@@ -66,31 +69,79 @@ These lines are of the same three types. So every cell is a polygon bounded by v
+ 
+ Every cell integral is therefore an iterated one-variable polynomial integral with rational limits, the shape of `tri_cut`.
+ 
+-## 3. V2e-B: one branch, polygon cells
++## 3. V2e-B: the cap branch (done)
++
++**Cells.** `boxTri A B D = {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ D}`.
++- `box_monomial` gives `∫_{boxTri} u₁^α u₂^β = boxVal A B D α β` exactly.
++  - `boxVal` splits `[0, A]` at `E = max 0 (min A (D − B))` and `F = max 0 (min A D)`.
++  - It is computable over `ℚ`, and `boxVal_cast` transports it to `ℝ`.
++- `box_capPow` handles the cap power `(a − u₁)^m`, and `box_poly` any `P ∈ ℚ[u₁, u₂]`.
++- Boundary cases:
++  - `boxVal_empty`: `A < 0` or `B < 0`;
++  - `boxVal_nonpos`: `D ≤ 0`;
++  - `boxVal_rect`: `A + B ≤ D`.
++- Independent check: polygon clipping, at 300 random cells and in the controls.
++
++**The cap cell.** `capCell = boxTri (min c c₁) c₂ M`, where `c` and `M` are the piece cap and total.
++- `endpointAgg_on_capCell`: on it, `U = C(r+1) − r g − u₁`.
++- `cap_inner`: the inner integral `∫₀^U (L − S − u)^p u^t du` there is an explicit polynomial in `(u₁, u₂)`.
++
++**Piece integrals.**
++- `cap_branch_piece`: `∫_{piece} yᵗ 1_cap U^m` in closed form, through `two_group_fin`.
++- `cap_branch_r0`: the stratum with no rough coordinates, through `one_group`.
++- `piece_cap_eq`: the piece constraints are automatic on the cell.
++
++**Findings.**
++- **The τ constraint is inactive on the cap branch.**
++  - There `g ≤ U ≤ L − S`, so `S ≤ L − g` (`cap_total_le`).
++  - At Table 3, `τ − (L − g) = 1/625 > 0` (`tau_ge_table3`).
++  - So every Table 3 cap cell is a rectangle `[0, A] × [0, B]` (`capCell_rect_table3`).
++- **Few nonempty cap cells (exploratory, exact enumeration).** At Table 3, the cap cell is nonempty only for 59 cardinality classes `(r, k)`:
++  - `r ≤ 12`;
++  - `k ≤ 6`, with `k ≤ 2` once `r ≥ 9`.
++
++  For `r = 1` it is empty from `k = 7` on (`capCell_empty_table3`).
++- **Certificate.** `capPieceT3_value` gives the cap-branch part of `J_T(1)` on the piece `({0}, ∅)` as:
++
++  ```text
++  (L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰
++  ```
++
++  It is kernel-checked, and a direct 3-dimensional grid integration of the analogous `N = 3` piece agrees.
+ 
+-1. **The `J_T` integrand on a piece.** For generators `(L − S − u)^a ∏_q (P̂_q + u^q)`, V2d's `inner_integral` makes `∫₀^U F du` a polynomial in:
+-   - `U`;
+-   - `M = L − S`;
+-   - power sums of `x̂`.
++## 4. V2f: all branches and `J_T` entries
+ 
+-   Expanding the power sums and the square gives `Σ (monomial in x̂) · poly(U, M)`. After the translation `x̂ = y + g·1_{R∪K}`, the monomials become monomials in `y` times powers of `g`.
++1. **The other two branches as signed `boxTri` cells.** Each remaining cell is a difference of cells of the V2e-B shape, so `boxVal` covers them.
+ 
+-   So each term has exactly the form `yᵗ h(u₁, u₂)` of `two_group_fin`, with:
++   With `A' = min c (C(r) − r g)`:
++   - **`g` branch** (`U = g`): the cell is `{c₁ ≤ u₁ ≤ A', u₁ + u₂ ≤ min(c₃, M)}`, which equals:
+ 
+-   ```text
+-   h = 1_cell · poly(endpointAgg, L − S)
+-   ```
+-2. **Cell integrals.** Generalize `tri_cut` to polynomial `h` and to cells cut by one vertical, one horizontal or one anti-diagonal line. Take one branch first, the cap branch `U = C(r+1) − ρ₁`, on `{u₁ ≤ c₁, u₂ ≤ c₂}`.
+-3. **Measurability and boundedness** of `h` are immediate: polynomials times indicators of closed half-planes, on the compact triangle.
++     ```text
++     boxTri A' ∞ (min c₃ M) − boxTri (min c₁ A') ∞ (min c₃ M)
++     ```
+ 
+-## 4. V2f: all branches and `J_T` entries
++     Here `∞` means any `B ≥ M`. Each lower bound is clamped, as in `min c₁ A'`, so that an empty cell contributes 0, not a negative difference.
++   - **`L − S` branch, cap side:** `{u₁ ≤ min(A', c₁), u₂ ≥ c₂, u₁ + u₂ ≤ M}` is a full-height cell minus the cap cell.
++   - **`L − S` branch, `g` side:** `{c₁ ≤ u₁ ≤ A', c₃ ≤ u₁ + u₂ ≤ M}` is a difference of four cells.
++
++   On both sides of the `L − S` branch, lower bounds are clamped the same way (`min c₁ A'`, `min c₂ M`). This branch is where the τ constraint (`D = M`) is active.
++2. **The `J_T` integrand.** For generators `(L − S − u)^a ∏_q (P̂_q + u^q)`, `inner_integral` turns `∫₀^U F` into a polynomial in:
++   - `U`;
++   - `L − S`;
++   - power sums of `x̂`.
+ 
+-1. **All three branches.** Sum the cells of each piece, with null boundaries handled as in V2b.
+-2. **Counting.** Use V2c's placement machinery (`Sig`, `sig_union`, `sig_card`) over the 44 outer coordinates. The placements now also carry the branch cells, and symmetry gives the factor 45 (V2d, `marginal_agrees`).
+-3. **One `J_T` Gram entry at Table 3,** as an exact rational with a small kernel certificate. Then certify `J_T(P⋆) − 4 I_T(P⋆)` directly. The full 846 × 846 matrix stays uncertified.
++   After the translation and V2c's placements, each term is `yᵗ` times a polynomial in `(u₁, u₂)` on each cell. `two_group_fin` and `box_poly` then give exact rationals.
++3. **Counting.** Use V2c's `Sig`, `sig_union` and `sig_card` over the 44 outer coordinates, with the cell data indexed by `(r, k)`.
++   - Only the 59 cap classes above, and the analogous lists for the other branches, contribute.
++   - Symmetry gives the factor 45 (V2d's `marginal_agrees`).
++4. **One `J_T` Gram entry at Table 3,** as an exact rational with a small kernel certificate. Then certify `J_T(P⋆) − 4 I_T(P⋆)` directly; the 846 × 846 matrix stays uncertified.
+ 
+-## 5. Costs observed in V2e-A
++## 5. Costs observed in V2e-A and V2e-B
+ 
+ - **Elaboration:** `Solution/Aggregate.lean` elaborates in about 6 s, with a 3.15 GB peak, which is mostly the import baseline.
+ - **New Mathlib modules:** none.
+ - **Kernel arithmetic:** none beyond the worked example's small constants (`decide +kernel` on four `ℚ`/`ℕ` values).
++- **V2e-B:**
++  - `Solution/CapCell.lean` elaborates in about 5 s, peaking at 3.19 GB.
++  - The Comparator suite takes about 115 s, peaking at 3.16 GB.
++  - Kernel arithmetic is only the certificate's `capPowVal` and a few small constants.
+diff --git a/README.md b/README.md
+index fadf87c..6ab6f7f 100644
+--- a/README.md
++++ b/README.md
+@@ -245,6 +245,23 @@ The sixteenth pair is V2e-A (`Challenge/Aggregate.lean`, `Solution/Aggregate.lea
+   `|K| g + u₂`.
+ - `example_value`: `∫_{y ∈ ℝ³, y ≥ 0, Σ y ≤ 1} y₀ y₂² 1[y₀ ≤ 1/2] = 19/7680` through the theorem.
+ 
++The seventeenth pair is V2e-B (`Challenge/CapCell.lean`, `Solution/CapCell.lean`, objects in
++`BGP212/CapCell.lean`): **polygon cells of the cap branch**. On a piece `(R, K)`, `r = |R|`,
++`k = |K|`, the endpoint takes the cap value `U = C(r+1) − r g − u₁` exactly on
++`u₁ ≤ C(r+1) − (r+1) g`, `u₂ ≤ L − k g − C(r+1)`; with the piece constraints this is the cell
++`capCell = {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ M}`.
++
++- `box_monomial`, `box_capPow`, `box_poly`: exact values of monomial, cap-power and rational
++  polynomial integrals over such cells (`boxVal`, computable over `ℚ`); boundary cases
++  `boxVal_empty`, `boxVal_nonpos`, `boxVal_rect`.
++- `endpointAgg_cap`, `endpointAgg_gBranch`, `endpointAgg_LBranch_cap`, `endpointAgg_LBranch_g`:
++  the three branches of `U` in the aggregates; `cap_total_le`: on the cap branch `S ≤ L − g`, so
++  the τ constraint is inactive when `L − g ≤ τ` (Table 3: `capCell_rect_table3`, every cap cell is
++  a rectangle).
++- `cap_branch_piece`, `cap_branch_r0`: `∫_{piece} yᵗ 1_cap U^m` in closed form.
++- `capPieceT3_value` (computational certificate): the cap-branch part of `J_T(1)` on the Table 3
++  piece `({0}, ∅)` of `T̂` is `(L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰`.
++
+ ## What is proved, imported, and external
+ 
+ - **Proved here, kernel-checked:** Lemma 12.1; the Table 3 parameter layer and every
+@@ -256,7 +273,8 @@ The sixteenth pair is V2e-A (`Challenge/Aggregate.lean`, `Solution/Aggregate.lea
+   `I_T[(1, ∅), (0, (2))]` as a Lebesgue integral over Table 3's support (V2b); every monomial
+   integral over the support in closed form, and every `I_T` entry of `B₂₁` as an explicit rational
+   (V2c); the `J_T` fibre theorem of Lemma 9.2 and the marginal identity `J_T(1_{T̃} P) = J_T(P)` (V2d);
+-  two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A).
++  two-aggregate Dirichlet integration and the aggregate form of Lemma 9.2's endpoint (V2e-A);
++  exact polygon-cell integrals of the cap branch and one Table 3 cap-branch certificate (V2e-B).
+ - **Imported analytic hypotheses (taken as hypotheses in Axiom's certificate too):** the
+   Type I/II/III equidistribution estimates (Lemmas 5.3–5.7), bilinear Bombieri–Vinogradov
+   (Lemma 8.1), and the Harman decomposition (Proposition 7.2). In A4 these are the named
+@@ -362,6 +380,13 @@ python3 -I specs/checks/aggregate_v2e_controls.py /tmp/v2e_ctl
+ for f in /tmp/v2e_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
+ ```
+ 
++For V2e-B's controls:
++
++```text
++python3 -I specs/checks/capcell_v2eb_controls.py /tmp/v2eb_ctl
++for f in /tmp/v2eb_ctl/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++```
++
+ `./verify.sh` builds the project and runs Lean Comparator on each config in `Comparator/`.
+ A successful run ends with:
+ 
+diff --git a/Solution.lean b/Solution.lean
+index 096dddc..0f0e7de 100644
+--- a/Solution.lean
++++ b/Solution.lean
+@@ -16,3 +16,4 @@ import Solution.GramGeneralCert
+ import Solution.GramGeneral
+ import Solution.Fibre
+ import Solution.Aggregate
++import Solution.CapCell
+diff --git a/Solution/CapCell.lean b/Solution/CapCell.lean
+new file mode 100644
+index 0000000..53a3b1d
+--- /dev/null
++++ b/Solution/CapCell.lean
+@@ -0,0 +1,656 @@
++/-
++Copyright (c) 2026 thinkthoughts. All rights reserved.
++Released under MIT license as described in the file LICENSE.
++Source: Axiom Math, "A New Bound for Small Gaps Between Primes", preliminary draft
++(September 3, 2026): Table 3 (p. 39), §9.4, Lemma 9.2 (p. 41), Proposition 10.2 (pp. 41–42).
++-/
++import BGP212.CapCell
++import Solution.Aggregate
++
++/-! # V2e-B: polygon cells of the cap branch (proofs)
++
++PROVED INTEGRAL IDENTITIES; one COMPUTATIONAL CERTIFICATE (`capPieceT3_value`).
++
++1. `boxTri_integral`: Fubini on a cell `{0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ D}`.
++2. `box_monomial`: `∫_{cell} u₁^α u₂^β = boxVal A B D α β`, splitting `[0, A]` at
++   `E = max 0 (min A (D − B))` and `F = max 0 (min A D)` (fibre length `B`, then `D − u₁`, then `0`)
++   and V2d's `inner_integral`.
++3. Rational values and boundary cases: `boxVal_cast`, `boxVal_empty`, `boxVal_nonpos`,
++   `boxVal_rect`; polynomial integrands `box_capPow`, `box_poly`.
++4. The branches of the endpoint on a piece (`endpointAgg_cap`, `endpointAgg_gBranch`,
++   `endpointAgg_LBranch_cap`, `endpointAgg_LBranch_g`), the cap cell (`mem_capCell`,
++   `endpointAgg_on_capCell`), the inactive τ constraint (`cap_total_le`, `capCell_rect`) and empty
++   cells (`capCell_empty`); the inner integral on the cap cell (`cap_inner`).
++5. `cap_branch_piece`: the cap branch of a piece through V2e-A's `two_group_fin`; `cap_branch_r0`
++   for the stratum with no rough coordinates (V2e-A's `one_group`).
++6. Table 3: `tau_ge_table3`, `capCell_rect_table3`, `capCell_empty_table3`, and the certificate
++   `capPieceT3_value` (`decide +kernel` on the rational `capPowVal`). -/
++
++namespace BGP212.V2e
++
++open BGP212.Gram BGP212.V2d MeasureTheory
++
++/-! ## The cell `boxTri` -/
++
++theorem boxTri_isClosed (A B D : ℝ) : IsClosed (boxTri A B D) := by
++  have : boxTri A B D = {q : ℝ × ℝ | 0 ≤ q.1} ∩ ({q | q.1 ≤ A} ∩ ({q | 0 ≤ q.2} ∩
++      ({q | q.2 ≤ B} ∩ {q | q.1 + q.2 ≤ D}))) := by
++    ext q; simp [boxTri]
++  rw [this]
++  exact (isClosed_le continuous_const continuous_fst).inter
++    ((isClosed_le continuous_fst continuous_const).inter
++      ((isClosed_le continuous_const continuous_snd).inter
++        ((isClosed_le continuous_snd continuous_const).inter
++          (isClosed_le (by fun_prop) continuous_const))))
++
++theorem boxTri_isCompact (A B D : ℝ) : IsCompact (boxTri A B D) := by
++  refine (isCompact_Icc (a := ((0 : ℝ), (0 : ℝ))) (b := (|A|, |B|))).of_isClosed_subset
++    (boxTri_isClosed A B D) ?_
++  rintro ⟨u, s⟩ ⟨h1, h2, h3, h4, -⟩
++  exact ⟨⟨h1, h3⟩, ⟨le_trans h2 (le_abs_self A), le_trans h4 (le_abs_self B)⟩⟩
++
++theorem boxTri_subset_tri (A B D : ℝ) : boxTri A B D ⊆ tri D :=
++  fun _ h => ⟨h.1, h.2.2.1, h.2.2.2.2⟩
++
++theorem boxTri_empty (A B D : ℝ) (h : ¬(0 ≤ A ∧ 0 ≤ B)) : boxTri A B D = ∅ := by
++  ext q
++  simp only [boxTri, Set.mem_ofPred_eq, Set.mem_empty_iff_false, iff_false, not_and]
++  intro h1 h2 h3 h4 _
++  exact h ⟨le_trans h1 h2, le_trans h3 h4⟩
++
++/-- **Fubini on a cell**: `∫_{boxTri A B D} f = ∫_{[0,A]} ∫_{[0, min B (D − u)]} f(u, s) ds du`. -/
++theorem boxTri_integral (A B D : ℝ) (f : ℝ × ℝ → ℝ) (hf : Continuous f) :
++    ∫ q in boxTri A B D, f q =
++      ∫ u in Set.Icc 0 A, ∫ s in Set.Icc 0 (min B (D - u)), f (u, s) := by
++  have hm := (boxTri_isClosed A B D).measurableSet
++  have hint : Integrable ((boxTri A B D).indicator f) (volume.prod volume) := by
++    rw [integrable_indicator_iff hm]
++    exact hf.continuousOn.integrableOn_compact (boxTri_isCompact A B D)
++  rw [← integral_indicator hm, show (volume : Measure (ℝ × ℝ)) = volume.prod volume from rfl,
++    integral_prod _ hint, ← integral_indicator measurableSet_Icc]
++  congr 1
++  funext u
++  by_cases hu : u ∈ Set.Icc 0 A
++  · rw [Set.indicator_of_mem hu, ← integral_indicator measurableSet_Icc]
++    congr 1
++    funext s
++    have hmem : (u, s) ∈ boxTri A B D ↔ s ∈ Set.Icc 0 (min B (D - u)) := by
++      simp only [boxTri, Set.mem_ofPred_eq, Set.mem_Icc, le_min_iff]
++      constructor
++      · rintro ⟨-, -, h3, h4, h5⟩; exact ⟨h3, h4, by linarith⟩
++      · rintro ⟨h3, h4, h5⟩; exact ⟨hu.1, hu.2, h3, h4, by linarith⟩
++    by_cases hs : s ∈ Set.Icc 0 (min B (D - u))
++    · rw [Set.indicator_of_mem (hmem.mpr hs), Set.indicator_of_mem hs]
++    · rw [Set.indicator_of_notMem (fun h' => hs (hmem.mp h')), Set.indicator_of_notMem hs]
++  · rw [Set.indicator_of_notMem hu]
++    have : (fun s => (boxTri A B D).indicator f (u, s)) = fun _ => 0 := by
++      funext s
++      refine Set.indicator_of_notMem ?_ _
++      rintro ⟨h1, h2, -⟩
++      exact hu ⟨h1, h2⟩
++    rw [this, integral_zero]
++
++/-- The fibre length `max 0 (min B (D − u))` and the inner monomial integral. -/
++theorem inner_box (B D u : ℝ) (β : ℕ) :
++    ∫ s in Set.Icc 0 (min B (D - u)), s ^ β = (max 0 (min B (D - u))) ^ (β + 1) / (β + 1) := by
++  by_cases h : 0 ≤ min B (D - u)
++  · rw [integral_Icc_pow _ h, max_eq_right h]
++  · push Not at h
++    rw [Set.Icc_eq_empty (by linarith), Measure.restrict_empty, integral_zero_measure,
++      max_eq_left h.le]
++    simp
++
++theorem innerVal_eq (X D : ℝ) (p t : ℕ) :
++    ∫ u in (0 : ℝ)..X, (D - u) ^ p * u ^ t = innerVal X D p t := by
++  rw [inner_integral X D p t, innerVal]
++
++/-- **Monomials on a cell**: `∫_{boxTri A B D} u₁^α u₂^β = boxVal A B D α β`. -/
++theorem box_monomial (A B D : ℝ) (α β : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β = boxVal A B D α β := by
++  by_cases hAB : 0 ≤ A ∧ 0 ≤ B
++  swap
++  · rw [boxTri_empty A B D hAB, Measure.restrict_empty, integral_zero_measure, boxVal, if_neg hAB]
++  obtain ⟨hA, hB⟩ := hAB
++  rw [boxVal, if_pos ⟨hA, hB⟩, boxTri_integral A B D _ (by fun_prop)]
++  set ℓ : ℝ → ℝ := fun u => max 0 (min B (D - u))
++  have hin : ∀ u, ∫ s in Set.Icc 0 (min B (D - u)), u ^ α * s ^ β =
++      ℓ u ^ (β + 1) * u ^ α / (β + 1) := by
++    intro u
++    rw [integral_const_mul, inner_box]; ring
++  simp_rw [hin]
++  rw [integral_Icc_eq_integral_Ioc, ← intervalIntegral.integral_of_le hA]
++  set E := max 0 (min A (D - B))
++  set F := max 0 (min A D)
++  have hE0 : 0 ≤ E := le_max_left _ _
++  have hEF : E ≤ F := max_le_max le_rfl (min_le_min le_rfl (by linarith))
++  have hFA : F ≤ A := max_le hA (min_le_left _ _)
++  have hcont : Continuous fun u => ℓ u ^ (β + 1) * u ^ α / (β + 1) := by
++    simp only [ℓ]; fun_prop
++  have hi : ∀ a b : ℝ, IntervalIntegrable (fun u => ℓ u ^ (β + 1) * u ^ α / (β + 1)) volume a b :=
++    fun a b => hcont.intervalIntegrable a b
++  rw [← intervalIntegral.integral_add_adjacent_intervals (hi 0 E) (hi E A),
++    ← intervalIntegral.integral_add_adjacent_intervals (hi E F) (hi F A)]
++  -- on (0, E]: ℓ = B
++  have h1 : ∫ u in (0 : ℝ)..E, ℓ u ^ (β + 1) * u ^ α / (β + 1) =
++      ∫ u in (0 : ℝ)..E, B ^ (β + 1) * u ^ α / (β + 1) := by
++    refine intervalIntegral.integral_congr_ae (Filter.Eventually.of_forall fun u hu => ?_)
++    rw [Set.uIoc_of_le hE0] at hu
++    have hE : E = min A (D - B) := max_eq_right (le_trans (le_of_lt hu.1) hu.2 |> fun h => by
++      by_contra hc; push Not at hc
++      have : E = 0 := max_eq_left hc.le
++      linarith [hu.1, hu.2])
++    have hu2 : u ≤ D - B := le_trans hu.2 (hE ▸ min_le_right _ _)
++    simp only [ℓ]
++    rw [min_eq_left (by linarith), max_eq_right hB]
++  -- on (E, F]: ℓ = D − u
++  have h2 : ∫ u in E..F, ℓ u ^ (β + 1) * u ^ α / (β + 1) =
++      ∫ u in E..F, (D - u) ^ (β + 1) * u ^ α / (β + 1) := by
++    refine intervalIntegral.integral_congr_ae (Filter.Eventually.of_forall fun u hu => ?_)
++    rw [Set.uIoc_of_le hEF] at hu
++    have hupos : 0 < u := lt_of_le_of_lt hE0 hu.1
++    have huA : u ≤ A := le_trans hu.2 hFA
++    have hF : F = min A D := max_eq_right (by
++      by_contra hc; push Not at hc
++      have : F = 0 := max_eq_left hc.le
++      linarith [hu.2])
++    have huD : u ≤ D := le_trans hu.2 (hF ▸ min_le_right _ _)
++    have huDB : D - B < u := by
++      by_contra hc; push Not at hc
++      have : u ≤ min A (D - B) := le_min huA hc
++      linarith [hu.1, le_max_right 0 (min A (D - B))]
++    simp only [ℓ]
++    rw [min_eq_right (by linarith), max_eq_right (by linarith)]
++  -- on (F, A]: ℓ = 0
++  have h3 : ∫ u in F..A, ℓ u ^ (β + 1) * u ^ α / (β + 1) = 0 := by
++    rw [intervalIntegral.integral_congr_ae (g := fun _ => (0 : ℝ))
++      (Filter.Eventually.of_forall fun u hu => ?_), intervalIntegral.integral_zero]
++    rw [Set.uIoc_of_le hFA] at hu
++    have hDu : D < u := by
++      by_contra hc; push Not at hc
++      have : u ≤ min A D := le_min hu.2 hc
++      linarith [hu.1, le_max_right 0 (min A D)]
++    simp only [ℓ]
++    rw [min_eq_right (by linarith), max_eq_left (by linarith)]
++    simp
++  rw [h1, h2, h3, add_zero]
++  have h1' : ∫ u in (0 : ℝ)..E, B ^ (β + 1) * u ^ α / (β + 1) =
++      B ^ (β + 1) * E ^ (α + 1) / (α + 1) / (β + 1) := by
++    simp only [mul_div_assoc]
++    rw [intervalIntegral.integral_const_mul, intervalIntegral.integral_div, integral_pow]
++    simp
++  have h2' : ∫ u in E..F, (D - u) ^ (β + 1) * u ^ α / (β + 1) =
++      (innerVal F D (β + 1) α - innerVal E D (β + 1) α) / (β + 1) := by
++    rw [intervalIntegral.integral_div, ← innerVal_eq, ← innerVal_eq,
++      intervalIntegral.integral_interval_sub_left]
++    · exact (by fun_prop : Continuous fun u : ℝ => (D - u) ^ (β + 1) * u ^ α).intervalIntegrable _ _
++    · exact (by fun_prop : Continuous fun u : ℝ => (D - u) ^ (β + 1) * u ^ α).intervalIntegrable _ _
++  rw [h1', h2']
++  ring
++
++/-! ## Rational values and boundary cases -/
++
++theorem innerVal_cast (X D : ℚ) (p t : ℕ) :
++    ((innerVal X D p t : ℚ) : ℝ) = innerVal (X : ℝ) (D : ℝ) p t := by
++  simp [innerVal]
++
++/-- `boxVal` commutes with the cast `ℚ → ℝ`: over `ℚ` it is the computable certificate value. -/
++theorem boxVal_cast (A B D : ℚ) (α β : ℕ) :
++    ((boxVal A B D α β : ℚ) : ℝ) = boxVal (A : ℝ) (B : ℝ) (D : ℝ) α β := by
++  unfold boxVal
++  by_cases h : 0 ≤ A ∧ 0 ≤ B
++  · have h' : 0 ≤ (A : ℝ) ∧ 0 ≤ (B : ℝ) := ⟨by exact_mod_cast h.1, by exact_mod_cast h.2⟩
++    rw [if_pos h, if_pos h']
++    push_cast [innerVal_cast, Rat.cast_max, Rat.cast_min]
++    rfl
++  · have h' : ¬(0 ≤ (A : ℝ) ∧ 0 ≤ (B : ℝ)) := fun h' => h ⟨by exact_mod_cast h'.1, by exact_mod_cast h'.2⟩
++    rw [if_neg h, if_neg h']
++    simp
++
++theorem capPowVal_cast (A B D a : ℚ) (α β m : ℕ) :
++    ((capPowVal A B D a α β m : ℚ) : ℝ) = capPowVal (A : ℝ) (B : ℝ) (D : ℝ) (a : ℝ) α β m := by
++  simp [capPowVal, boxVal_cast]
++
++/-- **Empty cell** (`A < 0` or `B < 0`). -/
++theorem boxVal_empty (A B D : ℝ) (α β : ℕ) (h : A < 0 ∨ B < 0) : boxVal A B D α β = 0 := by
++  rw [boxVal, if_neg]
++  rintro ⟨hA, hB⟩
++  rcases h with h | h <;> linarith
++
++/-- **Cell beyond the diagonal** (`D ≤ 0`): only the null set `u₁ = u₂ = 0` remains. -/
++theorem boxVal_nonpos (A B D : ℝ) (α β : ℕ) (hD : D ≤ 0) : boxVal A B D α β = 0 := by
++  unfold boxVal
++  split_ifs with h
++  · have hE : max 0 (min A (D - B)) = 0 :=
++      max_eq_left (le_trans (min_le_right _ _) (by linarith [h.2]))
++    have hF : max 0 (min A D) = 0 := max_eq_left (le_trans (min_le_right _ _) hD)
++    rw [hE, hF]
++    simp
++  · rfl
++
++/-- **Rectangular cell** (`A + B ≤ D`, the anti-diagonal inactive): the product of two
++one-variable moments. -/
++theorem boxVal_rect (A B D : ℝ) (α β : ℕ) (hA : 0 ≤ A) (hB : 0 ≤ B) (hD : A + B ≤ D) :
++    boxVal A B D α β = A ^ (α + 1) / (α + 1) * (B ^ (β + 1) / (β + 1)) := by
++  rw [boxVal, if_pos ⟨hA, hB⟩, min_eq_left (by linarith : A ≤ D - B), min_eq_left (by linarith),
++    max_eq_right hA]
++  ring
++
++/-! ## The cap power and polynomial integrands -/
++
++/-- `∫_{boxTri A B D} u₁^α u₂^β (a − u₁)^m = capPowVal A B D a α β m`. -/
++theorem box_capPow (A B D a : ℝ) (α β m : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β * (a - q.1) ^ m = capPowVal A B D a α β m := by
++  have hexp : ∀ q : ℝ × ℝ, q.1 ^ α * q.2 ^ β * (a - q.1) ^ m =
++      ∑ i ∈ Finset.range (m + 1), (m.choose i : ℝ) * a ^ (m - i) * (-1) ^ i *
++        (q.1 ^ (α + i) * q.2 ^ β) := by
++    intro q
++    rw [show a - q.1 = -q.1 + a by ring, add_pow, Finset.mul_sum]
++    refine Finset.sum_congr rfl fun i _ => ?_
++    rw [neg_pow]; ring
++  simp_rw [hexp]
++  rw [integral_finsetSum]
++  · refine Finset.sum_congr rfl fun i _ => ?_
++    rw [integral_const_mul, box_monomial]
++  · intro i _
++    exact (by fun_prop : Continuous fun q : ℝ × ℝ => (m.choose i : ℝ) * a ^ (m - i) * (-1) ^ i *
++      (q.1 ^ (α + i) * q.2 ^ β)).continuousOn.integrableOn_compact (boxTri_isCompact A B D)
++
++/-- **Rational polynomials on a cell**: for `P ∈ ℚ[u₁, u₂]`,
++`∫_{boxTri A B D} P(u₁, u₂) = Σ_d coeff_d(P) · boxVal A B D d₀ d₁`. -/
++theorem box_poly (A B D : ℝ) (P : MvPolynomial (Fin 2) ℚ) :
++    ∫ q in boxTri A B D, MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] P =
++      ∑ d ∈ P.support, ((P.coeff d : ℚ) : ℝ) * boxVal A B D (d 0) (d 1) := by
++  simp only [MvPolynomial.eval₂_eq', Fin.prod_univ_two, Matrix.cons_val_zero, Matrix.cons_val_one]
++  rw [integral_finsetSum]
++  · refine Finset.sum_congr rfl fun d _ => ?_
++    rw [integral_const_mul, box_monomial]
++    rfl
++  · intro d _
++    exact (by fun_prop : Continuous fun q : ℝ × ℝ => (algebraMap ℚ ℝ) (P.coeff d) *
++      (q.1 ^ d 0 * q.2 ^ d 1)).continuousOn.integrableOn_compact (boxTri_isCompact A B D)
++
++/-! ## The branches of the endpoint on a piece -/
++
++section Branches
++
++variable (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ)
++
++/-- **Cap branch**: `u₁ ≤ C(r+1) − (r+1) g` and `u₂ ≤ L − k g − C(r+1)` give
++`U = C(r+1) − r g − u₁`. -/
++theorem endpointAgg_cap (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g) (h₂ : u₂ ≤ L - k * g - C (r + 1)) :
++    endpointAgg g L C r k u₁ u₂ = C (r + 1) - (r * g + u₁) := by
++  rw [endpointAgg, max_eq_right (by linarith), min_eq_right (by linarith)]
++
++/-- **`g` branch**: `u₁ ≥ C(r+1) − (r+1) g` and `u₁ + u₂ ≤ L − (r+k+1) g` give `U = g`. -/
++theorem endpointAgg_gBranch (h₁ : C (r + 1) - (r + 1) * g ≤ u₁)
++    (h₂ : u₁ + u₂ ≤ L - (r + k + 1) * g) : endpointAgg g L C r k u₁ u₂ = g := by
++  rw [endpointAgg, max_eq_left (by linarith), min_eq_right (by linarith)]
++
++/-- **`L − S` branch**, cap side: `u₁ ≤ C(r+1) − (r+1) g` and `u₂ ≥ L − k g − C(r+1)`. -/
++theorem endpointAgg_LBranch_cap (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g)
++    (h₂ : L - k * g - C (r + 1) ≤ u₂) :
++    endpointAgg g L C r k u₁ u₂ = L - ((r + k) * g + u₁ + u₂) := by
++  rw [endpointAgg, max_eq_right (by linarith), min_eq_left (by linarith)]
++
++/-- **`L − S` branch**, `g` side: `u₁ ≥ C(r+1) − (r+1) g` and `u₁ + u₂ ≥ L − (r+k+1) g`. -/
++theorem endpointAgg_LBranch_g (h₁ : C (r + 1) - (r + 1) * g ≤ u₁)
++    (h₂ : L - (r + k + 1) * g ≤ u₁ + u₂) :
++    endpointAgg g L C r k u₁ u₂ = L - ((r + k) * g + u₁ + u₂) := by
++  rw [endpointAgg, max_eq_left (by linarith), min_eq_left (by linarith)]
++
++/-- **The τ constraint is inactive on the cap branch**: there `g ≤ U ≤ L − S`, so
++`S = (r+k) g + u₁ + u₂ ≤ L − g`. -/
++theorem cap_total_le (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g) (h₂ : u₂ ≤ L - k * g - C (r + 1)) :
++    (r + k) * g + u₁ + u₂ ≤ L - g := by linarith
++
++end Branches
++
++theorem mem_capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ) :
++    q ∈ capCell g L C r k c M ↔ q ∈ tri M ∧ q.1 ≤ c ∧ q.1 ≤ C (r + 1) - (r + 1) * g ∧
++      q.2 ≤ L - k * g - C (r + 1) := by
++  simp only [capCell, boxTri, tri, Set.mem_ofPred_eq, le_min_iff]
++  tauto
++
++/-- On the cap cell the endpoint takes the cap value. -/
++theorem endpointAgg_on_capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ)
++    (hq : q ∈ capCell g L C r k c M) :
++    endpointAgg g L C r k q.1 q.2 = C (r + 1) - (r * g + q.1) := by
++  rw [mem_capCell] at hq
++  exact endpointAgg_cap g L C r k q.1 q.2 hq.2.2.1 hq.2.2.2
++
++/-- **Rectangular cap cells**: if `L − g ≤ τ`, the piece total `M = τ − (r+k) g` never cuts the
++cap cell (`A + B ≤ M`). -/
++theorem capCell_rect (g L τ : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c : ℝ) (hτ : L - g ≤ τ) :
++    min c (C (r + 1) - (r + 1) * g) + (L - k * g - C (r + 1)) ≤ τ - (r + k) * g := by
++  have := min_le_right c (C (r + 1) - (r + 1) * g)
++  linarith
++
++/-- **Empty cap cells**: if `L − k g < C(r+1)` the cap branch is empty on the piece. -/
++theorem capCell_empty (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (h : L - k * g < C (r + 1)) :
++    capCell g L C r k c M = ∅ :=
++  boxTri_empty _ _ _ (fun h' => by linarith [h'.2])
++
++/-- **The inner integral on the cap cell**, a polynomial in `(u₁, u₂)`:
++`∫₀^U (L − S − u)^p u^t du` with `U = C(r+1) − r g − u₁`, `L − S = L − (r+k) g − u₁ − u₂`. -/
++theorem cap_inner (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ)
++    (hq : q ∈ capCell g L C r k c M) (p t : ℕ) :
++    ∫ u in (0 : ℝ)..endpointAgg g L C r k q.1 q.2, (L - ((r + k) * g + q.1 + q.2) - u) ^ p * u ^ t =
++      innerVal (C (r + 1) - (r * g + q.1)) (L - ((r + k) * g + q.1 + q.2)) p t := by
++  rw [endpointAgg_on_capCell g L C r k c M q hq, innerVal_eq]
++
++/-! ## Cap-branch integrals on a piece -/
++
++/-- On a piece, restricting to the cap cell makes the piece constraints automatic:
++the integral over `pieceSet N R c M` equals the integral over the simplex `Σ y ≤ M`. -/
++theorem piece_cap_eq {N : ℕ} (R : Finset (Fin N)) (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ)
++    (G : (Fin N → ℝ) → ℝ) (Φ : ℝ × ℝ → ℝ) :
++    ∫ y in pieceSet N R c M, G y * (capCell g L C r k c M).indicator Φ (aggR R y, aggS R y) =
++      ∫ y in simplexF (Fin N) M, G y * (capCell g L C r k c M).indicator Φ (aggR R y, aggS R y) := by
++  refine (setIntegral_eq_of_subset_of_forall_sdiff_eq_zero (simplexF_measurableSet M)
++    (pieceSet_subset_simplexF N R c M) fun y hy => ?_).symm
++  rw [Set.indicator_of_notMem, mul_zero]
++  intro hq
++  rw [mem_capCell] at hq
++  exact hy.2 ⟨hy.1.1, hq.2.1, hy.1.2⟩
++
++/-- **The cap branch on a piece.** For a piece `(R, K)` of V2b's decomposition (`R`, `Rᶜ`
++nonempty, `k = |K|`, piece cap `c`, piece total `M`), a monomial weight `yᵗ` and the `m`-th power
++of the endpoint restricted to the cap branch:
++`∫_{pieceSet} yᵗ · 1_cap · U^m = aggConst R t · aggConst Rᶜ t ·
++capPowVal (min c c₁) c₂ M (C(r+1) − r g) (aggExp R t) (aggExp Rᶜ t) m`. -/
++theorem cap_branch_piece {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty)
++    (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ) (t : Fin N → ℕ) (m : ℕ) :
++    ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        (capCell g L C R.card k c M).indicator
++          (fun q => (endpointAgg g L C R.card k q.1 q.2) ^ m) (aggR R y, aggS R y) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        capPowVal (min c (C (R.card + 1) - (R.card + 1) * g)) (L - k * g - C (R.card + 1)) M
++          (C (R.card + 1) - R.card * g) (aggExp {i // i ∈ R} (fun i => t i))
++          (aggExp {i // i ∉ R} (fun i => t i)) m := by
++  set Z := capCell g L C R.card k c M
++  set a := C (R.card + 1) - R.card * g
++  -- on the cell, `U^m = (a − u₁)^m`
++  have hΦ : Z.indicator (fun q => (endpointAgg g L C R.card k q.1 q.2) ^ m) =
++      Z.indicator (fun q => (a - q.1) ^ m) := by
++    funext q
++    by_cases hq : q ∈ Z
++    · rw [Set.indicator_of_mem hq, Set.indicator_of_mem hq,
++        endpointAgg_on_capCell g L C R.card k c M q hq]
++      congr 1; ring
++    · rw [Set.indicator_of_notMem hq, Set.indicator_of_notMem hq]
++  have hZm : MeasurableSet Z := (boxTri_isClosed _ _ _).measurableSet
++  obtain ⟨Bd, hBd⟩ := (tri_isCompact M).exists_bound_of_continuousOn
++    (by fun_prop : Continuous fun q : ℝ × ℝ => (a - q.1) ^ m).continuousOn
++  rw [piece_cap_eq, hΦ,
++    two_group_fin R hR hRc M t _ ((by fun_prop : Measurable fun q : ℝ × ℝ => (a - q.1) ^ m).indicator hZm)
++      Bd (fun q hq => by
++        rw [← Real.norm_eq_abs, norm_indicator_eq_indicator_norm]
++        by_cases h : q ∈ Z
++        · rw [Set.indicator_of_mem h]; exact hBd q hq
++        · rw [Set.indicator_of_notMem h]; exact le_trans (norm_nonneg _) (hBd q hq))]
++  congr 1
++  rw [← box_capPow]
++  have hsub : Z ⊆ tri M := boxTri_subset_tri _ _ _
++  rw [show (fun q : ℝ × ℝ => q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++      q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * Z.indicator (fun q => (a - q.1) ^ m) q) =
++      Z.indicator (fun q : ℝ × ℝ => q.1 ^ aggExp {i // i ∈ R} (fun i => t i) *
++        q.2 ^ aggExp {i // i ∉ R} (fun i => t i) * (a - q.1) ^ m) from by
++    funext q; by_cases h : q ∈ Z
++    · rw [Set.indicator_of_mem h, Set.indicator_of_mem h]
++    · rw [Set.indicator_of_notMem h, Set.indicator_of_notMem h, mul_zero],
++    setIntegral_indicator hZm, Set.inter_eq_right.mpr hsub]
++  rfl
++
++/-! ## The stratum with no rough coordinates (`R = ∅`) -/
++
++/-- **`r = 0`**: with no rough coordinates `u₁ = 0` and `U = C(1)` on the cap branch; the piece
++integral is a one-aggregate integral over `u₂ ∈ [0, min c₂ M]`. -/
++theorem cap_branch_r0 {N : ℕ} (hN : 0 < N) (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ)
++    (t : Fin N → ℕ) (m : ℕ) (hc : 0 ≤ c) (hc₁ : 0 ≤ C 1 - g) :
++    ∫ y in pieceSet N ∅ c M, (∏ i, y i ^ t i) *
++        (capCell g L C 0 k c M).indicator
++          (fun q => (endpointAgg g L C 0 k q.1 q.2) ^ m) (aggR ∅ y, aggS ∅ y) =
++      aggConst (Fin N) t * (C 1 ^ m *
++        ((max 0 (min (L - k * g - C 1) (M - 0))) ^ (aggExp (Fin N) t + 1) /
++          (aggExp (Fin N) t + 1))) := by
++  have : Nonempty (Fin N) := ⟨⟨0, hN⟩⟩
++  set Z := capCell g L C 0 k c M
++  set B := L - k * g - C 1
++  have hZm : MeasurableSet Z := (boxTri_isClosed _ _ _).measurableSet
++  have hagg : ∀ y : Fin N → ℝ, (aggR ∅ y, aggS ∅ y) = ((0 : ℝ), ∑ i, y i) := by
++    intro y; simp [aggR, aggS]
++  -- the slice `u₁ = 0` of the cell
++  have hslice : ∀ s ∈ Set.Icc (0 : ℝ) M, Z.indicator
++      (fun q => (endpointAgg g L C 0 k q.1 q.2) ^ m) (0, s) =
++      (Set.Iic B).indicator (fun _ => C 1 ^ m) s := by
++    intro s hs
++    have hmem : ((0 : ℝ), s) ∈ Z ↔ s ∈ Set.Iic B := by
++      rw [mem_capCell]
++      simp only [tri, Set.mem_ofPred_eq, Set.mem_Iic, Nat.cast_zero, zero_add, one_mul]
++      constructor
++      · rintro ⟨-, -, -, h⟩; simpa [B] using h
++      · intro h; exact ⟨⟨le_rfl, hs.1, by linarith [hs.2]⟩, hc, by linarith, by simpa [B] using h⟩
++    by_cases h : s ∈ Set.Iic B
++    · rw [Set.indicator_of_mem (hmem.mpr h), Set.indicator_of_mem h,
++        endpointAgg_on_capCell g L C 0 k c M _ (hmem.mpr h)]
++      simp
++    · rw [Set.indicator_of_notMem (fun h' => h (hmem.mp h')), Set.indicator_of_notMem h]
++  rw [piece_cap_eq]
++  simp_rw [hagg]
++  obtain ⟨Bd, hBd⟩ := (isCompact_Icc (a := (0 : ℝ)) (b := M)).exists_bound_of_continuousOn
++    (continuous_const : Continuous fun _ : ℝ => C 1 ^ m).continuousOn
++  rw [one_group M t (fun s => Z.indicator (fun q => (endpointAgg g L C 0 k q.1 q.2) ^ m) (0, s))
++    (((Continuous.measurable (by unfold endpointAgg; fun_prop) :
++      Measurable fun q : ℝ × ℝ => (endpointAgg g L C 0 k q.1 q.2) ^ m).indicator
++      hZm).comp (by fun_prop)) (|C 1 ^ m|) (fun s hs => by
++        rw [hslice s hs]
++        by_cases h : s ∈ Set.Iic B
++        · rw [Set.indicator_of_mem h]
++        · rw [Set.indicator_of_notMem h, abs_zero]; exact abs_nonneg _)]
++  congr 1
++  rw [setIntegral_congr_fun measurableSet_Icc (fun s hs => by
++    rw [hslice s hs])]
++  have hfun : (fun s => s ^ aggExp (Fin N) t * (Set.Iic B).indicator (fun _ => C 1 ^ m) s) =
++      (Set.Iic B).indicator (fun s => C 1 ^ m * s ^ aggExp (Fin N) t) := by
++    funext s; by_cases h : s ∈ Set.Iic B
++    · rw [Set.indicator_of_mem h, Set.indicator_of_mem h]; ring
++    · rw [Set.indicator_of_notMem h, Set.indicator_of_notMem h, mul_zero]
++  rw [hfun, setIntegral_indicator measurableSet_Iic,
++    show Set.Icc (0 : ℝ) M ∩ Set.Iic B = Set.Icc 0 (min B (M - 0)) by
++      ext s; simp only [Set.mem_inter_iff, Set.mem_Icc, Set.mem_Iic, le_min_iff, sub_zero]
++      tauto,
++    integral_const_mul, inner_box]
++
++/-! ## Table 3 -/
++
++/-- At Table 3, `L − g ≤ τ` (`τ − (L − g) = 1/625`). -/
++theorem tau_ge_table3 : BGP212.Params.L - BGP212.Params.g ≤ BGP212.Params.τ := by decide +kernel
++
++/-- **Every Table 3 cap cell is a rectangle**: the piece total `τ − (r+k) g` never cuts it. -/
++theorem capCell_rect_table3 (r k : ℕ) (c : ℝ) :
++    min c (C3 (r + 1) - (r + 1) * g3) + (L3 - k * g3 - C3 (r + 1)) ≤ τ3 - (r + k) * g3 :=
++  capCell_rect g3 L3 τ3 C3 r k c (by
++    have := tau_ge_table3
++    simp only [g3, L3, τ3]; exact_mod_cast this)
++
++/-- **Empty Table 3 cap cells**: with one rough coordinate the cap branch is empty once
++`k ≥ 7` (`L − 7 g = 751/1250 < C(2) = 794/1250`). -/
++theorem capCell_empty_table3 (k : ℕ) (hk : 7 ≤ k) (c M : ℝ) : capCell g3 L3 C3 1 k c M = ∅ := by
++  refine capCell_empty g3 L3 C3 1 k c M ?_
++  have hC : BGP212.Params.C 2 = 794 / 1250 := by decide +kernel
++  have hk' : (7 : ℝ) ≤ k := by exact_mod_cast hk
++  simp only [g3, L3, C3, hC, BGP212.Params.g, BGP212.Params.L]
++  push_cast
++  nlinarith
++
++/-- **The worked certificate**: the cap-branch part of `J_T(1)` on the Table 3 piece
++`({0}, ∅)` of `T̂` (`N = 44`) is the explicit rational
++`V = (L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰`. -/
++theorem capPieceT3_value : capPieceT3 =
++    ((2257149812841095726960561293190503471927130196106096204396001203694562350987314959143203078094677121622739446201 / 21569915559007524956605042855904290630373696306163850230268666519073406107054324820637702941894531250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  have hR : ({0} : Finset (Fin 44)).Nonempty := Finset.singleton_nonempty 0
++  have hRc : ({0} : Finset (Fin 44))ᶜ.Nonempty := ⟨1, by decide⟩
++  have key := cap_branch_piece {0} hR hRc g3 L3 C3 0 (C3 1 - g3) (τ3 - g3) (fun _ => 0) 2
++  have hcard : ({0} : Finset (Fin 44)).card = 1 := rfl
++  rw [hcard] at key
++  simp only [pow_zero, Finset.prod_const_one, one_mul] at key
++  rw [capPieceT3, key]
++  have e1 : ∀ inst : Fintype {i // i ∈ ({0} : Finset (Fin 44))},
++      @aggExp _ inst (fun _ => 0) = 0 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide
++  have e2 : ∀ inst : Fintype {i // i ∉ ({0} : Finset (Fin 44))},
++      @aggExp _ inst (fun _ => 0) = 42 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide
++  have c1 : ∀ inst : Fintype {i // i ∈ ({0} : Finset (Fin 44))},
++      @aggConstQ _ inst (fun _ => 0) = 1 := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide +kernel
++  have c2 : ∀ inst : Fintype {i // i ∉ ({0} : Finset (Fin 44))},
++      @aggConstQ _ inst (fun _ => 0) = 1 / (Nat.factorial 42 : ℚ) := by
++    intro inst; rw [Subsingleton.elim inst (Subtype.fintype _)]; decide +kernel
++  rw [e1, e2, aggConst_eq_cast, aggConst_eq_cast, c1, c2]
++  have hq : capPowVal (min (BGP212.Params.C 1 - BGP212.Params.g)
++      (BGP212.Params.C (1 + 1) - ((1 : ℕ) + 1) * BGP212.Params.g))
++      (BGP212.Params.L - (0 : ℕ) * BGP212.Params.g - BGP212.Params.C (1 + 1))
++      (BGP212.Params.τ - BGP212.Params.g) (BGP212.Params.C (1 + 1) - (1 : ℕ) * BGP212.Params.g)
++      0 42 2 = (4535855578938127061125476602777163187372821390110619208482296371527927786449988572669541167369031308548379262320291035943043 / 30850986990575172633456830505710793546266246912353371231003615338117640476411907002329826354980468750000000000000000000000000000000000000000000 : ℚ) := by
++    decide +kernel
++  have hc := capPowVal_cast (min (BGP212.Params.C 1 - BGP212.Params.g)
++      (BGP212.Params.C (1 + 1) - ((1 : ℕ) + 1) * BGP212.Params.g))
++      (BGP212.Params.L - (0 : ℕ) * BGP212.Params.g - BGP212.Params.C (1 + 1))
++      (BGP212.Params.τ - BGP212.Params.g) (BGP212.Params.C (1 + 1) - (1 : ℕ) * BGP212.Params.g)
++      0 42 2
++  rw [hq] at hc
++  push_cast [Rat.cast_min] at hc
++  simp only [g3, L3, τ3, C3]
++  push_cast
++  rw [← hc]
++  norm_num [Nat.factorial]
++
++end BGP212.V2e
++
++/-! ## Comparator wrappers -/
++
++namespace BGP212.Challenge
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++theorem boxTri_integral (A B D : ℝ) (f : ℝ × ℝ → ℝ) (hf : Continuous f) :
++    ∫ q in boxTri A B D, f q =
++      ∫ u in Set.Icc 0 A, ∫ s in Set.Icc 0 (min B (D - u)), f (u, s) := by
++  apply BGP212.V2e.boxTri_integral <;> assumption
++
++theorem box_monomial (A B D : ℝ) (α β : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β = boxVal A B D α β := by
++  apply BGP212.V2e.box_monomial <;> assumption
++
++theorem boxVal_cast (A B D : ℚ) (α β : ℕ) :
++    ((boxVal A B D α β : ℚ) : ℝ) = boxVal (A : ℝ) (B : ℝ) (D : ℝ) α β := by
++  apply BGP212.V2e.boxVal_cast <;> assumption
++
++theorem boxVal_empty (A B D : ℝ) (α β : ℕ) (h : A < 0 ∨ B < 0) : boxVal A B D α β = 0 := by
++  apply BGP212.V2e.boxVal_empty <;> assumption
++
++theorem boxVal_nonpos (A B D : ℝ) (α β : ℕ) (hD : D ≤ 0) : boxVal A B D α β = 0 := by
++  apply BGP212.V2e.boxVal_nonpos <;> assumption
++
++theorem boxVal_rect (A B D : ℝ) (α β : ℕ) (hA : 0 ≤ A) (hB : 0 ≤ B) (hD : A + B ≤ D) :
++    boxVal A B D α β = A ^ (α + 1) / (α + 1) * (B ^ (β + 1) / (β + 1)) := by
++  apply BGP212.V2e.boxVal_rect <;> assumption
++
++theorem box_capPow (A B D a : ℝ) (α β m : ℕ) :
++    ∫ q in boxTri A B D, q.1 ^ α * q.2 ^ β * (a - q.1) ^ m = capPowVal A B D a α β m := by
++  apply BGP212.V2e.box_capPow <;> assumption
++
++theorem box_poly (A B D : ℝ) (P : MvPolynomial (Fin 2) ℚ) :
++    ∫ q in boxTri A B D, MvPolynomial.eval₂ (algebraMap ℚ ℝ) ![q.1, q.2] P =
++      ∑ d ∈ P.support, ((P.coeff d : ℚ) : ℝ) * boxVal A B D (d 0) (d 1) := by
++  apply BGP212.V2e.box_poly <;> assumption
++
++theorem endpointAgg_cap (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g) (h₂ : u₂ ≤ L - k * g - C (r + 1)) :
++    endpointAgg g L C r k u₁ u₂ = C (r + 1) - (r * g + u₁) := by
++  apply BGP212.V2e.endpointAgg_cap <;> assumption
++
++theorem endpointAgg_gBranch (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : C (r + 1) - (r + 1) * g ≤ u₁)
++    (h₂ : u₁ + u₂ ≤ L - (r + k + 1) * g) : endpointAgg g L C r k u₁ u₂ = g := by
++  apply BGP212.V2e.endpointAgg_gBranch <;> assumption
++
++theorem endpointAgg_LBranch_cap (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g)
++    (h₂ : L - k * g - C (r + 1) ≤ u₂) :
++    endpointAgg g L C r k u₁ u₂ = L - ((r + k) * g + u₁ + u₂) := by
++  apply BGP212.V2e.endpointAgg_LBranch_cap <;> assumption
++
++theorem endpointAgg_LBranch_g (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : C (r + 1) - (r + 1) * g ≤ u₁)
++    (h₂ : L - (r + k + 1) * g ≤ u₁ + u₂) :
++    endpointAgg g L C r k u₁ u₂ = L - ((r + k) * g + u₁ + u₂) := by
++  apply BGP212.V2e.endpointAgg_LBranch_g <;> assumption
++
++theorem cap_total_le (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (u₁ u₂ : ℝ) (h₁ : u₁ ≤ C (r + 1) - (r + 1) * g) (h₂ : u₂ ≤ L - k * g - C (r + 1)) :
++    (r + k) * g + u₁ + u₂ ≤ L - g := by
++  apply BGP212.V2e.cap_total_le <;> assumption
++
++theorem mem_capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ) :
++    q ∈ capCell g L C r k c M ↔ q ∈ tri M ∧ q.1 ≤ c ∧ q.1 ≤ C (r + 1) - (r + 1) * g ∧
++      q.2 ≤ L - k * g - C (r + 1) := by
++  apply BGP212.V2e.mem_capCell <;> assumption
++
++theorem endpointAgg_on_capCell (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ)
++    (hq : q ∈ capCell g L C r k c M) :
++    endpointAgg g L C r k q.1 q.2 = C (r + 1) - (r * g + q.1) := by
++  apply BGP212.V2e.endpointAgg_on_capCell <;> assumption
++
++theorem capCell_rect (g L τ : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c : ℝ) (hτ : L - g ≤ τ) :
++    min c (C (r + 1) - (r + 1) * g) + (L - k * g - C (r + 1)) ≤ τ - (r + k) * g := by
++  apply BGP212.V2e.capCell_rect <;> assumption
++
++theorem capCell_empty (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (h : L - k * g < C (r + 1)) :
++    capCell g L C r k c M = ∅ := by
++  apply BGP212.V2e.capCell_empty <;> assumption
++
++theorem cap_inner (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ) (q : ℝ × ℝ)
++    (hq : q ∈ capCell g L C r k c M) (p t : ℕ) :
++    ∫ u in (0 : ℝ)..endpointAgg g L C r k q.1 q.2, (L - ((r + k) * g + q.1 + q.2) - u) ^ p * u ^ t =
++      innerVal (C (r + 1) - (r * g + q.1)) (L - ((r + k) * g + q.1 + q.2)) p t := by
++  apply BGP212.V2e.cap_inner <;> assumption
++
++theorem piece_cap_eq {N : ℕ} (R : Finset (Fin N)) (g L : ℝ) (C : ℕ → ℝ) (r k : ℕ) (c M : ℝ)
++    (G : (Fin N → ℝ) → ℝ) (Φ : ℝ × ℝ → ℝ) :
++    ∫ y in pieceSet N R c M, G y * (capCell g L C r k c M).indicator Φ (aggR R y, aggS R y) =
++      ∫ y in simplexF (Fin N) M, G y * (capCell g L C r k c M).indicator Φ (aggR R y, aggS R y) := by
++  apply BGP212.V2e.piece_cap_eq <;> assumption
++
++theorem cap_branch_piece {N : ℕ} (R : Finset (Fin N)) (hR : R.Nonempty) (hRc : Rᶜ.Nonempty)
++    (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ) (t : Fin N → ℕ) (m : ℕ) :
++    ∫ y in pieceSet N R c M, (∏ i, y i ^ t i) *
++        (capCell g L C R.card k c M).indicator
++          (fun q => (endpointAgg g L C R.card k q.1 q.2) ^ m) (aggR R y, aggS R y) =
++      aggConst {i // i ∈ R} (fun i => t i) * aggConst {i // i ∉ R} (fun i => t i) *
++        capPowVal (min c (C (R.card + 1) - (R.card + 1) * g)) (L - k * g - C (R.card + 1)) M
++          (C (R.card + 1) - R.card * g) (aggExp {i // i ∈ R} (fun i => t i))
++          (aggExp {i // i ∉ R} (fun i => t i)) m := by
++  apply BGP212.V2e.cap_branch_piece <;> assumption
++
++theorem cap_branch_r0 {N : ℕ} (hN : 0 < N) (g L : ℝ) (C : ℕ → ℝ) (k : ℕ) (c M : ℝ)
++    (t : Fin N → ℕ) (m : ℕ) (hc : 0 ≤ c) (hc₁ : 0 ≤ C 1 - g) :
++    ∫ y in pieceSet N ∅ c M, (∏ i, y i ^ t i) *
++        (capCell g L C 0 k c M).indicator
++          (fun q => (endpointAgg g L C 0 k q.1 q.2) ^ m) (aggR ∅ y, aggS ∅ y) =
++      aggConst (Fin N) t * (C 1 ^ m *
++        ((max 0 (min (L - k * g - C 1) (M - 0))) ^ (aggExp (Fin N) t + 1) /
++          (aggExp (Fin N) t + 1))) := by
++  apply BGP212.V2e.cap_branch_r0 <;> assumption
++
++theorem tau_ge_table3 : BGP212.Params.L - BGP212.Params.g ≤ BGP212.Params.τ := by
++  apply BGP212.V2e.tau_ge_table3 <;> assumption
++
++theorem capCell_rect_table3 (r k : ℕ) (c : ℝ) :
++    min c (C3 (r + 1) - (r + 1) * g3) + (L3 - k * g3 - C3 (r + 1)) ≤ τ3 - (r + k) * g3 := by
++  apply BGP212.V2e.capCell_rect_table3 <;> assumption
++
++theorem capCell_empty_table3 (k : ℕ) (hk : 7 ≤ k) (c M : ℝ) : capCell g3 L3 C3 1 k c M = ∅ := by
++  apply BGP212.V2e.capCell_empty_table3 <;> assumption
++
++theorem capPieceT3_value : capPieceT3 =
++    ((2257149812841095726960561293190503471927130196106096204396001203694562350987314959143203078094677121622739446201 / 21569915559007524956605042855904290630373696306163850230268666519073406107054324820637702941894531250000000000000000000000000000000000000000000000000000000000000000000000000000000000 : ℚ) : ℝ) := by
++  apply BGP212.V2e.capPieceT3_value <;> assumption
++
++end BGP212.Challenge
+diff --git a/specs/checks/capcell_v2eb_controls.py b/specs/checks/capcell_v2eb_controls.py
+new file mode 100644
+index 0000000..69d0073
+--- /dev/null
++++ b/specs/checks/capcell_v2eb_controls.py
+@@ -0,0 +1,213 @@
++#!/usr/bin/env python3
++"""Positive and negative controls for V2e-B (polygon cells of the cap branch).
++
++Writes Lean files into the given directory (default /tmp/v2eb_ctl). Each `ok_*` file must be
++accepted and each `nc_*` file rejected. Independent checks run here first:
++
++  * every `boxVal` used below is compared with exact polygon clipping (triangle fans, no
++    case analysis), including cells cut by the anti-diagonal;
++  * the worked certificate is compared with the rectangle closed form
++    (L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!);
++  * a three-dimensional analogue of the certificate (N = 3, R = {0}, same Table 3 data) is
++    integrated numerically on a grid directly in y (no aggregate change of variables) and
++    compared with the aggregate formula.
++
++  ok_box_diag / nc_box_rect     boxVal for a cell cut by the diagonal (A = 1/2, B = 2/3, D = 1,
++                                u₁² u₂) equals the clipping value; the rectangle product is rejected.
++  ok_box_integral               the same as a Lebesgue integral (box_monomial, boxVal_cast).
++  ok_cert / nc_cert_capindex /  the certificate capPieceT3; the values with the cap index C(r)
++  nc_cert_nojac                 in place of C(r+1), and with the aggregate exponent without −1.
++  ok_branch / nc_branch         the endpoint at a cap-cell point is the cap value; at a point
++                                with u₂ > c₂ (the L − S branch) the cap value is rejected.
++  ok_empty / nc_empty           the Table 3 cap cell with r = 1, k = 7 is empty; with k = 6 the
++                                emptiness inequality L − 6g < C(2) is rejected.
++
++Usage: python3 -I specs/checks/capcell_v2eb_controls.py [dir]
++Check: for f in DIR/*.lean; do lake env lean "$f" >/dev/null 2>&1 && echo "$f accepted" || echo "$f rejected"; done
++"""
++import os
++import sys
++from fractions import Fraction as Fr
++from math import comb, factorial as fact
++
++OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/v2eb_ctl"
++os.makedirs(OUT, exist_ok=True)
++
++G, L, TAU = Fr(41, 625), Fr(53, 50), Fr(249, 250)
++BNUM = [777, 794, 875, 917, 953, 983, 1016, 1042, 1063, 1081]
++
++
++def C(m):
++    return Fr(0) if m == 0 else 4 * Fr(BNUM[min(m, 10) - 1], 5000)
++
++
++def inner(X, D, p, t):
++    return sum(comb(p, j) * D ** (p - j) * (-1) ** j * X ** (t + j + 1) / (t + j + 1)
++               for j in range(p + 1))
++
++
++def boxval(A, B, D, a, b):
++    if not (A >= 0 and B >= 0):
++        return Fr(0)
++    E = max(Fr(0), min(A, D - B))
++    F = max(Fr(0), min(A, D))
++    return (B ** (b + 1) * E ** (a + 1) / (a + 1) + (inner(F, D, b + 1, a) - inner(E, D, b + 1, a))) / (b + 1)
++
++
++def cappow(A, B, D, a, al, be, m):
++    return sum(comb(m, i) * a ** (m - i) * (-1) ** i * boxval(A, B, D, al + i, be) for i in range(m + 1))
++
++
++# ---- independent: polygon clipping --------------------------------------------------------------
++def clip(poly, a, b, c):
++    out = []
++    n = len(poly)
++    for i in range(n):
++        P, Q = poly[i], poly[(i + 1) % n]
++        fP = a * P[0] + b * P[1] - c
++        fQ = a * Q[0] + b * Q[1] - c
++        if fP <= 0:
++            out.append(P)
++        if (fP < 0 < fQ) or (fQ < 0 < fP):
++            t = fP / (fP - fQ)
++            out.append((P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])))
++    return out
++
++
++def pmul(p, q):
++    o = {}
++    for (a, b), c in p.items():
++        for (d, e), f in q.items():
++            o[(a + d, b + e)] = o.get((a + d, b + e), 0) + c * f
++    return o
++
++
++def ppow(p, n):
++    o = {(0, 0): Fr(1)}
++    for _ in range(n):
++        o = pmul(o, p)
++    return o
++
++
++def tri_int(f, A, B, Cc):
++    xs = {(0, 0): A[0], (1, 0): B[0] - A[0], (0, 1): Cc[0] - A[0]}
++    ys = {(0, 0): A[1], (1, 0): B[1] - A[1], (0, 1): Cc[1] - A[1]}
++    jac = abs((B[0] - A[0]) * (Cc[1] - A[1]) - (Cc[0] - A[0]) * (B[1] - A[1]))
++    tot = Fr(0)
++    for (i, j), c in f.items():
++        for (u, v), w in pmul(ppow(xs, i), ppow(ys, j)).items():
++            tot += c * w * Fr(fact(u) * fact(v), fact(u + v + 2))
++    return jac * tot
++
++
++def clipval(A, B, D, a, b):
++    big = Fr(10)
++    P = [(Fr(0), Fr(0)), (big, Fr(0)), (big, big), (Fr(0), big)]
++    for (x, y, c) in [(1, 0, A), (0, 1, B), (1, 1, D), (-1, 0, 0), (0, -1, 0)]:
++        P = clip(P, x, y, c)
++    if len(P) < 3:
++        return Fr(0)
++    return sum(tri_int({(a, b): Fr(1)}, P[0], P[i], P[i + 1]) for i in range(1, len(P) - 1))
++
++
++A0, B0, D0 = Fr(1, 2), Fr(2, 3), Fr(1)
++v_diag = boxval(A0, B0, D0, 2, 1)
++assert v_diag == clipval(A0, B0, D0, 2, 1)
++v_rect_wrong = A0 ** 3 / 3 * B0 ** 2 / 2
++assert v_rect_wrong != v_diag
++
++# ---- the worked certificate ------------------------------------------------------------------------
++A = min(C(1) - G, C(2) - 2 * G)
++B = L - C(2)
++M = TAU - G
++a = C(2) - G
++V = cappow(A, B, M, a, 0, 42, 2) / fact(42)
++assert V == B ** 43 * (a ** 3 - G ** 3) / (3 * fact(43))
++assert boxval(A, B, M, 2, 42) == clipval(A, B, M, 2, 42)
++# cap index C(r) instead of C(r+1)
++A1, B1, a1 = min(C(1) - G, C(1) - 2 * G), L - C(1), C(1) - G
++V_capindex = cappow(A1, B1, M, a1, 0, 42, 2) / fact(42)
++# aggregate exponent without −1 (u₂^43, constant 1/43!)
++V_nojac = cappow(A, B, M, a, 0, 43, 2) / fact(43)
++assert len({V, V_capindex, V_nojac}) == 3
++
++# ---- three-dimensional analogue, integrated directly in y (numerical) -----------------------------
++# N = 3, R = {0}, K = ∅: pieceSet {y ≥ 0, y₀ ≤ C(1) − g, Σ y ≤ τ − g}, cap branch, integrand U².
++def direct3(n=240):
++    c1, c2 = C(2) - 2 * G, L - C(2)
++    cpc, Mt = float(C(1) - G), float(M)
++    tot = 0.0
++    h = float(Mt) / n
++    for i in range(n):
++        y0 = (i + 0.5) * h
++        if y0 > cpc or y0 > float(c1):
++            continue
++        Uc = float(C(2) - G) - y0
++        for j in range(n):
++            y1 = (j + 0.5) * h
++            for k in range(n):
++                y2 = (k + 0.5) * h
++                if y0 + y1 + y2 > Mt or y1 + y2 > float(c2):
++                    continue
++                tot += Uc * Uc
++    return tot * h ** 3
++
++
++V3 = cappow(A, B, M, a, 0, 1, 2) / fact(1)        # aggConst {0} = 1, aggConst Rᶜ = 1/1!
++d3 = direct3()
++assert abs(d3 - float(V3)) / float(V3) < 2e-2, (d3, float(V3))
++
++
++def q(v):
++    v = Fr(v)
++    return f"(({v.numerator} / {v.denominator} : ℚ) : ℝ)"
++
++
++HEAD = """import Solution.CapCell
++
++open BGP212.Gram BGP212.V2d BGP212.V2e MeasureTheory
++
++"""
++BOXQ = """theorem ctl : boxVal (1 / 2 : ℚ) (2 / 3) 1 2 1 = ({V} : ℚ) := by decide +kernel
++"""
++BOXI = """theorem ctl : ∫ q in boxTri (1 / 2) (2 / 3) 1, q.1 ^ 2 * q.2 ^ 1 = {V} := by
++  rw [box_monomial]
++  have h := boxVal_cast (1 / 2 : ℚ) (2 / 3) 1 2 1
++  have hv : boxVal (1 / 2 : ℚ) (2 / 3) 1 2 1 = {VQ} := by decide +kernel
++  rw [hv] at h
++  push_cast at h
++  rw [← h]
++  norm_num
++"""
++CERT = """theorem ctl : capPieceT3 = {V} := by
++  rw [capPieceT3_value]
++  all_goals norm_num
++"""
++BR = """theorem ctl : endpointAgg g3 L3 C3 1 0 (1 / 10) {U2} = C3 2 - (1 * g3 + 1 / 10) := by
++  have hC : BGP212.Params.C 2 = 794 / 1250 := by decide +kernel
++  simp only [endpointAgg, g3, L3, C3, hC, BGP212.Params.g, BGP212.Params.L]
++  push_cast
++  norm_num [min_def, max_def]
++"""
++EMPTY = """theorem ctl : L3 - ({K} : ℕ) * g3 < C3 (1 + 1) := by
++  have hC : BGP212.Params.C 2 = 794 / 1250 := by decide +kernel
++  simp only [g3, L3, C3, hC, BGP212.Params.g, BGP212.Params.L]
++  push_cast
++  norm_num
++"""
++files = {
++    "ok_box_diag": BOXQ.replace("{V}", f"{v_diag.numerator} / {v_diag.denominator}"),
++    "nc_box_rect": BOXQ.replace("{V}", f"{v_rect_wrong.numerator} / {v_rect_wrong.denominator}"),
++    "ok_box_integral": BOXI.replace("{V}", q(v_diag)).replace("{VQ}", f"{v_diag.numerator} / {v_diag.denominator}"),
++    "ok_cert": CERT.replace("{V}", q(V)),
++    "nc_cert_capindex": CERT.replace("{V}", q(V_capindex)),
++    "nc_cert_nojac": CERT.replace("{V}", q(V_nojac)),
++    "ok_branch": BR.replace("{U2}", "(1 / 10)"),
++    "nc_branch": BR.replace("{U2}", "(1 / 2)"),
++    "ok_empty": EMPTY.replace("{K}", "7"),
++    "nc_empty": EMPTY.replace("{K}", "6"),
++}
++for name, body in files.items():
++    open(os.path.join(OUT, name + ".lean"), "w").write(HEAD + body)
++print("wrote", len(files), "control files to", OUT)
++print("diag cell value", v_diag, " certificate ≈", float(V), " 3-D analogue: grid", d3, "formula", float(V3))
+diff --git a/specs/results/V2e_B_capcell.yaml b/specs/results/V2e_B_capcell.yaml
+new file mode 100644
+index 0000000..597bb60
+--- /dev/null
++++ b/specs/results/V2e_B_capcell.yaml
+@@ -0,0 +1,108 @@
++# Result record: seventeenth Challenge/Solution pair (V2e-B, polygon cells of the cap branch)
++
++identity:
++  id: V2e-B
++  statement: "On a piece (R, K) of V2b's decomposition (r = |R|, k = |K|, aggregates u₁ = Σ_R y, u₂ = Σ_{Rᶜ} y), Lemma 9.2's endpoint takes the cap value U = C(r+1) − r g − u₁ exactly on u₁ ≤ C(r+1) − (r+1) g, u₂ ≤ L − k g − C(r+1); with the piece constraints this is the cell {0 ≤ u₁ ≤ A, 0 ≤ u₂ ≤ B, u₁ + u₂ ≤ M}, and ∫_{piece} yᵗ 1_cap U^m = aggConst R t · aggConst Rᶜ t · capPowVal A B M (C(r+1) − r g) (aggExp R t) (aggExp Rᶜ t) m, an explicit rational for rational data"
++  source: "Source/bgp212.pdf: Table 3 (p. 39), §9.4, Lemma 9.2 and the display of J_T (p. 41), Proposition 10.2 (pp. 41–42)"
++  builds_on: "V2e-A (two_group_fin, one_group, tri, aggR, aggS, aggExp, aggConst, endpointAgg, integral_Icc_pow, tri_isCompact), V2d (inner_integral), V2b (simplexF, pieceSet, pieceSet_subset_simplexF), A1 (BGP212.Params); A0–V2e-A unchanged"
++  base_commits: "proof 01644e6, provenance 38606c0"
++
++state:
++  mathematical: proved
++  computational: kernel-verified
++  provenance: pinned
++  publication: draft
++
++scope:
++  proved_integral_identities: >
++    boxTri_integral (Fubini on a cell), box_monomial (exact monomial integral, boxVal),
++    boxVal_cast, boxVal_empty, boxVal_nonpos, boxVal_rect, box_capPow, box_poly (rational
++    polynomials), piece_cap_eq, cap_branch_piece, cap_branch_r0.
++  proved_geometry: >
++    endpointAgg_cap, endpointAgg_gBranch, endpointAgg_LBranch_cap, endpointAgg_LBranch_g (the
++    three branches of U in the aggregates), mem_capCell, endpointAgg_on_capCell, cap_total_le
++    (S ≤ L − g on the cap branch), capCell_rect (the τ constraint is inactive when L − g ≤ τ),
++    capCell_empty, cap_inner (the inner integral on the cap cell as a polynomial in (u₁, u₂)).
++  table3: >
++    tau_ge_table3 (τ − (L − g) = 1/625), capCell_rect_table3 (every Table 3 cap cell is a
++    rectangle), capCell_empty_table3 (r = 1: empty for k ≥ 7).
++  computational_certificate: >
++    capPieceT3_value: the cap-branch part of J_T(1) on the Table 3 piece (R, K) = ({0}, ∅) of
++    T̂ = supportT 44 g τ C, i.e. ∫ over pieceSet 44 {0} (C(1) − g) (τ − g) of 1_cap U², equals
++    (L − C(2))⁴³ ((C(2) − g)³ − g³) / (3 · 43!) ≈ 1.0464 × 10⁻⁷⁰ (decide +kernel on the rational
++    capPowVal, assembled by norm_num).
++  unproved_assumptions: "none (axioms: propext, Quot.sound, Classical.choice)"
++  outside_V2e_B: >
++    the g branch and the L − S branch (V2f; both are signed combinations of boxTri cells, see
++    the roadmap), the placement counting over all pieces, J_T Gram entries, P⋆ and Theorem 11.1.
++    The certificate is one piece of the inclusion–exclusion decomposition, not J_T(1) itself.
++
++verification:
++  definitions: BGP212/CapCell.lean
++  challenge: Challenge/CapCell.lean
++  solution: Solution/CapCell.lean
++  comparator_config: Comparator/capcell_v2eb.json
++  controls_script: specs/checks/capcell_v2eb_controls.py
++  roadmap: Exploratory/V2e/ROADMAP.md
++  challenge_theorems: [boxTri_integral, box_monomial, boxVal_cast, boxVal_empty, boxVal_nonpos,
++    boxVal_rect, box_capPow, box_poly, endpointAgg_cap, endpointAgg_gBranch,
++    endpointAgg_LBranch_cap, endpointAgg_LBranch_g, cap_total_le, mem_capCell,
++    endpointAgg_on_capCell, capCell_rect, capCell_empty, cap_inner, piece_cap_eq,
++    cap_branch_piece, cap_branch_r0, tau_ge_table3, capCell_rect_table3, capCell_empty_table3,
++    capPieceT3_value]
++  closed_form: >
++    boxVal A B D α β = (B^{β+1} E^{α+1}/(α+1) + ∫_E^F u^α (D − u)^{β+1} du)/(β+1) with
++    E = max 0 (min A (D − B)), F = max 0 (min A D), and 0 if A < 0 or B < 0; the last integral is
++    V2d's inner_integral expanded (innerVal F − innerVal E).
++  independent_checks:
++    - "boxVal against exact polygon clipping (triangle fans): 300 random cells, the controls' diagonal-cut cell, and the certificate's cell"
++    - "certificate against the rectangle closed form B⁴³ (a³ − g³)/(3 · 43!): equal"
++    - "three-dimensional analogue (N = 3, R = {0}, Table 3 data) integrated on a 240³ grid directly in y: 0.005541 against the formula's 0.005550 (relative difference 0.15%)"
++    - "the clamped signed-cell formula for the g branch (roadmap) against direct integration: 500 random cells"
++  axioms_used: [propext, Quot.sound, Classical.choice]
++  trusted_base: "Lean 4 kernel + core + Mathlib (Track B, pinned 85e3a25)"
++  controls:
++    - change: "boxVal (1/2) (2/3) 1 2 1 (cell cut by the diagonal) equals the clipping value 221/29160, over ℚ and as a Lebesgue integral"
++      result: "accepted (ok_box_diag, ok_box_integral)"
++    - change: "the rectangle product A³/3 · B²/2 = 1/108 for the same cell"
++      result: "rejected (nc_box_rect)"
++    - change: "the certificate value"
++      result: "accepted (ok_cert)"
++    - change: "the certificate with the cap index C(r) in place of C(r+1); with the aggregate exponent without −1 (u₂⁴³, 1/43!)"
++      result: "rejected (nc_cert_capindex, nc_cert_nojac)"
++    - change: "endpoint at (u₁, u₂) = (1/10, 1/10), r = 1, k = 0, Table 3: the cap value; at (1/10, 1/2) (u₂ > c₂, the L − S branch) the cap value claimed"
++      result: "accepted (ok_branch); rejected (nc_branch)"
++    - change: "r = 1, k = 7: L − 7g < C(2) (empty cap cell); k = 6: the same inequality claimed"
++      result: "accepted (ok_empty); rejected (nc_empty)"
++    - change: "cap_branch_piece stated with the cap value C(r) − r g in the Challenge"
++      result: "rejected: 'Challenge and solution theorem statement do not match: BGP212.Challenge.cap_branch_piece'"
++  resources:
++    new_mathlib_modules: none
++    elaboration: "Solution/CapCell.lean about 5 s, peak 3.19 GB (the import baseline)"
++    kernel_arithmetic: "capPowVal at Table 3 (one decide +kernel, rationals with about 180-digit denominators) and a few small constants"
++    comparator_suite: "about 115 seconds in the build container, peak 3.16 GB"
++    development_builds: "only BGP212.CapCell, Challenge.CapCell, Solution.CapCell and their dependencies; the 17-suite regression is left to the VPS"
++  sandbox: >
++    Comparator ran in the build container with the landrun pass-through shim; the VPS run with
++    the real landrun sandbox is recorded below.
++
++result:
++  toolchain: leanprover/lean4:v4.34.0-rc2
++  mathlib: 85e3a25
++  comparator: leanprover/comparator @ c78dd72
++  lean4export: leanprover/lean4export @ 483e011
++  output_tail:
++    - "Running Lean default kernel on solution."
++    - "Lean default kernel accepts the solution"
++    - "Your solution is okay!"
++  verify_time: "about 115 seconds for the V2e-B comparator suite in the build container"
++  run_date: 2026-10-19
++  commit_hash: PENDING_VPS
++
++next_development:
++  V2f: >
++    The g branch and the L − S branch as clamped signed boxTri cells (the τ constraint active
++    on the L − S branch), the J_T integrand's polynomial in (u₁, u₂) per cell, placement counting
++    over the (r, k) classes, and one J_T Gram entry at Table 3.
++
++footer: Admissible generalizations trail leading specifications.
+diff --git a/verify.sh b/verify.sh
+index 28f1bb3..66bd34c 100755
+--- a/verify.sh
++++ b/verify.sh
+@@ -9,7 +9,7 @@ COMPARATOR_LANDRUN="${COMPARATOR_LANDRUN:-$HOME/landrun/landrun}"
+ COMPARATOR_LEAN4EXPORT="${COMPARATOR_LEAN4EXPORT:-$HOME/comparator/.lake/packages/lean4export/.lake/build/bin/lean4export}"
+ COMPARATOR_BIN="${COMPARATOR_BIN:-$HOME/comparator/.lake/build/bin/comparator}"
+ 
+-for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json Comparator/gram_general_v2c.json Comparator/fibre_v2d.json Comparator/aggregate_v2e.json; do
++for config in Comparator/lemma_12_1.json Comparator/appendix_b.json Comparator/a2_combinatorial.json Comparator/multishift.json Comparator/multishift_b2.json Comparator/packing_a3a.json Comparator/packing_a3b.json Comparator/packing_a3c.json Comparator/theorem_7_11.json Comparator/final_deduction.json Comparator/variational_v0.json Comparator/simplex_moment_v1.json Comparator/gram_entry_v2b.json Comparator/gram_general_v2c.json Comparator/fibre_v2d.json Comparator/aggregate_v2e.json Comparator/capcell_v2eb.json; do
+   echo "== $config"
+   COMPARATOR_LANDRUN="$COMPARATOR_LANDRUN" \
+   COMPARATOR_LEAN4EXPORT="$COMPARATOR_LEAN4EXPORT" \
+-- 
+2.43.0
+
